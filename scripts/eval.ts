@@ -6,23 +6,39 @@
  *   npm run eval -- --llm codex        # use `codex exec` for the LLM config
  *   npm run eval -- --no-llm           # skip the LLM config
  *   npm run eval -- --config '{"louvain":{"resolution":0.8}}'   # override PipelineConfig
+ *   npm run eval -- --real-only | --synthetic-only | pr5 t3code-17901
+ *
+ * Real PRs (fixtures/real/<id>) are read from a blobless clone in .cache/repos,
+ * created on first use; nothing in the cloned repository is executed.
  *
  * Titles do not affect clustering, so config C has the same ARI as B; for it we
  * also report title overlap with the ground-truth titles (token F1), for both titlers.
  */
 import { mergeConfig } from "../src/core/config.js";
 import type { ReviewResult } from "../src/core/types.js";
+import { parseDiff } from "../src/diff/parse.js";
 import { adjustedRandIndex, labelsFromGroups, labelsFromTruth } from "../src/eval/ari.js";
 import { TransformersEmbedder } from "../src/node/embedder.js";
-import { listPrIds, loadPr, loadTruth, type TruthGroup } from "../src/node/fixtures.js";
+import {
+  ensureRealRepo,
+  listPrIds,
+  listRealPrIds,
+  loadPr,
+  loadRealTruth,
+  loadTruth,
+  type TruthGroup,
+} from "../src/node/fixtures.js";
+import { loadGitPr } from "../src/node/git.js";
 import { CliLlmTitler, type LlmCli } from "../src/node/llmTitler.js";
 import { createNodeParsers } from "../src/node/parsers.js";
-import { runPipeline } from "../src/pipeline.js";
+import { type PrInput, runPipeline } from "../src/pipeline.js";
 
 const args = process.argv.slice(2);
-const llmCli = (args[args.indexOf("--llm") + 1] ?? "claude") as LlmCli;
+const llmArg = args.indexOf("--llm");
+const llmCli = (llmArg >= 0 ? args[llmArg + 1] : "claude") as LlmCli;
 const withLlm = !args.includes("--no-llm");
-const only = args.find((a) => /^pr\d+$/.test(a));
+const only = args.filter((a) => /^(pr\d+|[\w-]+-\d+)$/.test(a));
+const sets = args.includes("--real-only") ? ["real"] : args.includes("--synthetic-only") ? ["synthetic"] : ["synthetic", "real"];
 
 const parsers = await createNodeParsers();
 const overrideArg = args.indexOf("--config");
@@ -31,8 +47,33 @@ const structuralOnly = mergeConfig({ ...overrides, semantic: { ...overrides.sema
 const withEmbeddings = mergeConfig({ ...overrides, semantic: { ...overrides.semantic, enabled: true } });
 const embedder = new TransformersEmbedder(withEmbeddings.semantic.model);
 
+interface Case {
+  id: string;
+  set: "synthetic" | "real";
+  load: () => Promise<{ pr: PrInput; truth: TruthGroup[] }>;
+}
+
+const cases: Case[] = [
+  ...(sets.includes("synthetic") ? listPrIds() : []).map((id): Case => ({
+    id,
+    set: "synthetic",
+    load: async () => ({ pr: loadPr(id), truth: loadTruth(id) }),
+  })),
+  ...(sets.includes("real") ? listRealPrIds() : []).map((id): Case => ({
+    id,
+    set: "real",
+    load: async () => {
+      const { spec, dir } = ensureRealRepo(id);
+      const pr = await loadGitPr(dir, `${spec.commit}^`, spec.commit, { title: spec.title, description: spec.description });
+      const hunkIds = parseDiff(pr.diff).flatMap((f) => f.hunks.map((h) => h.id));
+      return { pr, truth: loadRealTruth(id, hunkIds) };
+    },
+  })),
+].filter((c) => only.length === 0 || only.includes(c.id));
+
 interface Row {
   pr: string;
+  set: string;
   hunks: number;
   truthGroups: number;
   ari: [number, number, number | null];
@@ -43,27 +84,28 @@ interface Row {
 }
 
 const rows: Row[] = [];
-for (const id of only ? [only] : listPrIds()) {
-  const pr = loadPr(id);
-  const truth = loadTruth(id);
+for (const c of cases) {
+  const { pr, truth } = await c.load();
   const truthLabels = labelsFromTruth(truth);
   const ari = (r: ReviewResult) => adjustedRandIndex(truthLabels, labelsFromGroups(r.groups));
 
   const a = await runPipeline(pr, structuralOnly, { parsers });
   const b = await runPipeline(pr, withEmbeddings, { parsers, embedder });
-  const c = withLlm ? await runPipeline(pr, withEmbeddings, { parsers, embedder, titler: new CliLlmTitler(llmCli) }) : null;
+  const llm = withLlm ? await runPipeline(pr, withEmbeddings, { parsers, embedder, titler: new CliLlmTitler(llmCli) }) : null;
 
   rows.push({
-    pr: id,
+    pr: c.id,
+    set: c.set,
     hunks: a.hunks.size,
     truthGroups: truth.length,
-    ari: [ari(a), ari(b), c ? ari(c) : null],
+    ari: [ari(a), ari(b), llm ? ari(llm) : null],
     groups: [a.groups.length, b.groups.length],
-    titleF1: { heuristic: titleScore(b, truth), llm: c ? titleScore(c, truth) : null },
-    llmMs: c ? c.timings.title : null,
-    warnings: [...(c?.warnings ?? [])],
+    titleF1: { heuristic: titleScore(b, truth), llm: llm ? titleScore(llm, truth) : null },
+    llmMs: llm ? llm.timings.title : null,
+    warnings: [...(llm?.warnings ?? [])],
   });
-  process.stderr.write(`  ${id} done\n`);
+  process.stderr.write(`  ${c.id} done
+`);
 }
 
 const fmt = (x: number | null) => (x === null ? "  -  " : x.toFixed(3));
@@ -84,18 +126,22 @@ const mean = (xs: (number | null)[]) => {
   const v = xs.filter((x): x is number => x !== null);
   return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null;
 };
-table.push([
-  "mean",
-  "",
-  "",
-  fmt(mean(rows.map((r) => r.ari[0]))),
-  fmt(mean(rows.map((r) => r.ari[1]))),
-  fmt(mean(rows.map((r) => r.ari[2]))),
-  "",
-  fmt(mean(rows.map((r) => r.titleF1.heuristic))),
-  fmt(mean(rows.map((r) => r.titleF1.llm))),
-  "",
-]);
+for (const set of ["synthetic", "real"]) {
+  const subset = rows.filter((r) => r.set === set);
+  if (subset.length === 0) continue;
+  table.push([
+    `mean ${set}`,
+    "",
+    "",
+    fmt(mean(subset.map((r) => r.ari[0]))),
+    fmt(mean(subset.map((r) => r.ari[1]))),
+    fmt(mean(subset.map((r) => r.ari[2]))),
+    "",
+    fmt(mean(subset.map((r) => r.titleF1.heuristic))),
+    fmt(mean(subset.map((r) => r.titleF1.llm))),
+    "",
+  ]);
+}
 const widths = header.map((h, i) => Math.max(h.length, ...table.map((r) => r[i].length)));
 const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i])).join(" | ");
 console.log(`\n${line(header)}\n${widths.map((w) => "-".repeat(w)).join("-|-")}`);

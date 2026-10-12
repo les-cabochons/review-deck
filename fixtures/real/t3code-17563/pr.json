@@ -1,0 +1,8 @@
+{
+  "id": "t3code-17563",
+  "repo": "https://github.com/pingdotgg/t3code.git",
+  "url": "https://github.com/pingdotgg/t3code/pull/17563",
+  "commit": "0caa95d6eb471ab033ea670914d61070c65be806",
+  "title": "fix(storage): make worktree cleanup work and show why it skipped",
+  "description": "Storage cleanup gets three local-change policies, a guarded Delete now action over a new RPC, and live reports with recovered bytes and skip/failure reasons, shown in the Storage settings page."
+}

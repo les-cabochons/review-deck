@@ -1,4 +1,3 @@
-import { declKey } from "../parse/symbols.js";
 import type { HunkInfo } from "../core/types.js";
 
 export interface MergeNote {
@@ -7,38 +6,58 @@ export interface MergeNote {
   symbol: string;
 }
 
+export interface MergeOptions {
+  /** Only communities up to this size can be absorbed (a helper plus its tests, not a whole concern). */
+  maxSize: number;
+}
+
 /**
- * Modularity-based clustering likes to split a new helper (plus its tests) from
- * the feature that introduced it. A declaration that did not exist before the PR
- * belongs with its users, so merge any community that adds a symbol into the
- * community that references it. Returns the merged communities and why.
+ * Modularity-based clustering likes to split a new private helper (plus its tests)
+ * from the feature that introduced it. If every use of a small community's newly
+ * added symbols sits in exactly one other community, absorb it there.
+ *
+ * Deliberately conservative: in a large refactor new symbols are used everywhere,
+ * and an unrestricted "merge into users" rule chains all groups into one. So:
+ * one target only, small communities only, and no chaining (absorbed communities
+ * are never targets).
  */
-export function mergeNewSymbolUsers(communities: string[][], hunks: Map<string, HunkInfo>): { communities: string[][]; merges: MergeNote[] } {
-  const parent = communities.map((_, i) => i);
-  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+export function mergeNewSymbolUsers(
+  communities: string[][],
+  hunks: Map<string, HunkInfo>,
+  options: MergeOptions,
+): { communities: string[][]; merges: MergeNote[] } {
   const communityOf = new Map<string, number>();
   communities.forEach((ids, i) => ids.forEach((id) => communityOf.set(id, i)));
-  const merges: MergeNote[] = [];
+  const target = new Map<number, { into: number; note: MergeNote }>();
 
-  for (const [id, def] of hunks) {
-    const ci = communityOf.get(id);
-    if (ci === undefined || def.isTest || def.addedDecls.length === 0) continue;
-    // Match keys for the added declarations: plain for module-level, `.name` for members.
-    const keys = def.addedDecls.map((q) => {
-      const name = q.split(".").pop()!;
-      return def.defines.has(`.${name}`) ? declKey({ kind: "method", name }) : name;
-    });
+  communities.forEach((ids, ci) => {
+    if (ids.length > options.maxSize) return;
+    const added = ids
+      .map((id) => hunks.get(id)!)
+      .filter((h) => !h.isTest)
+      .flatMap((h) => h.addedDecls.map((q) => ({ id: h.hunk.id, name: q.split(".").pop()! })));
+    if (added.length === 0) return;
+    const users = new Map<number, MergeNote>();
     for (const [otherId, user] of hunks) {
       const cj = communityOf.get(otherId);
-      if (cj === undefined || find(ci) === find(cj)) continue;
-      const used = keys.find((k) => user.references.has(k));
-      if (!used) continue;
-      merges.push({ from: otherId, into: id, symbol: used });
-      parent[find(cj)] = find(ci);
+      if (cj === undefined || cj === ci) continue;
+      const hit = added.find((a) => user.references.has(a.name) || user.references.has(`.${a.name}`));
+      if (hit && !users.has(cj)) users.set(cj, { from: otherId, into: hit.id, symbol: hit.name });
     }
-  }
+    if (users.size === 1) {
+      const [[into, note]] = [...users];
+      target.set(ci, { into, note });
+    }
+  });
 
-  const merged = new Map<number, string[]>();
-  communities.forEach((ids, i) => merged.set(find(i), [...(merged.get(find(i)) ?? []), ...ids]));
-  return { communities: [...merged.values()].sort((a, b) => b.length - a.length), merges };
+  const absorbed = new Set(target.keys());
+  const merged = communities.map((ids) => [...ids]);
+  const merges: MergeNote[] = [];
+  for (const [from, { into, note }] of target) {
+    if (absorbed.has(into)) continue; // no chaining
+    merged[into].push(...communities[from]);
+    merged[from] = [];
+    merges.push(note);
+  }
+  return { communities: merged.filter((c) => c.length > 0).sort((a, b) => b.length - a.length), merges };
 }

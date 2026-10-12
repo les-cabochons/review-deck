@@ -1,0 +1,52 @@
+{
+  "pr": "t3code-17826",
+  "granularity": "file",
+  "groups": [
+    {
+      "id": "command-contract",
+      "title": "subagent.stop command contract and client operation",
+      "why": "The new command in the orchestration contract and the client-runtime operation that sends it, with its test.",
+      "mechanical": false,
+      "files": [
+        "packages/contracts/src/orchestrationV2.ts",
+        "packages/client-runtime/src/operations/commands.ts",
+        "packages/client-runtime/src/operations/commands.test.ts"
+      ]
+    },
+    {
+      "id": "orchestrator-routing",
+      "title": "Route subagent stop through the orchestrator without stopping the owner",
+      "why": "Orchestrator handles the command, emits an effect through the outbox/worker and turn-control service; ThreadStop and EffectWorker tests check sibling and parent isolation.",
+      "mechanical": false,
+      "files": [
+        "apps/server/src/orchestration-v2/Orchestrator.ts",
+        "apps/server/src/orchestration-v2/EffectOutbox.ts",
+        "apps/server/src/orchestration-v2/EffectWorker.ts",
+        "apps/server/src/orchestration-v2/EffectWorker.test.ts",
+        "apps/server/src/orchestration-v2/ProviderTurnControlService.ts",
+        "apps/server/src/orchestration-v2/ThreadStop.test.ts",
+        "apps/server/src/orchestration-v2/testkit/"
+      ]
+    },
+    {
+      "id": "claude-adapter-stop",
+      "title": "Claude adapter stops one native task via its owning query",
+      "why": "New adapter capability in the provider-core port, implemented and tested in ClaudeAdapterV2.",
+      "mechanical": false,
+      "files": [
+        "apps/server/src/orchestration-v2/Adapters/",
+        "packages/provider-core/src/server/ProviderAdapter.ts"
+      ]
+    },
+    {
+      "id": "web-stop-control",
+      "title": "Stop control for Claude native subagents",
+      "why": "ThreadRelationshipsControl offers Stop for eligible subagents; its test.",
+      "mechanical": false,
+      "files": ["apps/web/"]
+    }
+  ],
+  "notes": [
+    "HELD OUT: written from the PR description and file list before running the pipeline on this PR, and not used for tuning."
+  ]
+}

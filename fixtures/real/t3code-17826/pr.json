@@ -1,0 +1,9 @@
+{
+  "id": "t3code-17826",
+  "repo": "https://github.com/pingdotgg/t3code.git",
+  "url": "https://github.com/pingdotgg/t3code/pull/17826",
+  "commit": "8c777fbfade340f2092c011483c7fb0cde44c675",
+  "title": "feat(server): stop Claude subagents without stopping their owner",
+  "description": "Adds a subagent.stop command targeting one Claude native subagent: contract and client command, orchestrator/effect routing, the Claude adapter stopping the task via its owning query, and a Stop control in the thread relationships UI.",
+  "heldOut": true
+}

@@ -1,0 +1,8 @@
+{
+  "id": "t3code-17901",
+  "repo": "https://github.com/pingdotgg/t3code.git",
+  "url": "https://github.com/pingdotgg/t3code/pull/17901",
+  "commit": "4f63275ac7885281d245022e65f1e9e8816b1382",
+  "title": "feat(source-control): host settings live on each host's definition, with a GitCafe token",
+  "description": "Moves Bitbucket/GitHub host settings into a generic per-host settings schema on each client definition (one settingsKey, one secret path, migration of legacy keys), renders each host's form from its schema, and adds a GitCafe Token field."
+}

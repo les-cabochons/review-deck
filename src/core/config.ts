@@ -27,6 +27,8 @@ export interface PipelineConfig {
   cluster: {
     /** After Louvain, merge a community that introduces a symbol into the community that uses it. */
     mergeNewSymbolUsers: boolean;
+    /** Largest community that can be absorbed by that merge. */
+    mergeMaxSize: number;
   };
   /** Generic names ignored by structural/lexical matching. */
   stopwords: string[];
@@ -38,7 +40,7 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     testPairing: 0.9,
     lexical: 0.45,
     semantic: 0.5,
-    path: 0.1,
+    path: 0.25,
   },
   minEdgeWeight: 0.22,
   structural: { impactFactor: 0.6 },
@@ -48,8 +50,8 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     model: "Xenova/all-MiniLM-L6-v2",
     floor: 0.5,
   },
-  louvain: { resolution: 0.5, seed: 7 },
-  cluster: { mergeNewSymbolUsers: true },
+  louvain: { resolution: 1.0, seed: 7 },
+  cluster: { mergeNewSymbolUsers: true, mergeMaxSize: 4 },
   stopwords: [
     // TS/JS builtins and primitive types
     "string", "number", "boolean", "unknown", "never", "void", "undefined", "null", "true", "false", "this",

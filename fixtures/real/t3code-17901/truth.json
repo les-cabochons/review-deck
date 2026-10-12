@@ -1,0 +1,71 @@
+{
+  "pr": "t3code-17901",
+  "granularity": "file",
+  "groups": [
+    {
+      "id": "settings-schema",
+      "title": "Host settings schema on client definitions and one sourceControlHosts key",
+      "why": "makeProviderSettingsSchema/readSourceControlHostSettings in source-control-core, the contracts settings key change, and the shared settings patch merge.",
+      "mechanical": false,
+      "files": [
+        "packages/source-control-core/src/client/definition.ts",
+        "packages/contracts/src/settings.ts",
+        "packages/contracts/src/settings.test.ts",
+        "packages/shared/src/serverSettings.ts",
+        "packages/shared/src/serverSettings.test.ts"
+      ]
+    },
+    {
+      "id": "server-secrets-migration",
+      "title": "Generic secret storage and legacy-key migration in server settings",
+      "why": "serverSettings.ts drops the Bitbucket/GitHub-specific secret code for one path, plus the migration; sourceControlHostSecrets.ts is the new helper; the settings tests are rewritten.",
+      "mechanical": false,
+      "files": [
+        "apps/server/src/serverSettings.ts",
+        "apps/server/src/serverSettings.test.ts",
+        "apps/server/src/sourceControl/sourceControlHostSecrets.ts"
+      ]
+    },
+    {
+      "id": "bitbucket-github-hosts",
+      "title": "Bitbucket and GitHub declare their settings and read the new key",
+      "why": "Each host's definition declares its schema; server code and tests read settings via the new key; client-runtime exposes readGitHubSettings.",
+      "mechanical": false,
+      "files": [
+        "packages/source-control-bitbucket/",
+        "packages/source-control-github/",
+        "apps/server/src/sourceControl/BitbucketApi.test.ts",
+        "packages/client-runtime/src/sourceControlClients.ts"
+      ]
+    },
+    {
+      "id": "settings-ui",
+      "title": "Settings page renders host forms from their schema",
+      "why": "ProviderSettingsForm gains secret fields, SourceControlHostSettings is new, Bitbucket's hand-written form is deleted, GitHub panels read the new key, search entries are generated per host.",
+      "mechanical": false,
+      "files": ["apps/web/"]
+    },
+    {
+      "id": "gitcafe-token",
+      "title": "GitCafe Token setting",
+      "why": "GitCafe declares a Token field, credentials prefer it over CAFE_TOKEN, discovery receives it; server tests mock the new credentials service.",
+      "mechanical": false,
+      "files": [
+        "packages/source-control-gitcafe/",
+        "apps/server/src/sourceControl/SourceControlDiscovery.test.ts",
+        "apps/server/src/sourceControl/SourceControlProviderRegistry.test.ts"
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "User guide updates",
+      "why": "Bitbucket and GitCafe sections of the source control guide.",
+      "mechanical": false,
+      "files": ["docs/"]
+    }
+  ],
+  "notes": [
+    "Hand-written by reading the PR description and diff, at file granularity: a reviewer-style split of one large refactor. Subjective; another reviewer could merge schema+server or split the UI.",
+    "Everything references the same new names (sourceControlHosts, settings schema), so the graph is dense: the challenge is splitting, not linking."
+  ]
+}

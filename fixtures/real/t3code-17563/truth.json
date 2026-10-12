@@ -1,0 +1,58 @@
+{
+  "pr": "t3code-17563",
+  "granularity": "file",
+  "groups": [
+    {
+      "id": "cleanup-policy-setting",
+      "title": "Add the keep-worktrees-with-local-changes cleanup policy setting",
+      "why": "New setting in contracts, its project/server settings plumbing in shared, and their tests.",
+      "mechanical": false,
+      "files": [
+        "packages/contracts/src/settings.ts",
+        "packages/contracts/src/settings.test.ts",
+        "packages/shared/"
+      ]
+    },
+    {
+      "id": "cleanup-engine",
+      "title": "Fix worktree cleanup and report why items were skipped",
+      "why": "storageCleanup.ts applies the policy, measures sizes, revalidates before removal and produces reports; the large test file covers it.",
+      "mechanical": false,
+      "files": ["apps/server/src/storageCleanup.ts", "apps/server/src/storageCleanup.test.ts"]
+    },
+    {
+      "id": "delete-now-rpc",
+      "title": "Delete now RPC from client to server",
+      "why": "New RPC in contracts, its permission and authorization, server wiring (ws, server, environment, instrumentation), and the client-runtime call/state.",
+      "mechanical": false,
+      "files": [
+        "packages/contracts/src/rpc.ts",
+        "packages/contracts/src/clientRpcPermissions.ts",
+        "packages/contracts/src/environment.ts",
+        "apps/server/src/auth/",
+        "apps/server/src/environment/",
+        "apps/server/src/observability/",
+        "apps/server/src/server.ts",
+        "apps/server/src/ws.ts",
+        "packages/client-runtime/"
+      ]
+    },
+    {
+      "id": "storage-settings-ui",
+      "title": "Storage settings: policy select, Delete now, Last run report",
+      "why": "StorageSettings.tsx UI, a shared formatBytes helper (also adopted by ResourceTelemetryDiagnostics), search entries, scoped-settings test.",
+      "mechanical": false,
+      "files": ["apps/web/"]
+    },
+    {
+      "id": "docs",
+      "title": "Project settings guide",
+      "why": "Documents the new cleanup options.",
+      "mechanical": false,
+      "files": ["docs/"]
+    }
+  ],
+  "notes": [
+    "Hand-written at file granularity from the PR description and diff. Subjective: the policy setting and the engine are tightly coupled and a reviewer could merge them."
+  ]
+}

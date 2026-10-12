@@ -22,7 +22,12 @@ npm run review -- pr2 pr5 --embeddings  # selected PRs, + local MiniLM embedding
 npm run review -- --embeddings --llm claude   # LLM titles via `claude -p`
 npm run review -- --llm codex --llm-model gpt-5-mini   # or `codex exec`
 
+npm run review -- t3code-17901 --embeddings --llm claude   # a real PR from fixtures/real
+npm run review -- --repo <path> --commit <sha>             # any local git repo: <sha>^..<sha>
+npm run review -- --repo <path> --base main --head feature --name my-pr
+
 npm run eval                            # 3 configs x all PRs, ARI table (uses `claude -p`)
+npm run eval -- --real-only | --synthetic-only
 npm run eval -- --llm codex             # LLM config via codex
 npm run eval -- --no-llm                # skip the LLM config
 npm run eval -- --config '{"louvain":{"resolution":0.8}}'   # try other weights/params
@@ -43,34 +48,65 @@ Each page has three tabs:
   post-clustering merges and per-hunk facts (symbol, defines, impacts,
   references).
 
-## Results (current fixtures)
+## Results
+
+Two sets of test cases:
+- **Synthetic** (`fixtures/prs`): 9 hand-built PRs on a toy repo, with
+  hunk-level truth. Several deliberately split a file across concerns.
+- **Real** (`fixtures/real`): 3 merged PRs from
+  [T3 Code](https://github.com/pingdotgg/t3code). The code is read from a
+  blobless clone in `.cache/repos`, created on first use, and nothing in it is
+  executed. The truth is a file-level, reviewer-style split I wrote from each
+  PR's description and diff.
+- **#17826 is held out:** its truth was written before the pipeline ever ran
+  on it, and it was not used for tuning.
 
 ```
-PR   | hunks | truth | A: struct | B: +emb | C: +emb+LLM | groups A/B | title F1 heur | title F1 LLM
-pr1  | 20    | 2     | 1.000     | 1.000   | 1.000       | 2/2        | 0.682         | 0.729
-pr2  | 19    | 3     | 0.903     | 1.000   | 1.000       | 4/3        | 0.564         | 0.900
-pr3  | 8     | 3     | 1.000     | 1.000   | 1.000       | 3/3        | 1.000         | 0.714
-pr4  | 2     | 1     | 1.000     | 1.000   | 1.000       | 1/1        | 0.250         | 0.545
-pr5  | 21    | 5     | 0.951     | 0.951   | 0.951       | 5/5        | 0.367         | 0.785
-pr6  | 14    | 4     | 0.875     | 0.875   | 0.875       | 4/4        | 0.429         | 0.872
-pr7  | 1     | 1     | 1.000     | 1.000   | 1.000       | 1/1        | 0.000         | 0.889
-pr8  | 2     | 1     | 1.000     | 1.000   | 1.000       | 1/1        | 0.333         | 0.857
-pr9  | 3     | 1     | 1.000     | 1.000   | 1.000       | 1/1        | 1.000         | 1.000
-mean |       |       | 0.970     | 0.981   | 0.981       |            | 0.514         | 0.810
+PR             | hunks | truth | A: struct | B: +emb | C: +emb+LLM | title F1 heur | title F1 LLM
+pr1            | 20    | 2     | 1.000     | 1.000   | 1.000       | 0.682         | 0.729
+pr2            | 19    | 3     | 0.812     | 1.000   | 1.000       | 0.564         | 0.900
+pr3            | 8     | 3     | 1.000     | 1.000   | 1.000       | 1.000         | 0.714
+pr4            | 2     | 1     | 1.000     | 1.000   | 1.000       | 0.250         | 0.545
+pr5            | 21    | 5     | 0.783     | 0.783   | 0.783       | 0.425         | 0.833
+pr6            | 14    | 4     | 0.782     | 0.752   | 0.752       | 0.343         | 0.567
+pr7            | 1     | 1     | 1.000     | 1.000   | 1.000       | 0.000         | 0.889
+pr8            | 2     | 1     | 1.000     | 1.000   | 1.000       | 0.333         | 0.857
+pr9            | 3     | 1     | 1.000     | 1.000   | 1.000       | 1.000         | 1.000
+t3code-17563   | 68    | 5     | 0.696     | 0.581   | 0.581       | 0.131         | 0.307
+t3code-17826 * | 43    | 4     | 0.759     | 1.000   | 1.000       | 0.114         | 0.768
+t3code-17901   | 104   | 6     | 0.463     | 0.573   | 0.573       | 0.229         | 0.348
+mean synthetic |       |       | 0.931     | 0.948   | 0.948       | 0.511         | 0.782
+mean real      |       |       | 0.640     | 0.718   | 0.718       | 0.158         | 0.475
+                                                                        * held out
 ```
 
-- **ARI** compares hunk clusters to `truth.json`. Misc hunks count as
+- **ARI** compares hunk clusters to the truth. Misc hunks count as
   singletons, and the mechanical group counts as one cluster.
-- **Titles don't change clustering**, so C has the same ARI as B. That is why
-  the table also reports *title F1*: token overlap between each group's title
-  and the title of its majority ground-truth group. It's crude, but it shows
-  what the LLM adds.
-- **Remaining misses are by design.** In pr5, three comment-only JSDoc hunks
-  have nothing linking them, not even in embeddings, so they land in misc. In
-  pr6, a hunk that mixes two concerns pulls the baseUrl change into the
-  request-id group. See each `truth.json`'s `notes`.
-- **Caveat:** the weights and thresholds were tuned on these same 9 PRs, so
-  treat the numbers as a smoke test, not a benchmark.
+- **Titles don't change clustering**, so C has the same ARI as B. That's why
+  the table also reports *title F1*: token overlap with the truth title of
+  each group's majority truth group. It's crude, but it shows what the LLM
+  adds.
+- **Lessons from the real PRs:**
+  - The "a new helper merges into its caller" rule, which helped the synthetic
+    set, chained a 104-hunk refactor into one group (ARI 0.05). It now only
+    absorbs small communities whose new symbols have a single user group, and
+    merges never chain.
+  - Louvain resolution 1.0 works for both sets once that rule is fixed.
+  - Monorepo imports (`@scope/pkg/sub`) are resolved against the changed files.
+  - Same-file cohesion (path weight 0.1 → 0.25) helps real PRs (+0.13) and
+    costs synthetic (−0.04), because those deliberately split files. The
+    real-PR truth is file-level, which partly rewards this by construction.
+- **Remaining synthetic misses are by design.** These are pr5's unrelated doc
+  comments and pr6's mixed hunk; see each `truth.json`'s `notes`.
+- **Caveat:** the weights were tuned on everything except #17826. Treat the
+  numbers as a smoke test, not a benchmark.
+
+Example LLM-titled groups for t3code#17901 (104 hunks → 5 groups):
+"Move host settings schemas onto client definitions" (35),
+"Render each host's settings form from its schema" (22),
+"Store host secrets generically and migrate legacy keys" (18),
+"Add GitCafe token setting ahead of CAFE_TOKEN" (26),
+"Replace patched host fields per source control host" (3).
 
 ## Pipeline
 
@@ -88,13 +124,13 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | `src/analyze/hunks.ts` | Expands each hunk to its innermost enclosing declaration (`symbol`, e.g. `HttpClient.request`). Records what it **defines** (decls added/removed/changed, members declared on changed lines), what it **references**, and one hop of **impact** (unchanged module-level functions in the same file that use something it changed). |
 | `src/analyze/mechanical.ts` | Lockfiles, generated files (path or `@generated`/`DO NOT EDIT` header), pure renames, binary, whitespace-only hunks, and dependency-only `package.json` edits that come with a lockfile change. |
 | `src/score/signals.ts`, `index.ts` | Pairwise signals, each 0..1 with evidence strings (see below). |
-| `src/cluster/louvain.ts`, `refine.ts` | graphology + Louvain (seeded, resolution 0.5) on edges ≥ `minEdgeWeight`. Refine step: if a hunk *introduces* a symbol used by a hunk in another community, merge the two. A new helper belongs with its caller. Singletons go to **misc**. |
+| `src/cluster/louvain.ts`, `refine.ts` | graphology + Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. Refine step: a small community (≤ 4 hunks) whose newly added symbols are used by exactly one other community is absorbed into it, with no chaining. A new private helper belongs with its caller. Singletons go to **misc**. |
 | `src/order/topo.ts` | Kahn's algorithm: definitions before usages, code before tests. Groups are ordered the same way; misc and mechanical come last. |
 | `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR to `claude -p` / `codex exec` and parses a JSON array. It falls back to heuristics per group on any failure. |
 | `src/render/html.ts` | Self-contained page; diff2html renders the diffs (server-side, so the page needs no diff JS). |
 | `src/pipeline.ts` | Orchestration. |
 | `src/eval/ari.ts`, `scripts/eval.ts` | Adjusted Rand Index and the comparison table. |
-| `src/node/*` | Node-only adapters: fixture loading (`FileProvider`), WASM paths, embedder with disk cache, LLM CLI, the `review` CLI. |
+| `src/node/*` | Node-only adapters: fixture and git loading (`FileProvider` via `git show`), WASM paths, embedder with disk cache, LLM CLI, the `review` CLI. |
 
 ### Signals (weights in `src/core/config.ts`)
 
@@ -104,7 +140,7 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | testPairing | 0.9 | Test hunk ↔ code hunk whose file the test imports: 1.0 if the test uses a symbol the hunk changed, 0.6 if it uses an impacted symbol, 0.15 if import-only. |
 | lexical | 0.45 | IDF-weighted overlap of identifiers/string literals on changed lines (geometric-mean normalized). |
 | semantic | 0.5 | Cosine similarity of `Xenova/all-MiniLM-L6-v2` embeddings (path + symbol + changed lines), rescaled above 0.5. Only with `--embeddings`. |
-| path | 0.1 | Same file 1, same logical dir 0.6 (tests/x ≡ src/x), same top dir 0.3. Never enough to link on its own. |
+| path | 0.25 | Same file 1, same logical dir 0.6 (tests/x ≡ src/x), same top dir 0.3. Never enough to link on its own. |
 
 Edges below `minEdgeWeight` (0.22) are dropped, so one weak coincidence (a
 shared token, the same directory) never links two hunks by itself.
@@ -131,6 +167,9 @@ fixtures/
     diff.patch            generated: git diff -M base..PR
     hunks.json            generated: every hunk ID with a short preview
     truth.json            hand-written ground truth: groups, why, and notes on the traps
+fixtures/real/<id>/
+  pr.json               repo URL + squash-merge commit of a real PR
+  truth.json            file-level truth (`files`: exact paths or "dir/" prefixes)
 ```
 
 **Hunk IDs** are `<path>#<n>`. `path` is the post-change path (the pre-change

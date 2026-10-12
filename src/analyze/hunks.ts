@@ -21,12 +21,13 @@ export async function analyzeHunks(
 ): Promise<Map<string, HunkInfo>> {
   const stop = makeStopFilter(config.stopwords);
   const lockfileChanged = prHasLockfileChange(files);
+  const changedModules = files.flatMap((f) => [f.oldPath, f.newPath]).filter((p): p is string => !!p).map(stripExtension);
   const out = new Map<string, HunkInfo>();
 
   for (const file of files) {
     const sides = await loadSides(file, provider, parsers);
     const head = (sides.content.new ?? sides.content.old ?? "").split("\n").slice(0, 5).join("\n");
-    const imports = resolveImports(file, sides);
+    const imports = resolveImports(file, sides, changedModules);
     for (const hunk of file.hunks) {
       const info = analyzeHunk(file, hunk, sides, stop, imports, parsers.languageFor(file.path));
       info.mechanical = detectMechanical(file, hunk, { lockfileChanged, head });
@@ -53,7 +54,7 @@ async function loadSides(file: FileDiff, provider: FileProvider, parsers: Syntax
   };
 }
 
-function resolveImports(file: FileDiff, sides: FileSides): Set<string> {
+function resolveImports(file: FileDiff, sides: FileSides, changedModules: string[]): Set<string> {
   const out = new Set<string>();
   for (const side of ["old", "new"] as const) {
     const path = side === "old" ? file.oldPath : file.newPath;
@@ -61,6 +62,7 @@ function resolveImports(file: FileDiff, sides: FileSides): Set<string> {
     if (!path || !syms) continue;
     for (const spec of syms.imports) {
       if (spec.startsWith(".")) out.add(stripExtension(join(dirname(path), spec)));
+      else for (const m of resolvePackageImport(spec, changedModules)) out.add(m);
     }
   }
   return out;
@@ -188,4 +190,19 @@ function hunkText(file: FileDiff, hunk: Hunk, symbol: string | null): string {
 export function makeStopFilter(stopwords: string[]): (name: string) => boolean {
   const set = new Set(stopwords);
   return (name) => name.length < 3 || set.has(name) || /^(to|mock)[A-Z]/.test(name);
+}
+
+/**
+ * Monorepo package imports (`@scope/pkg/sub/path`, `pkg/sub`) resolved by convention against the
+ * PR's changed files: a module under a `pkg/` directory ending in `/sub` (or `/src/sub`). A bare
+ * package import matches every changed module of that package. No tsconfig/package.json reading.
+ */
+function resolvePackageImport(spec: string, changedModules: string[]): string[] {
+  const parts = spec.split("/");
+  const [pkg, sub] = spec.startsWith("@") ? [parts[1], parts.slice(2).join("/")] : [parts[0], parts.slice(1).join("/")];
+  if (!pkg) return [];
+  const inPackage = changedModules.filter((m) => m.startsWith(`${pkg}/`) || m.includes(`/${pkg}/`));
+  if (!sub) return inPackage;
+  const target = stripExtension(sub);
+  return inPackage.filter((m) => m.endsWith(`/${target}`) || m.endsWith(`/${target}/index`));
 }

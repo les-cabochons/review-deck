@@ -49,7 +49,7 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
 
   const { communities, merges } = await time("cluster", () => {
     const raw = clusterHunks(reviewable.map((h) => h.hunk.id), pairs, config);
-    return config.cluster.mergeNewSymbolUsers ? mergeNewSymbolUsers(raw, hunks) : { communities: raw, merges: [] };
+    return config.cluster.mergeNewSymbolUsers ? mergeNewSymbolUsers(raw, hunks, { maxSize: config.cluster.mergeMaxSize }) : { communities: raw, merges: [] };
   });
   let groups = buildGroups(communities, mechanical);
   groups = await time("order", () => orderGroups(groups, hunks));
