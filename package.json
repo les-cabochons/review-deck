@@ -1,0 +1,27 @@
+{
+  "name": "semantic-pr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Prototype: group PR diff hunks by relatedness instead of by file.",
+  "scripts": {
+    "fixtures": "tsx scripts/build-fixtures.ts",
+    "review": "tsx src/node/cli.ts",
+    "eval": "tsx scripts/eval.ts",
+    "debug": "tsx scripts/debug-pr.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "diff2html": "^3.4.56",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
+    "tree-sitter-typescript": "^0.23.2",
+    "web-tree-sitter": "^0.27.1"
+  }
+}

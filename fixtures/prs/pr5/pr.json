@@ -1,0 +1,7 @@
+{
+  "id": "pr5",
+  "title": "Update-user endpoint, cache stats, docs pass, email fix, deps",
+  "description": "Kitchen-sink PR with five interleaved concerns: PUT /users/:id (client, service, validation, tests), cache hit/miss stats, a JSDoc pass over several modules, a stricter email regex, and mechanical churn (generated routes, typescript bump, tsconfig reindent). One hunk in client.ts mixes a doc comment with the new put() method.",
+  "renames": [],
+  "deletes": []
+}

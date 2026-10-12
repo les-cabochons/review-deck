@@ -1,0 +1,7 @@
+{
+  "id": "pr4",
+  "title": "Fix truncate exceeding max length",
+  "description": "Single concern: truncate() returned max+1 characters because the ellipsis was appended after slicing to max. Fix plus regression test.",
+  "renames": [],
+  "deletes": []
+}

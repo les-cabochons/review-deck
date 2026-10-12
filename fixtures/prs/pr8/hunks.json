@@ -1,0 +1,24 @@
+[
+  {
+    "id": "src/utils/arrays.ts#0",
+    "file": "src/utils/arrays.ts",
+    "header": "@@ -0,0 +1,11 @@",
+    "preview": [
+      "+/** Splits `items` into consecutive slices of at most `size` elements. */",
+      "+export function chunk<T>(items: readonly T[], size: number): T[][] {",
+      "+  if (!Number.isInteger(size) || size < 1) {",
+      "+    throw new RangeError(`chunk size must be a positive integer, got ${size}`);"
+    ]
+  },
+  {
+    "id": "tests/utils/arrays.test.ts#0",
+    "file": "tests/utils/arrays.test.ts",
+    "header": "@@ -0,0 +1,16 @@",
+    "preview": [
+      "+import { describe, expect, it } from \"vitest\";",
+      "+import { chunk } from \"../../src/utils/arrays\";",
+      "+",
+      "+describe(\"chunk\", () => {"
+    ]
+  }
+]

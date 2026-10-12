@@ -1,0 +1,13 @@
+{
+  "pr": "pr8",
+  "groups": [
+    {
+      "id": "chunk",
+      "title": "Add chunk() array helper",
+      "why": "New module plus the test file that imports it.",
+      "mechanical": false,
+      "hunks": ["src/utils/arrays.ts#0", "tests/utils/arrays.test.ts#0"]
+    }
+  ],
+  "notes": ["Simple: two brand-new files; test pairing alone should join them."]
+}

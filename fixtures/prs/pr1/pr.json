@@ -1,0 +1,7 @@
+{
+  "id": "pr1",
+  "title": "Rename UserRecord to User; add retry support to HttpClient",
+  "description": "Two unrelated concerns: a mechanical type rename that touches 5 files, and retry-with-backoff for idempotent HTTP requests (new config option, error classification, backoff helper, tests).",
+  "renames": [],
+  "deletes": []
+}

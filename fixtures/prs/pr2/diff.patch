@@ -1,0 +1,313 @@
+diff --git a/package-lock.json b/package-lock.json
+index fcb05a9..0236d3b 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -9,44 +9,44 @@
+       "version": "0.4.2",
+       "devDependencies": {
+         "typescript": "^5.4.5",
+-        "vitest": "^1.5.0"
++        "vitest": "^1.6.0"
+       }
+     },
+     "node_modules/@vitest/expect": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/@vitest/expect/-/expect-1.5.0.tgz",
+-      "integrity": "sha512-0pzuCI6KYi2SIC3LQezmxujU9RK/vwC1U9R0rLuGlNGcOuDWxqWKu6nUdFsX9tH1WU0SXtAxToOsEjeUn1s3hA==",
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/@vitest/expect/-/expect-1.6.0.tgz",
++      "integrity": "sha512-ixEvFVQjycy/oNgHjqsL6AZCDduC+tflRluaHIzKIsdbzkLn2U/iBnVeJwB6HsIjQBdfMR8Z0tRxKUsvFJEeWQ==",
+       "dev": true,
+       "dependencies": {
+-        "@vitest/spy": "1.5.0",
+-        "@vitest/utils": "1.5.0",
++        "@vitest/spy": "1.6.0",
++        "@vitest/utils": "1.6.0",
+         "chai": "^4.3.10"
+       }
+     },
+     "node_modules/@vitest/runner": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/@vitest/runner/-/runner-1.5.0.tgz",
+-      "integrity": "sha512-7HWwdxXP5yDoe7DTpbif9l6ZmDwCzcSIK38kTSIt6CFEpMjX4EpCgT6wUmS0xTXqMI6E/ONmfgRKmaujpabjZQ==",
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/@vitest/runner/-/runner-1.6.0.tgz",
++      "integrity": "sha512-P4xgwPjwesuBiHisAVz/LSSZtDjOTPYZVmNAnpHHSR6ONrf8eCJOFRvUwdHn30F5M1fxhqtl7QZQUk2dprIXAg==",
+       "dev": true,
+       "dependencies": {
+-        "@vitest/utils": "1.5.0",
++        "@vitest/utils": "1.6.0",
+         "p-limit": "^5.0.0",
+         "pathe": "^1.1.1"
+       }
+     },
+     "node_modules/@vitest/spy": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/@vitest/spy/-/spy-1.5.0.tgz",
+-      "integrity": "sha512-vu6vi6ew5N5MMHJjD5PoakMRKYdmIrNJmyfkhRpQt5d9Ewhw9nZ5Aqynbi3N61bvk9UvZ5UysMT6ayIrZ8GA9w==",
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/@vitest/spy/-/spy-1.6.0.tgz",
++      "integrity": "sha512-leUTap6B/cqi/bQkXUu6bQV5TZPx7pmMBKBQiI0rJA8c3pB56ZsaTbREnF7CJfmvAS4V2cXIBAh/3rVwrrCYgw==",
+       "dev": true,
+       "dependencies": {
+         "tinyspy": "^2.2.0"
+       }
+     },
+     "node_modules/@vitest/utils": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/@vitest/utils/-/utils-1.5.0.tgz",
+-      "integrity": "sha512-BDU0GNL8MWkRkSRdNFvCUCAVOeHaUlVJ9Tx0TYBZyXaaOTmGtUFObzchCivIBrIwKzvZA7A9sCejVhXM2qcyeA==",
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/@vitest/utils/-/utils-1.6.0.tgz",
++      "integrity": "sha512-21cPiuGMoMZwiOHa2i4LXkMkMkCGzA+MVFV70jRwHo95dL4x/ts5GZhML1QWuy7yfp3WzK3lRvZi3JnXTYqrBw==",
+       "dev": true,
+       "dependencies": {
+         "diff-sequences": "^29.6.3",
+@@ -69,15 +69,15 @@
+       }
+     },
+     "node_modules/vitest": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/vitest/-/vitest-1.5.0.tgz",
+-      "integrity": "sha512-d8UKgR0m2kjdxDWX6911uwxout6GHS0XaGH1cxxOFTt7rTsMz6BuuffKEu/W0cpI7zlnJ0rXzF0a1kn+9StFpw==",
++      "version": "1.6.0",
++      "resolved": "https://registry.npmjs.org/vitest/-/vitest-1.6.0.tgz",
++      "integrity": "sha512-H5r/dN06swuFnzNFhq/dnz37bPXnq8xB2xB5JOVk8K09rUtoeNN+LHWkoQ0A/i3hvbUKKcCei9KpbxqHMLhLLA==",
+       "dev": true,
+       "dependencies": {
+-        "@vitest/expect": "1.5.0",
+-        "@vitest/runner": "1.5.0",
+-        "@vitest/spy": "1.5.0",
+-        "@vitest/utils": "1.5.0",
++        "@vitest/expect": "1.6.0",
++        "@vitest/runner": "1.6.0",
++        "@vitest/spy": "1.6.0",
++        "@vitest/utils": "1.6.0",
+         "vite": "^5.0.0"
+       },
+       "bin": {
+diff --git a/package.json b/package.json
+index af17ae8..8e957af 100644
+--- a/package.json
++++ b/package.json
+@@ -10,6 +10,6 @@
+   },
+   "devDependencies": {
+     "typescript": "^5.4.5",
+-    "vitest": "^1.5.0"
++    "vitest": "^1.6.0"
+   }
+ }
+diff --git a/src/generated/routes.ts b/src/generated/routes.ts
+index 5765912..97ecf2d 100644
+--- a/src/generated/routes.ts
++++ b/src/generated/routes.ts
+@@ -6,6 +6,7 @@ export const ROUTES = {
+   listUsers: { method: "GET", path: "/users" },
+   createUser: { method: "POST", path: "/users" },
+   exportUsers: { method: "GET", path: "/users/export" },
++  searchUsers: { method: "GET", path: "/users/search" },
+ } as const;
+ 
+ export type RouteName = keyof typeof ROUTES;
+diff --git a/src/http/client.ts b/src/http/client.ts
+index 6a2fe64..1509cb8 100644
+--- a/src/http/client.ts
++++ b/src/http/client.ts
+@@ -1,7 +1,10 @@
+ import type { HttpConfig } from "../config";
++import { createLogger } from "../utils/logger";
+ import { HttpError, TimeoutError } from "./errors";
+ import type { Fetcher, HttpResponse, QueryParams, RequestOptions } from "./types";
+ 
++const log = createLogger("http");
++
+ export function buildQueryString(query: QueryParams | undefined): string {
+   if (!query) return "";
+   const parts: string[] = [];
+@@ -32,7 +35,7 @@ export class HttpClient {
+ 
+   async request<T>(path: string, options: RequestOptions = {}): Promise<HttpResponse<T>> {
+     const url = this.config.baseUrl + path + buildQueryString(options.query);
+-    console.log("http request", options.method ?? "GET", url);
++    log.debug("request", { method: options.method ?? "GET", url });
+     return this.send<T>(url, options);
+   }
+ 
+diff --git a/src/index.ts b/src/index.ts
+index c204b1a..a09bb5f 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -2,10 +2,11 @@ import { loadConfig } from "./config";
+ import { HttpClient } from "./http/client";
+ import { UserCache } from "./users/userCache";
+ import { UserService } from "./users/userService";
++import { createLogger } from "./utils/logger";
+ 
+ export function createApp(env: Record<string, string | undefined> = process.env) {
+   const config = loadConfig(env);
+-  console.log("starting app with config", config);
++  createLogger("app", config.logLevel).info("starting app", { baseUrl: config.http.baseUrl });
+   const http = new HttpClient(config.http);
+   const cache = new UserCache(config.cache);
+   const users = new UserService(http, cache);
+diff --git a/src/users/types.ts b/src/users/types.ts
+index 51fa6d1..439d3d6 100644
+--- a/src/users/types.ts
++++ b/src/users/types.ts
+@@ -13,3 +13,8 @@ export interface UserListResponse {
+   total: number;
+   page: number;
+ }
++
++export interface UserSearchOptions {
++  role?: UserRole;
++  limit?: number;
++}
+diff --git a/src/users/userCache.ts b/src/users/userCache.ts
+index a029f60..1a0ba3d 100644
+--- a/src/users/userCache.ts
++++ b/src/users/userCache.ts
+@@ -1,6 +1,9 @@
+ import type { CacheConfig } from "../config";
++import { createLogger } from "../utils/logger";
+ import type { UserRecord } from "./types";
+ 
++const log = createLogger("user-cache");
++
+ interface Entry {
+   user: UserRecord;
+   expiresAt: number;
+@@ -18,7 +21,7 @@ export class UserCache {
+     const entry = this.entries.get(id);
+     if (!entry) return undefined;
+     if (entry.expiresAt < this.clock()) {
+-      console.log("cache expired", id);
++      log.debug("entry expired", { id });
+       this.entries.delete(id);
+       return undefined;
+     }
+diff --git a/src/users/userService.ts b/src/users/userService.ts
+index 442cd0b..2ec4d0f 100644
+--- a/src/users/userService.ts
++++ b/src/users/userService.ts
+@@ -1,8 +1,9 @@
+ import type { HttpClient } from "../http/client";
+ import { buildQueryString } from "../http/client";
+ import { HttpError } from "../http/errors";
++import { normalizeQuery } from "../utils/strings";
+ import type { UserCache } from "./userCache";
+-import type { UserListResponse, UserRecord } from "./types";
++import type { UserListResponse, UserRecord, UserSearchOptions } from "./types";
+ import { type UserInput, validateUser } from "./validation";
+ 
+ export class UserService {
+@@ -14,7 +15,6 @@ export class UserService {
+   async getUser(id: string): Promise<UserRecord | undefined> {
+     const cached = this.cache.get(id);
+     if (cached) return cached;
+-    console.log("cache miss", id);
+     try {
+       const res = await this.http.get<UserRecord>(`/users/${id}`);
+       this.cache.set(res.data);
+@@ -44,4 +44,15 @@ export class UserService {
+   exportUrl(filters: { role?: string; since?: string }): string {
+     return "/users/export" + buildQueryString(filters);
+   }
++
++  async searchUsers(query: string, options: UserSearchOptions = {}): Promise<UserRecord[]> {
++    const q = normalizeQuery(query);
++    if (q.length === 0) return [];
++    const res = await this.http.get<UserListResponse>("/users/search", {
++      q,
++      role: options.role,
++      limit: options.limit ?? 20,
++    });
++    return res.data.users;
++  }
+ }
+diff --git a/src/utils/logger.ts b/src/utils/logger.ts
+index 96ac7b3..e7247f0 100644
+--- a/src/utils/logger.ts
++++ b/src/utils/logger.ts
+@@ -7,6 +7,13 @@ const LEVELS: Record<LogLevel, number> = {
+   error: 40,
+ };
+ 
++const SINKS: Record<LogLevel, (...args: unknown[]) => void> = {
++  debug: console.debug,
++  info: console.info,
++  warn: console.warn,
++  error: console.error,
++};
++
+ export interface Logger {
+   debug(message: string, meta?: Record<string, unknown>): void;
+   info(message: string, meta?: Record<string, unknown>): void;
+@@ -18,7 +25,8 @@ export function createLogger(scope: string, minLevel: LogLevel = "info"): Logger
+   function log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+     if (LEVELS[level] < LEVELS[minLevel]) return;
+     const line = `[${new Date().toISOString()}] ${level.toUpperCase()} ${scope}: ${message}`;
+-    console.log(line, meta ?? "");
++    if (meta === undefined) SINKS[level](line);
++    else SINKS[level](line, meta);
+   }
+ 
+   return {
+diff --git a/src/utils/strings.ts b/src/utils/strings.ts
+index c3df051..714432c 100644
+--- a/src/utils/strings.ts
++++ b/src/utils/strings.ts
+@@ -20,3 +20,8 @@ export function truncate(input: string, max: number): string {
+ export function isBlank(input: string | null | undefined): boolean {
+   return input === null || input === undefined || input.trim().length === 0;
+ }
++
++/** Lowercases, trims and collapses internal whitespace so search queries compare consistently. */
++export function normalizeQuery(input: string): string {
++  return input.trim().toLowerCase().replace(/\s+/g, " ");
++}
+diff --git a/tests/users/userService.test.ts b/tests/users/userService.test.ts
+index ca32586..deb2e88 100644
+--- a/tests/users/userService.test.ts
++++ b/tests/users/userService.test.ts
+@@ -41,3 +41,18 @@ describe("UserService", () => {
+     expect(post).not.toHaveBeenCalled();
+   });
+ });
++
++describe("UserService.searchUsers", () => {
++  it("normalizes the query before calling the API", async () => {
++    const get = vi.fn().mockResolvedValue({ data: { users: [alice], total: 1, page: 1 } });
++    const { service } = makeService(get);
++    expect(await service.searchUsers("  ALICE  ")).toEqual([alice]);
++    expect(get).toHaveBeenCalledWith("/users/search", { q: "alice", role: undefined, limit: 20 });
++  });
++
++  it("skips the API for blank queries", async () => {
++    const { service, get } = makeService();
++    expect(await service.searchUsers("   ")).toEqual([]);
++    expect(get).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/utils/strings.test.ts b/tests/utils/strings.test.ts
+index df574ba..1f4d337 100644
+--- a/tests/utils/strings.test.ts
++++ b/tests/utils/strings.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it } from "vitest";
+-import { capitalize, isBlank, slugify, truncate } from "../../src/utils/strings";
++import { capitalize, isBlank, normalizeQuery, slugify, truncate } from "../../src/utils/strings";
+ 
+ describe("slugify", () => {
+   it("lowercases and dasherizes", () => {
+@@ -27,3 +27,9 @@ describe("isBlank", () => {
+     expect(isBlank("x")).toBe(false);
+   });
+ });
++
++describe("normalizeQuery", () => {
++  it("trims, lowercases and collapses whitespace", () => {
++    expect(normalizeQuery("  Alice   SMITH ")).toBe("alice smith");
++  });
++});

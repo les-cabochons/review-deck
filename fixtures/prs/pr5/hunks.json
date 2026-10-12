@@ -1,0 +1,212 @@
+[
+  {
+    "id": "package-lock.json#0",
+    "file": "package-lock.json",
+    "header": "@@ -8,7 +8,7 @@",
+    "preview": [
+      "-        \"typescript\": \"^5.4.5\",",
+      "+        \"typescript\": \"^5.5.4\","
+    ]
+  },
+  {
+    "id": "package-lock.json#1",
+    "file": "package-lock.json",
+    "header": "@@ -56,9 +56,9 @@",
+    "preview": [
+      "-      \"version\": \"5.4.5\",",
+      "-      \"resolved\": \"https://registry.npmjs.org/typescript/-/typescript-5.4.5.tgz\",",
+      "-      \"integrity\": \"sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW…",
+      "+      \"version\": \"5.5.4\","
+    ]
+  },
+  {
+    "id": "package.json#0",
+    "file": "package.json",
+    "header": "@@ -9,7 +9,7 @@",
+    "preview": [
+      "-    \"typescript\": \"^5.4.5\",",
+      "+    \"typescript\": \"^5.5.4\","
+    ]
+  },
+  {
+    "id": "src/config/index.ts#0",
+    "file": "src/config/index.ts",
+    "header": "@@ -21,6 +21,10 @@ export interface AppConfig {",
+    "preview": [
+      "+/**",
+      "+ * Builds the app config from environment variables, falling back to DEFAULT_CONFIG",
+      "+ * for anything unset or unparsable.",
+      "+ */"
+    ]
+  },
+  {
+    "id": "src/generated/routes.ts#0",
+    "file": "src/generated/routes.ts",
+    "header": "@@ -5,6 +5,7 @@ export const ROUTES = {",
+    "preview": [
+      "+  updateUser: { method: \"PUT\", path: \"/users/{id}\" },"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#0",
+    "file": "src/http/client.ts",
+    "header": "@@ -22,10 +22,15 @@ export class HttpClient {",
+    "preview": [
+      "+  /** Sends `body` as JSON with POST. */",
+      "+  async put<T>(path: string, body: unknown): Promise<HttpResponse<T>> {",
+      "+    return this.request<T>(path, { method: \"PUT\", body });",
+      "+  }"
+    ]
+  },
+  {
+    "id": "src/index.ts#0",
+    "file": "src/index.ts",
+    "header": "@@ -9,7 +9,7 @@ export function createApp(env: Record<string, string | undefined> = process.env)",
+    "preview": [
+      "-  return { config, http, users };",
+      "+  return { config, http, users, cacheStats: () => cache.stats() };"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#0",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -8,6 +8,8 @@ interface Entry {",
+    "preview": [
+      "+  private hits = 0;",
+      "+  private misses = 0;"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#1",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -16,12 +18,17 @@ export class UserCache {",
+    "preview": [
+      "-    if (!entry) return undefined;",
+      "+    if (!entry) {",
+      "+      this.misses++;",
+      "+      return undefined;"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#2",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -40,4 +47,9 @@ export class UserCache {",
+    "preview": [
+      "+",
+      "+  stats(): { hits: number; misses: number; hitRate: number } {",
+      "+    const total = this.hits + this.misses;",
+      "+    return { hits: this.hits, misses: this.misses, hitRate: total === 0 ? 0 : this.hits / total };"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#0",
+    "file": "src/users/userService.ts",
+    "header": "@@ -3,7 +3,7 @@ import { buildQueryString } from \"../http/client\";",
+    "preview": [
+      "-import { type UserInput, validateUser } from \"./validation\";",
+      "+import { type UserInput, validateUser, validateUserPatch } from \"./validation\";"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#1",
+    "file": "src/users/userService.ts",
+    "header": "@@ -41,6 +41,16 @@ export class UserService {",
+    "preview": [
+      "+  async updateUser(id: string, patch: Partial<UserInput>): Promise<UserRecord> {",
+      "+    const errors = validateUserPatch(patch);",
+      "+    if (errors.length > 0) {",
+      "+      throw new Error(`Invalid update: ${errors.join(\", \")}`);"
+    ]
+  },
+  {
+    "id": "src/users/validation.ts#0",
+    "file": "src/users/validation.ts",
+    "header": "@@ -1,6 +1,6 @@",
+    "preview": [
+      "-const EMAIL_RE = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;",
+      "+const EMAIL_RE = /^[^\\s@]+@[^\\s@.]+(?:\\.[^\\s@.]+)+$/;"
+    ]
+  },
+  {
+    "id": "src/users/validation.ts#1",
+    "file": "src/users/validation.ts",
+    "header": "@@ -22,3 +22,10 @@ export function validateUser(input: Partial<UserInput>): string[] {",
+    "preview": [
+      "+",
+      "+/** Validates only the fields present in a partial update. */",
+      "+export function validateUserPatch(patch: Partial<UserInput>): string[] {",
+      "+  if (Object.keys(patch).length === 0) return [\"update is empty\"];"
+    ]
+  },
+  {
+    "id": "src/utils/logger.ts#0",
+    "file": "src/utils/logger.ts",
+    "header": "@@ -14,6 +14,7 @@ export interface Logger {",
+    "preview": [
+      "+/** Creates a logger that prefixes every line with a timestamp, level and `scope`. Lines below `min…"
+    ]
+  },
+  {
+    "id": "src/utils/strings.ts#0",
+    "file": "src/utils/strings.ts",
+    "header": "@@ -1,3 +1,4 @@",
+    "preview": [
+      "+/** Converts arbitrary text to a URL-safe, lowercase, dash-separated slug. */"
+    ]
+  },
+  {
+    "id": "tests/users/userCache.test.ts#0",
+    "file": "tests/users/userCache.test.ts",
+    "header": "@@ -0,0 +1,30 @@",
+    "preview": [
+      "+import { describe, expect, it } from \"vitest\";",
+      "+import { UserCache } from \"../../src/users/userCache\";",
+      "+import type { UserRecord } from \"../../src/users/types\";",
+      "+"
+    ]
+  },
+  {
+    "id": "tests/users/userService.test.ts#0",
+    "file": "tests/users/userService.test.ts",
+    "header": "@@ -13,10 +13,10 @@ const alice: UserRecord = {",
+    "preview": [
+      "-function makeService(get = vi.fn(), post = vi.fn()) {",
+      "-  const http = { get, post } as unknown as HttpClient;",
+      "+function makeService(get = vi.fn(), post = vi.fn(), put = vi.fn()) {",
+      "+  const http = { get, post, put } as unknown as HttpClient;"
+    ]
+  },
+  {
+    "id": "tests/users/userService.test.ts#1",
+    "file": "tests/users/userService.test.ts",
+    "header": "@@ -41,3 +41,20 @@ describe(\"UserService\", () => {",
+    "preview": [
+      "+",
+      "+describe(\"UserService.updateUser\", () => {",
+      "+  it(\"PUTs the patch and refreshes the cache\", async () => {",
+      "+    const put = vi.fn().mockResolvedValue({ data: { ...alice, displayName: \"Alicia\" } });"
+    ]
+  },
+  {
+    "id": "tests/users/validation.test.ts#0",
+    "file": "tests/users/validation.test.ts",
+    "header": "@@ -0,0 +1,15 @@",
+    "preview": [
+      "+import { describe, expect, it } from \"vitest\";",
+      "+import { isValidEmail } from \"../../src/users/validation\";",
+      "+",
+      "+describe(\"isValidEmail\", () => {"
+    ]
+  },
+  {
+    "id": "tsconfig.json#0",
+    "file": "tsconfig.json",
+    "header": "@@ -1,10 +1,10 @@",
+    "preview": [
+      "-  \"compilerOptions\": {",
+      "-    \"target\": \"ES2022\",",
+      "-    \"module\": \"ESNext\",",
+      "-    \"moduleResolution\": \"Bundler\","
+    ]
+  }
+]

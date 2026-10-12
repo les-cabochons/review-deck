@@ -1,0 +1,204 @@
+[
+  {
+    "id": "src/config/defaults.ts#0",
+    "file": "src/config/defaults.ts",
+    "header": "@@ -4,6 +4,8 @@ export const DEFAULT_CONFIG: AppConfig = {",
+    "preview": [
+      "+    retries: 3,",
+      "+    retryDelayMs: 200,"
+    ]
+  },
+  {
+    "id": "src/config/index.ts#0",
+    "file": "src/config/index.ts",
+    "header": "@@ -3,6 +3,10 @@ import { DEFAULT_CONFIG } from \"./defaults\";",
+    "preview": [
+      "+  /** How many times to retry idempotent requests that fail with a retryable error. */",
+      "+  retries: number;",
+      "+  /** Base delay for exponential backoff between retries. */",
+      "+  retryDelayMs: number;"
+    ]
+  },
+  {
+    "id": "src/config/index.ts#1",
+    "file": "src/config/index.ts",
+    "header": "@@ -27,6 +31,7 @@ export function loadConfig(env: Env = process.env): AppConfig {",
+    "preview": [
+      "+      retries: parseIntOr(env.API_RETRIES, DEFAULT_CONFIG.http.retries),"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#0",
+    "file": "src/http/client.ts",
+    "header": "@@ -1,5 +1,6 @@",
+    "preview": [
+      "-import { HttpError, TimeoutError } from \"./errors\";",
+      "+import { backoffDelay, sleep } from \"../utils/time\";",
+      "+import { HttpError, isRetryable, TimeoutError } from \"./errors\";"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#1",
+    "file": "src/http/client.ts",
+    "header": "@@ -33,7 +34,15 @@ export class HttpClient {",
+    "preview": [
+      "-    return this.send<T>(url, options);",
+      "+    const maxAttempts = isIdempotent(options.method) ? this.config.retries + 1 : 1;",
+      "+    for (let attempt = 0; ; attempt++) {",
+      "+      try {"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#2",
+    "file": "src/http/client.ts",
+    "header": "@@ -59,3 +68,7 @@ export class HttpClient {",
+    "preview": [
+      "+",
+      "+function isIdempotent(method: RequestOptions[\"method\"]): boolean {",
+      "+  return method === undefined || method === \"GET\" || method === \"PUT\" || method === \"DELETE\";",
+      "+}"
+    ]
+  },
+  {
+    "id": "src/http/errors.ts#0",
+    "file": "src/http/errors.ts",
+    "header": "@@ -22,3 +22,9 @@ export class TimeoutError extends Error {",
+    "preview": [
+      "+",
+      "+/** Timeouts, 429s and 5xx responses are worth retrying; other errors are not. */",
+      "+export function isRetryable(err: unknown): boolean {",
+      "+  if (err instanceof TimeoutError) return true;"
+    ]
+  },
+  {
+    "id": "src/users/types.ts#0",
+    "file": "src/users/types.ts",
+    "header": "@@ -1,6 +1,6 @@",
+    "preview": [
+      "-export interface UserRecord {",
+      "+export interface User {"
+    ]
+  },
+  {
+    "id": "src/users/types.ts#1",
+    "file": "src/users/types.ts",
+    "header": "@@ -9,7 +9,7 @@ export interface UserRecord {",
+    "preview": [
+      "-  users: UserRecord[];",
+      "+  users: User[];"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#0",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -1,8 +1,8 @@",
+    "preview": [
+      "-import type { UserRecord } from \"./types\";",
+      "+import type { User } from \"./types\";",
+      "-  user: UserRecord;",
+      "+  user: User;"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#1",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -14,7 +14,7 @@ export class UserCache {",
+    "preview": [
+      "-  get(id: string): UserRecord | undefined {",
+      "+  get(id: string): User | undefined {"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#2",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -25,7 +25,7 @@ export class UserCache {",
+    "preview": [
+      "-  set(user: UserRecord): void {",
+      "+  set(user: User): void {"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#0",
+    "file": "src/users/userService.ts",
+    "header": "@@ -2,7 +2,7 @@ import type { HttpClient } from \"../http/client\";",
+    "preview": [
+      "-import type { UserListResponse, UserRecord } from \"./types\";",
+      "+import type { User, UserListResponse } from \"./types\";"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#1",
+    "file": "src/users/userService.ts",
+    "header": "@@ -11,12 +11,12 @@ export class UserService {",
+    "preview": [
+      "-  async getUser(id: string): Promise<UserRecord | undefined> {",
+      "+  async getUser(id: string): Promise<User | undefined> {",
+      "-      const res = await this.http.get<UserRecord>(`/users/${id}`);",
+      "+      const res = await this.http.get<User>(`/users/${id}`);"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#2",
+    "file": "src/users/userService.ts",
+    "header": "@@ -31,12 +31,12 @@ export class UserService {",
+    "preview": [
+      "-  async createUser(input: UserInput): Promise<UserRecord> {",
+      "+  async createUser(input: UserInput): Promise<User> {",
+      "-    const res = await this.http.post<UserRecord>(\"/users\", input);",
+      "+    const res = await this.http.post<User>(\"/users\", input);"
+    ]
+  },
+  {
+    "id": "src/users/validation.ts#0",
+    "file": "src/users/validation.ts",
+    "header": "@@ -1,9 +1,9 @@",
+    "preview": [
+      "-import type { UserRecord, UserRole } from \"./types\";",
+      "+import type { User, UserRole } from \"./types\";",
+      "-export type UserInput = Omit<UserRecord, \"id\" | \"createdAt\">;",
+      "+export type UserInput = Omit<User, \"id\" | \"createdAt\">;"
+    ]
+  },
+  {
+    "id": "src/utils/time.ts#0",
+    "file": "src/utils/time.ts",
+    "header": "@@ -14,3 +14,10 @@ export function formatDuration(ms: number): string {",
+    "preview": [
+      "+",
+      "+/** Exponential backoff with jitter: base * 2^attempt + [0, base), capped at maxMs. */",
+      "+export function backoffDelay(attempt: number, baseMs: number, maxMs = 10_000): number {",
+      "+  const exponential = baseMs * 2 ** attempt;"
+    ]
+  },
+  {
+    "id": "tests/http/client.test.ts#0",
+    "file": "tests/http/client.test.ts",
+    "header": "@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from \"vitest\";",
+    "preview": [
+      "-const config = { baseUrl: \"https://api.test\", timeoutMs: 1000, headers: {} };",
+      "+const config = { baseUrl: \"https://api.test\", timeoutMs: 1000, retries: 0, retryDelayMs: 0, headers…"
+    ]
+  },
+  {
+    "id": "tests/http/client.test.ts#1",
+    "file": "tests/http/client.test.ts",
+    "header": "@@ -37,3 +37,33 @@ describe(\"HttpClient\", () => {",
+    "preview": [
+      "+",
+      "+describe(\"HttpClient retries\", () => {",
+      "+  const retryConfig = { ...config, retries: 2, retryDelayMs: 0 };",
+      "+"
+    ]
+  },
+  {
+    "id": "tests/users/userService.test.ts#0",
+    "file": "tests/users/userService.test.ts",
+    "header": "@@ -3,9 +3,9 @@ import type { HttpClient } from \"../../src/http/client\";",
+    "preview": [
+      "-import type { UserRecord } from \"../../src/users/types\";",
+      "+import type { User } from \"../../src/users/types\";",
+      "-const alice: UserRecord = {",
+      "+const alice: User = {"
+    ]
+  }
+]

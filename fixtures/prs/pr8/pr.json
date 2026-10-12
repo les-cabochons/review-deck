@@ -1,0 +1,7 @@
+{
+  "id": "pr8",
+  "title": "Add chunk() array helper",
+  "description": "Simple: one new utility module and its test file.",
+  "renames": [],
+  "deletes": []
+}

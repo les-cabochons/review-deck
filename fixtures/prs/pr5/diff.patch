@@ -1,0 +1,334 @@
+diff --git a/package-lock.json b/package-lock.json
+index fcb05a9..82b5b27 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,7 +8,7 @@
+       "name": "acme-users-sdk",
+       "version": "0.4.2",
+       "devDependencies": {
+-        "typescript": "^5.4.5",
++        "typescript": "^5.5.4",
+         "vitest": "^1.5.0"
+       }
+     },
+@@ -56,9 +56,9 @@
+       }
+     },
+     "node_modules/typescript": {
+-      "version": "5.4.5",
+-      "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.4.5.tgz",
+-      "integrity": "sha512-vcI4UpRgg81oIRUFwR0WSIHKt11nJ7SAVlYNIu+QpqeyXP+gpQJy/Z4+F0aGxSE4MqwjyXvW/TzgkLAx2AGHwQ==",
++      "version": "5.5.4",
++      "resolved": "https://registry.npmjs.org/typescript/-/typescript-5.5.4.tgz",
++      "integrity": "sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==",
+       "dev": true,
+       "bin": {
+         "tsc": "bin/tsc",
+diff --git a/package.json b/package.json
+index af17ae8..5a1a694 100644
+--- a/package.json
++++ b/package.json
+@@ -9,7 +9,7 @@
+     "gen:routes": "routegen openapi.yaml -o src/generated/routes.ts"
+   },
+   "devDependencies": {
+-    "typescript": "^5.4.5",
++    "typescript": "^5.5.4",
+     "vitest": "^1.5.0"
+   }
+ }
+diff --git a/src/config/index.ts b/src/config/index.ts
+index 4229769..8bc708e 100644
+--- a/src/config/index.ts
++++ b/src/config/index.ts
+@@ -21,6 +21,10 @@ export interface AppConfig {
+ 
+ type Env = Record<string, string | undefined>;
+ 
++/**
++ * Builds the app config from environment variables, falling back to DEFAULT_CONFIG
++ * for anything unset or unparsable.
++ */
+ export function loadConfig(env: Env = process.env): AppConfig {
+   return {
+     http: {
+diff --git a/src/generated/routes.ts b/src/generated/routes.ts
+index 5765912..f935675 100644
+--- a/src/generated/routes.ts
++++ b/src/generated/routes.ts
+@@ -5,6 +5,7 @@ export const ROUTES = {
+   getUser: { method: "GET", path: "/users/{id}" },
+   listUsers: { method: "GET", path: "/users" },
+   createUser: { method: "POST", path: "/users" },
++  updateUser: { method: "PUT", path: "/users/{id}" },
+   exportUsers: { method: "GET", path: "/users/export" },
+ } as const;
+ 
+diff --git a/src/http/client.ts b/src/http/client.ts
+index 6a2fe64..a4d5a54 100644
+--- a/src/http/client.ts
++++ b/src/http/client.ts
+@@ -22,10 +22,15 @@ export class HttpClient {
+     return this.request<T>(path, { method: "GET", query });
+   }
+ 
++  /** Sends `body` as JSON with POST. */
+   async post<T>(path: string, body: unknown): Promise<HttpResponse<T>> {
+     return this.request<T>(path, { method: "POST", body });
+   }
+ 
++  async put<T>(path: string, body: unknown): Promise<HttpResponse<T>> {
++    return this.request<T>(path, { method: "PUT", body });
++  }
++
+   async delete<T>(path: string): Promise<HttpResponse<T>> {
+     return this.request<T>(path, { method: "DELETE" });
+   }
+diff --git a/src/index.ts b/src/index.ts
+index c204b1a..129eff3 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -9,7 +9,7 @@ export function createApp(env: Record<string, string | undefined> = process.env)
+   const http = new HttpClient(config.http);
+   const cache = new UserCache(config.cache);
+   const users = new UserService(http, cache);
+-  return { config, http, users };
++  return { config, http, users, cacheStats: () => cache.stats() };
+ }
+ 
+ export * from "./users/types";
+diff --git a/src/users/userCache.ts b/src/users/userCache.ts
+index a029f60..5a2e7ff 100644
+--- a/src/users/userCache.ts
++++ b/src/users/userCache.ts
+@@ -8,6 +8,8 @@ interface Entry {
+ 
+ export class UserCache {
+   private readonly entries = new Map<string, Entry>();
++  private hits = 0;
++  private misses = 0;
+ 
+   constructor(
+     private readonly config: CacheConfig,
+@@ -16,12 +18,17 @@ export class UserCache {
+ 
+   get(id: string): UserRecord | undefined {
+     const entry = this.entries.get(id);
+-    if (!entry) return undefined;
++    if (!entry) {
++      this.misses++;
++      return undefined;
++    }
+     if (entry.expiresAt < this.clock()) {
+       console.log("cache expired", id);
+       this.entries.delete(id);
++      this.misses++;
+       return undefined;
+     }
++    this.hits++;
+     return entry.user;
+   }
+ 
+@@ -40,4 +47,9 @@ export class UserCache {
+   get size(): number {
+     return this.entries.size;
+   }
++
++  stats(): { hits: number; misses: number; hitRate: number } {
++    const total = this.hits + this.misses;
++    return { hits: this.hits, misses: this.misses, hitRate: total === 0 ? 0 : this.hits / total };
++  }
+ }
+diff --git a/src/users/userService.ts b/src/users/userService.ts
+index 442cd0b..9619d69 100644
+--- a/src/users/userService.ts
++++ b/src/users/userService.ts
+@@ -3,7 +3,7 @@ import { buildQueryString } from "../http/client";
+ import { HttpError } from "../http/errors";
+ import type { UserCache } from "./userCache";
+ import type { UserListResponse, UserRecord } from "./types";
+-import { type UserInput, validateUser } from "./validation";
++import { type UserInput, validateUser, validateUserPatch } from "./validation";
+ 
+ export class UserService {
+   constructor(
+@@ -41,6 +41,16 @@ export class UserService {
+     return res.data;
+   }
+ 
++  async updateUser(id: string, patch: Partial<UserInput>): Promise<UserRecord> {
++    const errors = validateUserPatch(patch);
++    if (errors.length > 0) {
++      throw new Error(`Invalid update: ${errors.join(", ")}`);
++    }
++    const res = await this.http.put<UserRecord>(`/users/${id}`, patch);
++    this.cache.set(res.data);
++    return res.data;
++  }
++
+   exportUrl(filters: { role?: string; since?: string }): string {
+     return "/users/export" + buildQueryString(filters);
+   }
+diff --git a/src/users/validation.ts b/src/users/validation.ts
+index 5ec5772..097274d 100644
+--- a/src/users/validation.ts
++++ b/src/users/validation.ts
+@@ -1,6 +1,6 @@
+ import type { UserRecord, UserRole } from "./types";
+ 
+-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+ const ROLES: readonly UserRole[] = ["admin", "member", "guest"];
+ 
+ export type UserInput = Omit<UserRecord, "id" | "createdAt">;
+@@ -22,3 +22,10 @@ export function validateUser(input: Partial<UserInput>): string[] {
+ export function isValidEmail(email: string): boolean {
+   return EMAIL_RE.test(email);
+ }
++
++/** Validates only the fields present in a partial update. */
++export function validateUserPatch(patch: Partial<UserInput>): string[] {
++  if (Object.keys(patch).length === 0) return ["update is empty"];
++  const placeholder: UserInput = { email: "placeholder@example.com", displayName: "placeholder", role: "guest" };
++  return validateUser({ ...placeholder, ...patch });
++}
+diff --git a/src/utils/logger.ts b/src/utils/logger.ts
+index 96ac7b3..afbc2b4 100644
+--- a/src/utils/logger.ts
++++ b/src/utils/logger.ts
+@@ -14,6 +14,7 @@ export interface Logger {
+   error(message: string, meta?: Record<string, unknown>): void;
+ }
+ 
++/** Creates a logger that prefixes every line with a timestamp, level and `scope`. Lines below `minLevel` are dropped. */
+ export function createLogger(scope: string, minLevel: LogLevel = "info"): Logger {
+   function log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
+     if (LEVELS[level] < LEVELS[minLevel]) return;
+diff --git a/src/utils/strings.ts b/src/utils/strings.ts
+index c3df051..0e19f28 100644
+--- a/src/utils/strings.ts
++++ b/src/utils/strings.ts
+@@ -1,3 +1,4 @@
++/** Converts arbitrary text to a URL-safe, lowercase, dash-separated slug. */
+ export function slugify(input: string): string {
+   return input
+     .toLowerCase()
+diff --git a/tests/users/userCache.test.ts b/tests/users/userCache.test.ts
+new file mode 100644
+index 0000000..675aef9
+--- /dev/null
++++ b/tests/users/userCache.test.ts
+@@ -0,0 +1,30 @@
++import { describe, expect, it } from "vitest";
++import { UserCache } from "../../src/users/userCache";
++import type { UserRecord } from "../../src/users/types";
++
++const bob: UserRecord = {
++  id: "u2",
++  email: "bob@example.com",
++  displayName: "Bob",
++  role: "member",
++  createdAt: "2024-02-01T00:00:00Z",
++};
++
++describe("UserCache.stats", () => {
++  it("counts hits and misses", () => {
++    const cache = new UserCache({ ttlMs: 1000, maxEntries: 10 }, () => 0);
++    cache.get("u2");
++    cache.set(bob);
++    cache.get("u2");
++    expect(cache.stats()).toEqual({ hits: 1, misses: 1, hitRate: 0.5 });
++  });
++
++  it("counts expired entries as misses", () => {
++    let now = 0;
++    const cache = new UserCache({ ttlMs: 10, maxEntries: 10 }, () => now);
++    cache.set(bob);
++    now = 100;
++    expect(cache.get("u2")).toBeUndefined();
++    expect(cache.stats().misses).toBe(1);
++  });
++});
+diff --git a/tests/users/userService.test.ts b/tests/users/userService.test.ts
+index ca32586..a4a3c08 100644
+--- a/tests/users/userService.test.ts
++++ b/tests/users/userService.test.ts
+@@ -13,10 +13,10 @@ const alice: UserRecord = {
+   createdAt: "2024-01-01T00:00:00Z",
+ };
+ 
+-function makeService(get = vi.fn(), post = vi.fn()) {
+-  const http = { get, post } as unknown as HttpClient;
++function makeService(get = vi.fn(), post = vi.fn(), put = vi.fn()) {
++  const http = { get, post, put } as unknown as HttpClient;
+   const cache = new UserCache({ ttlMs: 1000, maxEntries: 10 });
+-  return { service: new UserService(http, cache), cache, get, post };
++  return { service: new UserService(http, cache), cache, get, post, put };
+ }
+ 
+ describe("UserService", () => {
+@@ -41,3 +41,20 @@ describe("UserService", () => {
+     expect(post).not.toHaveBeenCalled();
+   });
+ });
++
++describe("UserService.updateUser", () => {
++  it("PUTs the patch and refreshes the cache", async () => {
++    const put = vi.fn().mockResolvedValue({ data: { ...alice, displayName: "Alicia" } });
++    const { service, cache } = makeService(undefined, undefined, put);
++    const updated = await service.updateUser("u1", { displayName: "Alicia" });
++    expect(put).toHaveBeenCalledWith("/users/u1", { displayName: "Alicia" });
++    expect(cache.get("u1")).toEqual(updated);
++  });
++
++  it("rejects empty or invalid patches", async () => {
++    const { service, put } = makeService();
++    await expect(service.updateUser("u1", {})).rejects.toThrow(/update is empty/);
++    await expect(service.updateUser("u1", { email: "nope" })).rejects.toThrow(/email/);
++    expect(put).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/users/validation.test.ts b/tests/users/validation.test.ts
+new file mode 100644
+index 0000000..8aeba38
+--- /dev/null
++++ b/tests/users/validation.test.ts
+@@ -0,0 +1,15 @@
++import { describe, expect, it } from "vitest";
++import { isValidEmail } from "../../src/users/validation";
++
++describe("isValidEmail", () => {
++  it("accepts ordinary addresses", () => {
++    expect(isValidEmail("alice@example.com")).toBe(true);
++    expect(isValidEmail("a.b@mail.example.co.uk")).toBe(true);
++  });
++
++  it("rejects empty, consecutive or trailing dots in the domain", () => {
++    expect(isValidEmail("a@example..com")).toBe(false);
++    expect(isValidEmail("a@example.com.")).toBe(false);
++    expect(isValidEmail("a@.example.com")).toBe(false);
++  });
++});
+diff --git a/tsconfig.json b/tsconfig.json
+index e285096..425ad57 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -1,10 +1,10 @@
+ {
+-  "compilerOptions": {
+-    "target": "ES2022",
+-    "module": "ESNext",
+-    "moduleResolution": "Bundler",
+-    "strict": true,
+-    "outDir": "dist"
+-  },
+-  "include": ["src"]
++    "compilerOptions": {
++        "target": "ES2022",
++        "module": "ESNext",
++        "moduleResolution": "Bundler",
++        "strict": true,
++        "outDir": "dist"
++    },
++    "include": ["src"]
+ }

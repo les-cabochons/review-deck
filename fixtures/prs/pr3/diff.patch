@@ -1,0 +1,117 @@
+diff --git a/src/config/defaults.ts b/src/config/defaults.ts
+index 2455887..28c445d 100644
+--- a/src/config/defaults.ts
++++ b/src/config/defaults.ts
+@@ -3,7 +3,7 @@ import type { AppConfig } from "./index";
+ export const DEFAULT_CONFIG: AppConfig = {
+   http: {
+     baseUrl: "https://api.example.com",
+-    timeoutMs: 5000,
++    timeoutMs: 10_000,
+     headers: {
+       "Content-Type": "application/json",
+       Accept: "application/json",
+diff --git a/src/http/client.ts b/src/http/client.ts
+index 6a2fe64..6f2e180 100644
+--- a/src/http/client.ts
++++ b/src/http/client.ts
+@@ -1,17 +1,8 @@
+ import type { HttpConfig } from "../config";
++import { buildQueryString } from "../utils/query";
+ import { HttpError, TimeoutError } from "./errors";
+ import type { Fetcher, HttpResponse, QueryParams, RequestOptions } from "./types";
+ 
+-export function buildQueryString(query: QueryParams | undefined): string {
+-  if (!query) return "";
+-  const parts: string[] = [];
+-  for (const [key, value] of Object.entries(query)) {
+-    if (value === undefined) continue;
+-    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+-  }
+-  return parts.length > 0 ? `?${parts.join("&")}` : "";
+-}
+-
+ export class HttpClient {
+   constructor(
+     private readonly config: HttpConfig,
+diff --git a/src/users/userService.ts b/src/users/userService.ts
+index 442cd0b..5132674 100644
+--- a/src/users/userService.ts
++++ b/src/users/userService.ts
+@@ -1,6 +1,6 @@
+ import type { HttpClient } from "../http/client";
+-import { buildQueryString } from "../http/client";
+ import { HttpError } from "../http/errors";
++import { buildQueryString } from "../utils/query";
+ import type { UserCache } from "./userCache";
+ import type { UserListResponse, UserRecord } from "./types";
+ import { type UserInput, validateUser } from "./validation";
+diff --git a/src/utils/query.ts b/src/utils/query.ts
+new file mode 100644
+index 0000000..627fb70
+--- /dev/null
++++ b/src/utils/query.ts
+@@ -0,0 +1,11 @@
++import type { QueryParams } from "../http/types";
++
++export function buildQueryString(query: QueryParams | undefined): string {
++  if (!query) return "";
++  const parts: string[] = [];
++  for (const [key, value] of Object.entries(query)) {
++    if (value === undefined) continue;
++    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
++  }
++  return parts.length > 0 ? `?${parts.join("&")}` : "";
++}
+diff --git a/tests/http/client.test.ts b/tests/http/client.test.ts
+index c51df82..a579fee 100644
+--- a/tests/http/client.test.ts
++++ b/tests/http/client.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, expect, it, vi } from "vitest";
+-import { buildQueryString, HttpClient } from "../../src/http/client";
++import { HttpClient } from "../../src/http/client";
+ import { HttpError } from "../../src/http/errors";
+ 
+ const config = { baseUrl: "https://api.test", timeoutMs: 1000, headers: {} };
+@@ -11,17 +11,6 @@ function jsonResponse(status: number, body: unknown): Response {
+   });
+ }
+ 
+-describe("buildQueryString", () => {
+-  it("returns an empty string for no params", () => {
+-    expect(buildQueryString(undefined)).toBe("");
+-    expect(buildQueryString({})).toBe("");
+-  });
+-
+-  it("skips undefined values and encodes the rest", () => {
+-    expect(buildQueryString({ q: "a b", page: 2, role: undefined })).toBe("?q=a%20b&page=2");
+-  });
+-});
+-
+ describe("HttpClient", () => {
+   it("returns parsed json on success", async () => {
+     const fetcher = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+diff --git a/tests/utils/query.test.ts b/tests/utils/query.test.ts
+new file mode 100644
+index 0000000..1607a4f
+--- /dev/null
++++ b/tests/utils/query.test.ts
+@@ -0,0 +1,13 @@
++import { describe, expect, it } from "vitest";
++import { buildQueryString } from "../../src/utils/query";
++
++describe("buildQueryString", () => {
++  it("returns an empty string for no params", () => {
++    expect(buildQueryString(undefined)).toBe("");
++    expect(buildQueryString({})).toBe("");
++  });
++
++  it("skips undefined values and encodes the rest", () => {
++    expect(buildQueryString({ q: "a b", page: 2, role: undefined })).toBe("?q=a%20b&page=2");
++  });
++});
+diff --git a/tests/utils/strings.test.ts b/tests/utils/strings.spec.ts
+similarity index 100%
+rename from tests/utils/strings.test.ts
+rename to tests/utils/strings.spec.ts

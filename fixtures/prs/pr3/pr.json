@@ -1,0 +1,7 @@
+{
+  "id": "pr3",
+  "title": "Move buildQueryString to utils/query; misc",
+  "description": "Refactor that moves buildQueryString out of the HTTP client into src/utils/query.ts (call sites and its tests move along). Also sneaks in a pure test-file rename and an unrelated bump of the default HTTP timeout.",
+  "renames": [{ "from": "tests/utils/strings.test.ts", "to": "tests/utils/strings.spec.ts" }],
+  "deletes": []
+}

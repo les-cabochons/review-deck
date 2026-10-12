@@ -1,0 +1,38 @@
+diff --git a/package-lock.json b/package-lock.json
+index fcb05a9..0accbba 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -9,7 +9,7 @@
+       "version": "0.4.2",
+       "devDependencies": {
+         "typescript": "^5.4.5",
+-        "vitest": "^1.5.0"
++        "vitest": "^1.5.3"
+       }
+     },
+     "node_modules/@vitest/expect": {
+@@ -69,9 +69,9 @@
+       }
+     },
+     "node_modules/vitest": {
+-      "version": "1.5.0",
+-      "resolved": "https://registry.npmjs.org/vitest/-/vitest-1.5.0.tgz",
+-      "integrity": "sha512-d8UKgR0m2kjdxDWX6911uwxout6GHS0XaGH1cxxOFTt7rTsMz6BuuffKEu/W0cpI7zlnJ0rXzF0a1kn+9StFpw==",
++      "version": "1.5.3",
++      "resolved": "https://registry.npmjs.org/vitest/-/vitest-1.5.3.tgz",
++      "integrity": "sha512-2ZGkYZbV0AHiVnYxAubZfW9lnH9GU1yFAGVzhyumbxVbQ8NGo1mY8z6c0o1pyiCrw6GIp4OKQbNwOtM8jydCuQ==",
+       "dev": true,
+       "dependencies": {
+         "@vitest/expect": "1.5.0",
+diff --git a/package.json b/package.json
+index af17ae8..514375d 100644
+--- a/package.json
++++ b/package.json
+@@ -10,6 +10,6 @@
+   },
+   "devDependencies": {
+     "typescript": "^5.4.5",
+-    "vitest": "^1.5.0"
++    "vitest": "^1.5.3"
+   }
+ }

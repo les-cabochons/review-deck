@@ -1,0 +1,54 @@
+{
+  "pr": "pr6",
+  "groups": [
+    {
+      "id": "request-id",
+      "title": "Send X-Request-Id and attach it to HttpError",
+      "why": "New createRequestId() util is imported by the client, which sends the header and passes the id into the new HttpError.requestId field; the test asserts the header is unique per request.",
+      "mechanical": false,
+      "hunks": [
+        "src/utils/ids.ts#0",
+        "src/http/client.ts#0",
+        "src/http/client.ts#2",
+        "src/http/errors.ts#0",
+        "tests/http/client.test.ts#0"
+      ]
+    },
+    {
+      "id": "cache-kill-switch",
+      "title": "Add CACHE_ENABLED kill-switch to UserCache",
+      "why": "New CacheConfig.enabled field (declared, defaulted, read from env) short-circuits UserCache.get/set; a new test covers the disabled cache and the service test helper must now pass enabled: true.",
+      "mechanical": false,
+      "hunks": [
+        "src/config/index.ts#0",
+        "src/config/index.ts#1",
+        "src/config/defaults.ts#0",
+        "src/users/userCache.ts#0",
+        "src/users/userCache.ts#1",
+        "tests/users/userCache.test.ts#0",
+        "tests/users/userService.test.ts#0"
+      ]
+    },
+    {
+      "id": "baseurl-validation",
+      "title": "Validate baseUrl in HttpClient constructor",
+      "why": "Constructor throws for non-http(s) base URLs. Its test landed in the same hunk as the request-id test.",
+      "mechanical": false,
+      "hunks": ["src/http/client.ts#1"]
+    },
+    {
+      "id": "dead-code",
+      "title": "Remove unused now() helper",
+      "why": "Deletes an exported function with no callers.",
+      "mechanical": false,
+      "hunks": ["src/utils/time.ts#0"]
+    }
+  ],
+  "notes": [
+    "tests/http/client.test.ts#0 is a MIXED hunk: git merged the request-id test and the baseUrl validation test into one hunk. Assigned to request-id (larger part); this caps achievable ARI below 1.",
+    "src/http/client.ts holds two concerns (#0/#2 request-id, #1 validation), and both concerns are about 'HTTP client config/requests', so path proximity and embeddings push them together.",
+    "The config files belong entirely to the cache concern even though baseUrl validation sounds like config.",
+    "tests/users/userService.test.ts#0 only adds `enabled: true` to an object literal; it links to the cache concern through the field name `enabled` (and the UserCache constructor).",
+    "src/utils/time.ts#0 is a pure deletion with no references anywhere: should end up alone (misc)."
+  ]
+}

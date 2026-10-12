@@ -1,0 +1,37 @@
+{
+  "pr": "pr3",
+  "groups": [
+    {
+      "id": "move-query-string",
+      "title": "Move buildQueryString to src/utils/query.ts",
+      "why": "The function is deleted from http/client.ts and re-created unchanged in utils/query.ts; both importers (client.ts, userService.ts) switch to the new path, and its tests move from client.test.ts to query.test.ts.",
+      "mechanical": false,
+      "hunks": [
+        "src/utils/query.ts#0",
+        "src/http/client.ts#0",
+        "src/users/userService.ts#0",
+        "tests/utils/query.test.ts#0",
+        "tests/http/client.test.ts#0",
+        "tests/http/client.test.ts#1"
+      ]
+    },
+    {
+      "id": "default-timeout",
+      "title": "Raise default HTTP timeout to 10s",
+      "why": "One-line default change, unrelated to the refactor.",
+      "mechanical": false,
+      "hunks": ["src/config/defaults.ts#0"]
+    },
+    {
+      "id": "mechanical",
+      "title": "Mechanical changes",
+      "why": "Pure file rename strings.test.ts -> strings.spec.ts (100% similarity, no content change).",
+      "mechanical": true,
+      "hunks": ["tests/utils/strings.spec.ts#0"]
+    }
+  ],
+  "notes": [
+    "The deleted and added copies of buildQueryString are textually identical: a strong signal for embeddings and for a move detector, but they live in different directories, so path proximity works against them.",
+    "src/config/defaults.ts#0 is a singleton: the ideal output is its own group (or misc). It should not be glued to src/http/client.ts just because both mention HTTP."
+  ]
+}

@@ -1,0 +1,13 @@
+diff --git a/src/users/validation.ts b/src/users/validation.ts
+index 5ec5772..88a4fd4 100644
+--- a/src/users/validation.ts
++++ b/src/users/validation.ts
+@@ -8,7 +8,7 @@ export type UserInput = Omit<UserRecord, "id" | "createdAt">;
+ export function validateUser(input: Partial<UserInput>): string[] {
+   const errors: string[] = [];
+   if (!input.email || !isValidEmail(input.email)) {
+-    errors.push("email is invalid");
++    errors.push("email must be a valid address like name@example.com");
+   }
+   if (!input.displayName || input.displayName.trim().length < 2) {
+     errors.push("displayName must be at least 2 characters");

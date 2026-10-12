@@ -1,0 +1,7 @@
+{
+  "id": "pr2",
+  "title": "Add user search; clean up logging; bump vitest",
+  "description": "A new UserService.searchUsers feature (types, string helper, regenerated routes, tests), an unrelated cleanup replacing stray console.log calls with the scoped logger, and a vitest dependency bump with its lockfile churn.",
+  "renames": [],
+  "deletes": []
+}

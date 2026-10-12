@@ -1,0 +1,13 @@
+{
+  "pr": "pr7",
+  "groups": [
+    {
+      "id": "email-message",
+      "title": "Clarify invalid email message",
+      "why": "Single one-line copy change.",
+      "mechanical": false,
+      "hunks": ["src/users/validation.ts#0"]
+    }
+  ],
+  "notes": ["Trivial: one hunk. Any output is a single group; checks that the pipeline does not crash on degenerate input."]
+}

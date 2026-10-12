@@ -1,0 +1,135 @@
+[
+  {
+    "id": "src/config/defaults.ts#0",
+    "file": "src/config/defaults.ts",
+    "header": "@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG: AppConfig = {",
+    "preview": [
+      "+    enabled: true,"
+    ]
+  },
+  {
+    "id": "src/config/index.ts#0",
+    "file": "src/config/index.ts",
+    "header": "@@ -7,6 +7,8 @@ export interface HttpConfig {",
+    "preview": [
+      "+  /** Kill-switch: when false the cache stores nothing and every lookup misses. */",
+      "+  enabled: boolean;"
+    ]
+  },
+  {
+    "id": "src/config/index.ts#1",
+    "file": "src/config/index.ts",
+    "header": "@@ -31,6 +33,7 @@ export function loadConfig(env: Env = process.env): AppConfig {",
+    "preview": [
+      "+      enabled: env.CACHE_ENABLED === undefined ? DEFAULT_CONFIG.cache.enabled : env.CACHE_ENABLED !…"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#0",
+    "file": "src/http/client.ts",
+    "header": "@@ -1,4 +1,5 @@",
+    "preview": [
+      "+import { createRequestId } from \"../utils/ids\";"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#1",
+    "file": "src/http/client.ts",
+    "header": "@@ -16,7 +17,11 @@ export class HttpClient {",
+    "preview": [
+      "-  ) {}",
+      "+  ) {",
+      "+    if (!/^https?:\\/\\//.test(config.baseUrl)) {",
+      "+      throw new Error(`HttpClient: baseUrl must be an http(s) URL, got \"${config.baseUrl}\"`);"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#2",
+    "file": "src/http/client.ts",
+    "header": "@@ -37,18 +42,19 @@ export class HttpClient {",
+    "preview": [
+      "+    const requestId = createRequestId();",
+      "-        headers: { ...this.config.headers, ...options.headers },",
+      "+        headers: { ...this.config.headers, ...options.headers, \"X-Request-Id\": requestId },",
+      "-        throw new HttpError(res.status, `Request failed with status ${res.status}`, data);"
+    ]
+  },
+  {
+    "id": "src/http/errors.ts#0",
+    "file": "src/http/errors.ts",
+    "header": "@@ -3,6 +3,8 @@ export class HttpError extends Error {",
+    "preview": [
+      "+    /** X-Request-Id of the failed request, for correlating with server logs. */",
+      "+    public readonly requestId?: string,"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#0",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -15,6 +15,7 @@ export class UserCache {",
+    "preview": [
+      "+    if (!this.config.enabled) return undefined;"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#1",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -26,6 +27,7 @@ export class UserCache {",
+    "preview": [
+      "+    if (!this.config.enabled) return;"
+    ]
+  },
+  {
+    "id": "src/utils/ids.ts#0",
+    "file": "src/utils/ids.ts",
+    "header": "@@ -0,0 +1,7 @@",
+    "preview": [
+      "+let counter = 0;",
+      "+",
+      "+/** Short, process-unique id for correlating a request across logs and errors. */",
+      "+export function createRequestId(): string {"
+    ]
+  },
+  {
+    "id": "src/utils/time.ts#0",
+    "file": "src/utils/time.ts",
+    "header": "@@ -10,7 +10,3 @@ export function formatDuration(ms: number): string {",
+    "preview": [
+      "-",
+      "-export function now(): number {",
+      "-  return Date.now();",
+      "-}"
+    ]
+  },
+  {
+    "id": "tests/http/client.test.ts#0",
+    "file": "tests/http/client.test.ts",
+    "header": "@@ -31,9 +31,25 @@ describe(\"HttpClient\", () => {",
+    "preview": [
+      "+  it(\"sends a unique X-Request-Id header\", async () => {",
+      "+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, {})));",
+      "+    const client = new HttpClient(config, fetcher);",
+      "+    await client.get(\"/a\");"
+    ]
+  },
+  {
+    "id": "tests/users/userCache.test.ts#0",
+    "file": "tests/users/userCache.test.ts",
+    "header": "@@ -0,0 +1,20 @@",
+    "preview": [
+      "+import { describe, expect, it } from \"vitest\";",
+      "+import { UserCache } from \"../../src/users/userCache\";",
+      "+import type { UserRecord } from \"../../src/users/types\";",
+      "+"
+    ]
+  },
+  {
+    "id": "tests/users/userService.test.ts#0",
+    "file": "tests/users/userService.test.ts",
+    "header": "@@ -15,7 +15,7 @@ const alice: UserRecord = {",
+    "preview": [
+      "-  const cache = new UserCache({ ttlMs: 1000, maxEntries: 10 });",
+      "+  const cache = new UserCache({ enabled: true, ttlMs: 1000, maxEntries: 10 });"
+    ]
+  }
+]

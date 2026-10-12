@@ -1,0 +1,39 @@
+diff --git a/src/utils/arrays.ts b/src/utils/arrays.ts
+new file mode 100644
+index 0000000..148ddff
+--- /dev/null
++++ b/src/utils/arrays.ts
+@@ -0,0 +1,11 @@
++/** Splits `items` into consecutive slices of at most `size` elements. */
++export function chunk<T>(items: readonly T[], size: number): T[][] {
++  if (!Number.isInteger(size) || size < 1) {
++    throw new RangeError(`chunk size must be a positive integer, got ${size}`);
++  }
++  const out: T[][] = [];
++  for (let i = 0; i < items.length; i += size) {
++    out.push(items.slice(i, i + size));
++  }
++  return out;
++}
+diff --git a/tests/utils/arrays.test.ts b/tests/utils/arrays.test.ts
+new file mode 100644
+index 0000000..7a3dd03
+--- /dev/null
++++ b/tests/utils/arrays.test.ts
+@@ -0,0 +1,16 @@
++import { describe, expect, it } from "vitest";
++import { chunk } from "../../src/utils/arrays";
++
++describe("chunk", () => {
++  it("splits into slices of the given size, last one shorter", () => {
++    expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
++  });
++
++  it("returns an empty array for empty input", () => {
++    expect(chunk([], 3)).toEqual([]);
++  });
++
++  it("rejects non-positive sizes", () => {
++    expect(() => chunk([1], 0)).toThrow(RangeError);
++  });
++});

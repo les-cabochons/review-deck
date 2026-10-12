@@ -1,0 +1,45 @@
+{
+  "pr": "pr1",
+  "groups": [
+    {
+      "id": "retry",
+      "title": "Retry idempotent HTTP requests with exponential backoff",
+      "why": "New HttpConfig.retries/retryDelayMs options (declared, defaulted, loaded from env) are consumed by the retry loop in HttpClient.request, which relies on the new isRetryable() and backoffDelay() helpers; the tests add the new config fields and cover the retry behaviour.",
+      "mechanical": false,
+      "hunks": [
+        "src/config/index.ts#0",
+        "src/config/index.ts#1",
+        "src/config/defaults.ts#0",
+        "src/http/errors.ts#0",
+        "src/utils/time.ts#0",
+        "src/http/client.ts#0",
+        "src/http/client.ts#1",
+        "src/http/client.ts#2",
+        "tests/http/client.test.ts#0",
+        "tests/http/client.test.ts#1"
+      ]
+    },
+    {
+      "id": "rename-user",
+      "title": "Rename UserRecord to User",
+      "why": "Every hunk is the same identifier substitution UserRecord -> User: the declaration in types.ts and all references in validation, cache, service and the service test.",
+      "mechanical": false,
+      "hunks": [
+        "src/users/types.ts#0",
+        "src/users/types.ts#1",
+        "src/users/validation.ts#0",
+        "src/users/userCache.ts#0",
+        "src/users/userCache.ts#1",
+        "src/users/userCache.ts#2",
+        "src/users/userService.ts#0",
+        "src/users/userService.ts#1",
+        "src/users/userService.ts#2",
+        "tests/users/userService.test.ts#0"
+      ]
+    }
+  ],
+  "notes": [
+    "The rename is a symbol rename, not a file rename, so it is a reviewable group of its own rather than part of 'mechanical'. A tool that also collapses it as mechanical still scores perfectly, since it stays one cluster.",
+    "Path proximity is a trap here: src/users/* hunks are all rename, but src/http/* and src/config/* are all retry. tests/http/client.test.ts#0 only changes a config literal, so it links to retry through the HttpConfig fields, not through an import."
+  ]
+}

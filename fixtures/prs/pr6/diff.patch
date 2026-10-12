@@ -1,0 +1,205 @@
+diff --git a/src/config/defaults.ts b/src/config/defaults.ts
+index 2455887..a939fca 100644
+--- a/src/config/defaults.ts
++++ b/src/config/defaults.ts
+@@ -10,6 +10,7 @@ export const DEFAULT_CONFIG: AppConfig = {
+     },
+   },
+   cache: {
++    enabled: true,
+     ttlMs: 60_000,
+     maxEntries: 500,
+   },
+diff --git a/src/config/index.ts b/src/config/index.ts
+index 4229769..b798523 100644
+--- a/src/config/index.ts
++++ b/src/config/index.ts
+@@ -7,6 +7,8 @@ export interface HttpConfig {
+ }
+ 
+ export interface CacheConfig {
++  /** Kill-switch: when false the cache stores nothing and every lookup misses. */
++  enabled: boolean;
+   ttlMs: number;
+   maxEntries: number;
+ }
+@@ -31,6 +33,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
+     cache: {
+       ttlMs: parseIntOr(env.CACHE_TTL_MS, DEFAULT_CONFIG.cache.ttlMs),
+       maxEntries: parseIntOr(env.CACHE_MAX_ENTRIES, DEFAULT_CONFIG.cache.maxEntries),
++      enabled: env.CACHE_ENABLED === undefined ? DEFAULT_CONFIG.cache.enabled : env.CACHE_ENABLED !== "false",
+     },
+     logLevel: (env.LOG_LEVEL as LogLevelName | undefined) ?? DEFAULT_CONFIG.logLevel,
+   };
+diff --git a/src/http/client.ts b/src/http/client.ts
+index 6a2fe64..833330b 100644
+--- a/src/http/client.ts
++++ b/src/http/client.ts
+@@ -1,4 +1,5 @@
+ import type { HttpConfig } from "../config";
++import { createRequestId } from "../utils/ids";
+ import { HttpError, TimeoutError } from "./errors";
+ import type { Fetcher, HttpResponse, QueryParams, RequestOptions } from "./types";
+ 
+@@ -16,7 +17,11 @@ export class HttpClient {
+   constructor(
+     private readonly config: HttpConfig,
+     private readonly fetcher: Fetcher = fetch,
+-  ) {}
++  ) {
++    if (!/^https?:\/\//.test(config.baseUrl)) {
++      throw new Error(`HttpClient: baseUrl must be an http(s) URL, got "${config.baseUrl}"`);
++    }
++  }
+ 
+   async get<T>(path: string, query?: QueryParams): Promise<HttpResponse<T>> {
+     return this.request<T>(path, { method: "GET", query });
+@@ -37,18 +42,19 @@ export class HttpClient {
+   }
+ 
+   private async send<T>(url: string, options: RequestOptions): Promise<HttpResponse<T>> {
++    const requestId = createRequestId();
+     const controller = new AbortController();
+     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+     try {
+       const res = await this.fetcher(url, {
+         method: options.method ?? "GET",
+-        headers: { ...this.config.headers, ...options.headers },
++        headers: { ...this.config.headers, ...options.headers, "X-Request-Id": requestId },
+         body: options.body === undefined ? undefined : JSON.stringify(options.body),
+         signal: controller.signal,
+       });
+       const data = (await res.json()) as T;
+       if (!res.ok) {
+-        throw new HttpError(res.status, `Request failed with status ${res.status}`, data);
++        throw new HttpError(res.status, `Request failed with status ${res.status}`, data, requestId);
+       }
+       return { status: res.status, data, headers: Object.fromEntries(res.headers.entries()) };
+     } catch (err) {
+diff --git a/src/http/errors.ts b/src/http/errors.ts
+index f541cbb..df1f0dd 100644
+--- a/src/http/errors.ts
++++ b/src/http/errors.ts
+@@ -3,6 +3,8 @@ export class HttpError extends Error {
+     public readonly status: number,
+     message: string,
+     public readonly body?: unknown,
++    /** X-Request-Id of the failed request, for correlating with server logs. */
++    public readonly requestId?: string,
+   ) {
+     super(message);
+     this.name = "HttpError";
+diff --git a/src/users/userCache.ts b/src/users/userCache.ts
+index a029f60..4afa689 100644
+--- a/src/users/userCache.ts
++++ b/src/users/userCache.ts
+@@ -15,6 +15,7 @@ export class UserCache {
+   ) {}
+ 
+   get(id: string): UserRecord | undefined {
++    if (!this.config.enabled) return undefined;
+     const entry = this.entries.get(id);
+     if (!entry) return undefined;
+     if (entry.expiresAt < this.clock()) {
+@@ -26,6 +27,7 @@ export class UserCache {
+   }
+ 
+   set(user: UserRecord): void {
++    if (!this.config.enabled) return;
+     if (this.entries.size >= this.config.maxEntries) {
+       const oldest = this.entries.keys().next().value;
+       if (oldest !== undefined) this.entries.delete(oldest);
+diff --git a/src/utils/ids.ts b/src/utils/ids.ts
+new file mode 100644
+index 0000000..4e356c7
+--- /dev/null
++++ b/src/utils/ids.ts
+@@ -0,0 +1,7 @@
++let counter = 0;
++
++/** Short, process-unique id for correlating a request across logs and errors. */
++export function createRequestId(): string {
++  counter = (counter + 1) % 0x10000;
++  return `${Date.now().toString(36)}-${counter.toString(36).padStart(3, "0")}`;
++}
+diff --git a/src/utils/time.ts b/src/utils/time.ts
+index 2a111ec..ceabdd0 100644
+--- a/src/utils/time.ts
++++ b/src/utils/time.ts
+@@ -10,7 +10,3 @@ export function formatDuration(ms: number): string {
+   const rest = Math.round(seconds % 60);
+   return `${minutes}m ${rest}s`;
+ }
+-
+-export function now(): number {
+-  return Date.now();
+-}
+diff --git a/tests/http/client.test.ts b/tests/http/client.test.ts
+index c51df82..ae3bca0 100644
+--- a/tests/http/client.test.ts
++++ b/tests/http/client.test.ts
+@@ -31,9 +31,25 @@ describe("HttpClient", () => {
+     expect(fetcher).toHaveBeenCalledWith("https://api.test/ping", expect.anything());
+   });
+ 
++  it("sends a unique X-Request-Id header", async () => {
++    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse(200, {})));
++    const client = new HttpClient(config, fetcher);
++    await client.get("/a");
++    await client.get("/b");
++    const ids = fetcher.mock.calls.map(([, init]) => init.headers["X-Request-Id"]);
++    expect(ids[0]).toBeTruthy();
++    expect(ids[0]).not.toBe(ids[1]);
++  });
++
+   it("throws HttpError on non-2xx responses", async () => {
+     const fetcher = vi.fn().mockResolvedValue(jsonResponse(500, { error: "boom" }));
+     const client = new HttpClient(config, fetcher);
+     await expect(client.get("/ping")).rejects.toBeInstanceOf(HttpError);
+   });
+ });
++
++describe("HttpClient config validation", () => {
++  it("rejects a non-http baseUrl", () => {
++    expect(() => new HttpClient({ ...config, baseUrl: "ftp://files.test" })).toThrow(/http\(s\) URL/);
++  });
++});
+diff --git a/tests/users/userCache.test.ts b/tests/users/userCache.test.ts
+new file mode 100644
+index 0000000..776defc
+--- /dev/null
++++ b/tests/users/userCache.test.ts
+@@ -0,0 +1,20 @@
++import { describe, expect, it } from "vitest";
++import { UserCache } from "../../src/users/userCache";
++import type { UserRecord } from "../../src/users/types";
++
++const carol: UserRecord = {
++  id: "u3",
++  email: "carol@example.com",
++  displayName: "Carol",
++  role: "guest",
++  createdAt: "2024-03-01T00:00:00Z",
++};
++
++describe("UserCache with caching disabled", () => {
++  it("never stores entries", () => {
++    const cache = new UserCache({ enabled: false, ttlMs: 1000, maxEntries: 10 });
++    cache.set(carol);
++    expect(cache.get("u3")).toBeUndefined();
++    expect(cache.size).toBe(0);
++  });
++});
+diff --git a/tests/users/userService.test.ts b/tests/users/userService.test.ts
+index ca32586..58df022 100644
+--- a/tests/users/userService.test.ts
++++ b/tests/users/userService.test.ts
+@@ -15,7 +15,7 @@ const alice: UserRecord = {
+ 
+ function makeService(get = vi.fn(), post = vi.fn()) {
+   const http = { get, post } as unknown as HttpClient;
+-  const cache = new UserCache({ ttlMs: 1000, maxEntries: 10 });
++  const cache = new UserCache({ enabled: true, ttlMs: 1000, maxEntries: 10 });
+   return { service: new UserService(http, cache), cache, get, post };
+ }
+ 

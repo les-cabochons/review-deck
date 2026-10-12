@@ -1,0 +1,49 @@
+{
+  "pr": "pr2",
+  "groups": [
+    {
+      "id": "user-search",
+      "title": "Add UserService.searchUsers",
+      "why": "searchUsers() is the new method; it takes the new UserSearchOptions type and calls the new normalizeQuery() helper (imported in the top hunk). The tests cover both the method and the helper.",
+      "mechanical": false,
+      "hunks": [
+        "src/users/types.ts#0",
+        "src/utils/strings.ts#0",
+        "src/users/userService.ts#0",
+        "src/users/userService.ts#2",
+        "tests/users/userService.test.ts#0",
+        "tests/utils/strings.test.ts#0",
+        "tests/utils/strings.test.ts#1"
+      ]
+    },
+    {
+      "id": "logging-cleanup",
+      "title": "Replace stray console.log calls with the scoped logger",
+      "why": "logger.ts now routes each level to the matching console method and drops the empty meta argument; call sites in the HTTP client, user cache and app bootstrap switch from console.log to createLogger(), and a leftover debug log in getUser is removed.",
+      "mechanical": false,
+      "hunks": [
+        "src/utils/logger.ts#0",
+        "src/utils/logger.ts#1",
+        "src/http/client.ts#0",
+        "src/http/client.ts#1",
+        "src/users/userCache.ts#0",
+        "src/users/userCache.ts#1",
+        "src/index.ts#0",
+        "src/users/userService.ts#1"
+      ]
+    },
+    {
+      "id": "mechanical",
+      "title": "Mechanical changes",
+      "why": "vitest 1.5.0 -> 1.6.0 bump (package.json range plus lockfile churn) and the regenerated routes file (@generated header). Nothing to review line by line.",
+      "mechanical": true,
+      "hunks": ["package.json#0", "package-lock.json#0", "package-lock.json#1", "src/generated/routes.ts#0"]
+    }
+  ],
+  "notes": [
+    "src/users/userService.ts is split three ways: #0 and #2 are search, #1 (removing console.log in getUser) is logging. A file-level grouping cannot get this right.",
+    "src/users/userService.ts#1 only deletes a line and references nothing new; structural signals can't place it, only semantic similarity to the other console.log hunks can.",
+    "src/generated/routes.ts#0 is semantically part of search (it adds the /users/search route), but by design generated files go to the mechanical group.",
+    "package.json#0 is not a lockfile, but it is the dependency half of the lockfile change, so it belongs to mechanical."
+  ]
+}

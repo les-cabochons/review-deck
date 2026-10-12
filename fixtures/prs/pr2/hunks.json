@@ -1,0 +1,192 @@
+[
+  {
+    "id": "package-lock.json#0",
+    "file": "package-lock.json",
+    "header": "@@ -9,44 +9,44 @@",
+    "preview": [
+      "-        \"vitest\": \"^1.5.0\"",
+      "+        \"vitest\": \"^1.6.0\"",
+      "-      \"version\": \"1.5.0\",",
+      "-      \"resolved\": \"https://registry.npmjs.org/@vitest/expect/-/expect-1.5.0.tgz\","
+    ]
+  },
+  {
+    "id": "package-lock.json#1",
+    "file": "package-lock.json",
+    "header": "@@ -69,15 +69,15 @@",
+    "preview": [
+      "-      \"version\": \"1.5.0\",",
+      "-      \"resolved\": \"https://registry.npmjs.org/vitest/-/vitest-1.5.0.tgz\",",
+      "-      \"integrity\": \"sha512-d8UKgR0m2kjdxDWX6911uwxout6GHS0XaGH1cxxOFTt7rTsMz6BuuffKEu/W0cpI7zlnJ0rX…",
+      "+      \"version\": \"1.6.0\","
+    ]
+  },
+  {
+    "id": "package.json#0",
+    "file": "package.json",
+    "header": "@@ -10,6 +10,6 @@",
+    "preview": [
+      "-    \"vitest\": \"^1.5.0\"",
+      "+    \"vitest\": \"^1.6.0\""
+    ]
+  },
+  {
+    "id": "src/generated/routes.ts#0",
+    "file": "src/generated/routes.ts",
+    "header": "@@ -6,6 +6,7 @@ export const ROUTES = {",
+    "preview": [
+      "+  searchUsers: { method: \"GET\", path: \"/users/search\" },"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#0",
+    "file": "src/http/client.ts",
+    "header": "@@ -1,7 +1,10 @@",
+    "preview": [
+      "+import { createLogger } from \"../utils/logger\";",
+      "+const log = createLogger(\"http\");",
+      "+"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#1",
+    "file": "src/http/client.ts",
+    "header": "@@ -32,7 +35,7 @@ export class HttpClient {",
+    "preview": [
+      "-    console.log(\"http request\", options.method ?? \"GET\", url);",
+      "+    log.debug(\"request\", { method: options.method ?? \"GET\", url });"
+    ]
+  },
+  {
+    "id": "src/index.ts#0",
+    "file": "src/index.ts",
+    "header": "@@ -2,10 +2,11 @@ import { loadConfig } from \"./config\";",
+    "preview": [
+      "+import { createLogger } from \"./utils/logger\";",
+      "-  console.log(\"starting app with config\", config);",
+      "+  createLogger(\"app\", config.logLevel).info(\"starting app\", { baseUrl: config.http.baseUrl });"
+    ]
+  },
+  {
+    "id": "src/users/types.ts#0",
+    "file": "src/users/types.ts",
+    "header": "@@ -13,3 +13,8 @@ export interface UserListResponse {",
+    "preview": [
+      "+",
+      "+export interface UserSearchOptions {",
+      "+  role?: UserRole;",
+      "+  limit?: number;"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#0",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -1,6 +1,9 @@",
+    "preview": [
+      "+import { createLogger } from \"../utils/logger\";",
+      "+const log = createLogger(\"user-cache\");",
+      "+"
+    ]
+  },
+  {
+    "id": "src/users/userCache.ts#1",
+    "file": "src/users/userCache.ts",
+    "header": "@@ -18,7 +21,7 @@ export class UserCache {",
+    "preview": [
+      "-      console.log(\"cache expired\", id);",
+      "+      log.debug(\"entry expired\", { id });"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#0",
+    "file": "src/users/userService.ts",
+    "header": "@@ -1,8 +1,9 @@",
+    "preview": [
+      "+import { normalizeQuery } from \"../utils/strings\";",
+      "-import type { UserListResponse, UserRecord } from \"./types\";",
+      "+import type { UserListResponse, UserRecord, UserSearchOptions } from \"./types\";"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#1",
+    "file": "src/users/userService.ts",
+    "header": "@@ -14,7 +15,6 @@ export class UserService {",
+    "preview": [
+      "-    console.log(\"cache miss\", id);"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#2",
+    "file": "src/users/userService.ts",
+    "header": "@@ -44,4 +44,15 @@ export class UserService {",
+    "preview": [
+      "+",
+      "+  async searchUsers(query: string, options: UserSearchOptions = {}): Promise<UserRecord[]> {",
+      "+    const q = normalizeQuery(query);",
+      "+    if (q.length === 0) return [];"
+    ]
+  },
+  {
+    "id": "src/utils/logger.ts#0",
+    "file": "src/utils/logger.ts",
+    "header": "@@ -7,6 +7,13 @@ const LEVELS: Record<LogLevel, number> = {",
+    "preview": [
+      "+const SINKS: Record<LogLevel, (...args: unknown[]) => void> = {",
+      "+  debug: console.debug,",
+      "+  info: console.info,",
+      "+  warn: console.warn,"
+    ]
+  },
+  {
+    "id": "src/utils/logger.ts#1",
+    "file": "src/utils/logger.ts",
+    "header": "@@ -18,7 +25,8 @@ export function createLogger(scope: string, minLevel: LogLevel = \"info\"): Logger",
+    "preview": [
+      "-    console.log(line, meta ?? \"\");",
+      "+    if (meta === undefined) SINKS[level](line);",
+      "+    else SINKS[level](line, meta);"
+    ]
+  },
+  {
+    "id": "src/utils/strings.ts#0",
+    "file": "src/utils/strings.ts",
+    "header": "@@ -20,3 +20,8 @@ export function truncate(input: string, max: number): string {",
+    "preview": [
+      "+",
+      "+/** Lowercases, trims and collapses internal whitespace so search queries compare consistently. */",
+      "+export function normalizeQuery(input: string): string {",
+      "+  return input.trim().toLowerCase().replace(/\\s+/g, \" \");"
+    ]
+  },
+  {
+    "id": "tests/users/userService.test.ts#0",
+    "file": "tests/users/userService.test.ts",
+    "header": "@@ -41,3 +41,18 @@ describe(\"UserService\", () => {",
+    "preview": [
+      "+",
+      "+describe(\"UserService.searchUsers\", () => {",
+      "+  it(\"normalizes the query before calling the API\", async () => {",
+      "+    const get = vi.fn().mockResolvedValue({ data: { users: [alice], total: 1, page: 1 } });"
+    ]
+  },
+  {
+    "id": "tests/utils/strings.test.ts#0",
+    "file": "tests/utils/strings.test.ts",
+    "header": "@@ -1,5 +1,5 @@",
+    "preview": [
+      "-import { capitalize, isBlank, slugify, truncate } from \"../../src/utils/strings\";",
+      "+import { capitalize, isBlank, normalizeQuery, slugify, truncate } from \"../../src/utils/strings\";"
+    ]
+  },
+  {
+    "id": "tests/utils/strings.test.ts#1",
+    "file": "tests/utils/strings.test.ts",
+    "header": "@@ -27,3 +27,9 @@ describe(\"isBlank\", () => {",
+    "preview": [
+      "+",
+      "+describe(\"normalizeQuery\", () => {",
+      "+  it(\"trims, lowercases and collapses whitespace\", () => {",
+      "+    expect(normalizeQuery(\"  Alice   SMITH \")).toBe(\"alice smith\");"
+    ]
+  }
+]

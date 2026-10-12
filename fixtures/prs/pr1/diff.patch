@@ -1,0 +1,278 @@
+diff --git a/src/config/defaults.ts b/src/config/defaults.ts
+index 2455887..fd4822e 100644
+--- a/src/config/defaults.ts
++++ b/src/config/defaults.ts
+@@ -4,6 +4,8 @@ export const DEFAULT_CONFIG: AppConfig = {
+   http: {
+     baseUrl: "https://api.example.com",
+     timeoutMs: 5000,
++    retries: 3,
++    retryDelayMs: 200,
+     headers: {
+       "Content-Type": "application/json",
+       Accept: "application/json",
+diff --git a/src/config/index.ts b/src/config/index.ts
+index 4229769..23c5028 100644
+--- a/src/config/index.ts
++++ b/src/config/index.ts
+@@ -3,6 +3,10 @@ import { DEFAULT_CONFIG } from "./defaults";
+ export interface HttpConfig {
+   baseUrl: string;
+   timeoutMs: number;
++  /** How many times to retry idempotent requests that fail with a retryable error. */
++  retries: number;
++  /** Base delay for exponential backoff between retries. */
++  retryDelayMs: number;
+   headers: Record<string, string>;
+ }
+ 
+@@ -27,6 +31,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
+       ...DEFAULT_CONFIG.http,
+       baseUrl: env.API_BASE_URL ?? DEFAULT_CONFIG.http.baseUrl,
+       timeoutMs: parseIntOr(env.API_TIMEOUT_MS, DEFAULT_CONFIG.http.timeoutMs),
++      retries: parseIntOr(env.API_RETRIES, DEFAULT_CONFIG.http.retries),
+     },
+     cache: {
+       ttlMs: parseIntOr(env.CACHE_TTL_MS, DEFAULT_CONFIG.cache.ttlMs),
+diff --git a/src/http/client.ts b/src/http/client.ts
+index 6a2fe64..bad68ff 100644
+--- a/src/http/client.ts
++++ b/src/http/client.ts
+@@ -1,5 +1,6 @@
+ import type { HttpConfig } from "../config";
+-import { HttpError, TimeoutError } from "./errors";
++import { backoffDelay, sleep } from "../utils/time";
++import { HttpError, isRetryable, TimeoutError } from "./errors";
+ import type { Fetcher, HttpResponse, QueryParams, RequestOptions } from "./types";
+ 
+ export function buildQueryString(query: QueryParams | undefined): string {
+@@ -33,7 +34,15 @@ export class HttpClient {
+   async request<T>(path: string, options: RequestOptions = {}): Promise<HttpResponse<T>> {
+     const url = this.config.baseUrl + path + buildQueryString(options.query);
+     console.log("http request", options.method ?? "GET", url);
+-    return this.send<T>(url, options);
++    const maxAttempts = isIdempotent(options.method) ? this.config.retries + 1 : 1;
++    for (let attempt = 0; ; attempt++) {
++      try {
++        return await this.send<T>(url, options);
++      } catch (err) {
++        if (attempt + 1 >= maxAttempts || !isRetryable(err)) throw err;
++        await sleep(backoffDelay(attempt, this.config.retryDelayMs));
++      }
++    }
+   }
+ 
+   private async send<T>(url: string, options: RequestOptions): Promise<HttpResponse<T>> {
+@@ -59,3 +68,7 @@ export class HttpClient {
+     }
+   }
+ }
++
++function isIdempotent(method: RequestOptions["method"]): boolean {
++  return method === undefined || method === "GET" || method === "PUT" || method === "DELETE";
++}
+diff --git a/src/http/errors.ts b/src/http/errors.ts
+index f541cbb..792274a 100644
+--- a/src/http/errors.ts
++++ b/src/http/errors.ts
+@@ -22,3 +22,9 @@ export class TimeoutError extends Error {
+     this.name = "TimeoutError";
+   }
+ }
++
++/** Timeouts, 429s and 5xx responses are worth retrying; other errors are not. */
++export function isRetryable(err: unknown): boolean {
++  if (err instanceof TimeoutError) return true;
++  return err instanceof HttpError && (err.status === 429 || err.status >= 500);
++}
+diff --git a/src/users/types.ts b/src/users/types.ts
+index 51fa6d1..c3cc39e 100644
+--- a/src/users/types.ts
++++ b/src/users/types.ts
+@@ -1,6 +1,6 @@
+ export type UserRole = "admin" | "member" | "guest";
+ 
+-export interface UserRecord {
++export interface User {
+   id: string;
+   email: string;
+   displayName: string;
+@@ -9,7 +9,7 @@ export interface UserRecord {
+ }
+ 
+ export interface UserListResponse {
+-  users: UserRecord[];
++  users: User[];
+   total: number;
+   page: number;
+ }
+diff --git a/src/users/userCache.ts b/src/users/userCache.ts
+index a029f60..29bc492 100644
+--- a/src/users/userCache.ts
++++ b/src/users/userCache.ts
+@@ -1,8 +1,8 @@
+ import type { CacheConfig } from "../config";
+-import type { UserRecord } from "./types";
++import type { User } from "./types";
+ 
+ interface Entry {
+-  user: UserRecord;
++  user: User;
+   expiresAt: number;
+ }
+ 
+@@ -14,7 +14,7 @@ export class UserCache {
+     private readonly clock: () => number = Date.now,
+   ) {}
+ 
+-  get(id: string): UserRecord | undefined {
++  get(id: string): User | undefined {
+     const entry = this.entries.get(id);
+     if (!entry) return undefined;
+     if (entry.expiresAt < this.clock()) {
+@@ -25,7 +25,7 @@ export class UserCache {
+     return entry.user;
+   }
+ 
+-  set(user: UserRecord): void {
++  set(user: User): void {
+     if (this.entries.size >= this.config.maxEntries) {
+       const oldest = this.entries.keys().next().value;
+       if (oldest !== undefined) this.entries.delete(oldest);
+diff --git a/src/users/userService.ts b/src/users/userService.ts
+index 442cd0b..e5588f0 100644
+--- a/src/users/userService.ts
++++ b/src/users/userService.ts
+@@ -2,7 +2,7 @@ import type { HttpClient } from "../http/client";
+ import { buildQueryString } from "../http/client";
+ import { HttpError } from "../http/errors";
+ import type { UserCache } from "./userCache";
+-import type { UserListResponse, UserRecord } from "./types";
++import type { User, UserListResponse } from "./types";
+ import { type UserInput, validateUser } from "./validation";
+ 
+ export class UserService {
+@@ -11,12 +11,12 @@ export class UserService {
+     private readonly cache: UserCache,
+   ) {}
+ 
+-  async getUser(id: string): Promise<UserRecord | undefined> {
++  async getUser(id: string): Promise<User | undefined> {
+     const cached = this.cache.get(id);
+     if (cached) return cached;
+     console.log("cache miss", id);
+     try {
+-      const res = await this.http.get<UserRecord>(`/users/${id}`);
++      const res = await this.http.get<User>(`/users/${id}`);
+       this.cache.set(res.data);
+       return res.data;
+     } catch (err) {
+@@ -31,12 +31,12 @@ export class UserService {
+     return res.data;
+   }
+ 
+-  async createUser(input: UserInput): Promise<UserRecord> {
++  async createUser(input: UserInput): Promise<User> {
+     const errors = validateUser(input);
+     if (errors.length > 0) {
+       throw new Error(`Invalid user: ${errors.join(", ")}`);
+     }
+-    const res = await this.http.post<UserRecord>("/users", input);
++    const res = await this.http.post<User>("/users", input);
+     this.cache.set(res.data);
+     return res.data;
+   }
+diff --git a/src/users/validation.ts b/src/users/validation.ts
+index 5ec5772..92e6f6a 100644
+--- a/src/users/validation.ts
++++ b/src/users/validation.ts
+@@ -1,9 +1,9 @@
+-import type { UserRecord, UserRole } from "./types";
++import type { User, UserRole } from "./types";
+ 
+ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ const ROLES: readonly UserRole[] = ["admin", "member", "guest"];
+ 
+-export type UserInput = Omit<UserRecord, "id" | "createdAt">;
++export type UserInput = Omit<User, "id" | "createdAt">;
+ 
+ export function validateUser(input: Partial<UserInput>): string[] {
+   const errors: string[] = [];
+diff --git a/src/utils/time.ts b/src/utils/time.ts
+index 2a111ec..3fb78d4 100644
+--- a/src/utils/time.ts
++++ b/src/utils/time.ts
+@@ -14,3 +14,10 @@ export function formatDuration(ms: number): string {
+ export function now(): number {
+   return Date.now();
+ }
++
++/** Exponential backoff with jitter: base * 2^attempt + [0, base), capped at maxMs. */
++export function backoffDelay(attempt: number, baseMs: number, maxMs = 10_000): number {
++  const exponential = baseMs * 2 ** attempt;
++  const jitter = Math.random() * baseMs;
++  return Math.min(maxMs, exponential + jitter);
++}
+diff --git a/tests/http/client.test.ts b/tests/http/client.test.ts
+index c51df82..41a41c7 100644
+--- a/tests/http/client.test.ts
++++ b/tests/http/client.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
+ import { buildQueryString, HttpClient } from "../../src/http/client";
+ import { HttpError } from "../../src/http/errors";
+ 
+-const config = { baseUrl: "https://api.test", timeoutMs: 1000, headers: {} };
++const config = { baseUrl: "https://api.test", timeoutMs: 1000, retries: 0, retryDelayMs: 0, headers: {} };
+ 
+ function jsonResponse(status: number, body: unknown): Response {
+   return new Response(JSON.stringify(body), {
+@@ -37,3 +37,33 @@ describe("HttpClient", () => {
+     await expect(client.get("/ping")).rejects.toBeInstanceOf(HttpError);
+   });
+ });
++
++describe("HttpClient retries", () => {
++  const retryConfig = { ...config, retries: 2, retryDelayMs: 0 };
++
++  it("retries GET requests on 503 and eventually succeeds", async () => {
++    const fetcher = vi
++      .fn()
++      .mockResolvedValueOnce(jsonResponse(503, {}))
++      .mockResolvedValueOnce(jsonResponse(503, {}))
++      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
++    const client = new HttpClient(retryConfig, fetcher);
++    const res = await client.get<{ ok: boolean }>("/ping");
++    expect(res.data.ok).toBe(true);
++    expect(fetcher).toHaveBeenCalledTimes(3);
++  });
++
++  it("does not retry POST requests", async () => {
++    const fetcher = vi.fn().mockResolvedValue(jsonResponse(503, {}));
++    const client = new HttpClient(retryConfig, fetcher);
++    await expect(client.post("/users", {})).rejects.toBeInstanceOf(HttpError);
++    expect(fetcher).toHaveBeenCalledTimes(1);
++  });
++
++  it("does not retry client errors", async () => {
++    const fetcher = vi.fn().mockResolvedValue(jsonResponse(404, {}));
++    const client = new HttpClient(retryConfig, fetcher);
++    await expect(client.get("/missing")).rejects.toBeInstanceOf(HttpError);
++    expect(fetcher).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/tests/users/userService.test.ts b/tests/users/userService.test.ts
+index ca32586..24e2b59 100644
+--- a/tests/users/userService.test.ts
++++ b/tests/users/userService.test.ts
+@@ -3,9 +3,9 @@ import type { HttpClient } from "../../src/http/client";
+ import { HttpError } from "../../src/http/errors";
+ import { UserCache } from "../../src/users/userCache";
+ import { UserService } from "../../src/users/userService";
+-import type { UserRecord } from "../../src/users/types";
++import type { User } from "../../src/users/types";
+ 
+-const alice: UserRecord = {
++const alice: User = {
+   id: "u1",
+   email: "alice@example.com",
+   displayName: "Alice",

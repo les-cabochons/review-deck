@@ -1,0 +1,67 @@
+{
+  "pr": "pr5",
+  "groups": [
+    {
+      "id": "update-user",
+      "title": "Add UserService.updateUser (PUT /users/:id)",
+      "why": "updateUser() calls the new HttpClient.put() and the new validateUserPatch(); the service test gains a put stub in makeService and tests for the new method.",
+      "mechanical": false,
+      "hunks": [
+        "src/http/client.ts#0",
+        "src/users/validation.ts#1",
+        "src/users/userService.ts#0",
+        "src/users/userService.ts#1",
+        "tests/users/userService.test.ts#0",
+        "tests/users/userService.test.ts#1"
+      ]
+    },
+    {
+      "id": "cache-stats",
+      "title": "Track cache hit/miss statistics",
+      "why": "UserCache gains hits/misses counters, increments them in get(), exposes stats(); createApp surfaces it and a new test file covers it.",
+      "mechanical": false,
+      "hunks": [
+        "src/users/userCache.ts#0",
+        "src/users/userCache.ts#1",
+        "src/users/userCache.ts#2",
+        "src/index.ts#0",
+        "tests/users/userCache.test.ts#0"
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "Add JSDoc to loadConfig, createLogger and slugify",
+      "why": "Comment-only hunks in three unrelated modules; the only thing linking them is that they are all documentation.",
+      "mechanical": false,
+      "hunks": ["src/config/index.ts#0", "src/utils/logger.ts#0", "src/utils/strings.ts#0"]
+    },
+    {
+      "id": "email-regex",
+      "title": "Reject malformed email domains",
+      "why": "EMAIL_RE no longer accepts empty, consecutive or trailing dots in the domain; a new test file pins this via isValidEmail().",
+      "mechanical": false,
+      "hunks": ["src/users/validation.ts#0", "tests/users/validation.test.ts#0"]
+    },
+    {
+      "id": "mechanical",
+      "title": "Mechanical changes",
+      "why": "typescript 5.4.5 -> 5.5.4 (manifest + lockfile), regenerated routes file, and a whitespace-only reindent of tsconfig.json.",
+      "mechanical": true,
+      "hunks": [
+        "package.json#0",
+        "package-lock.json#0",
+        "package-lock.json#1",
+        "src/generated/routes.ts#0",
+        "tsconfig.json#0"
+      ]
+    }
+  ],
+  "notes": [
+    "src/http/client.ts#0 is a MIXED hunk: a JSDoc line on post() (docs) plus the new put() method (update-user). Assigned to update-user as the dominant concern; no hunk-level grouping can be fully right.",
+    "The docs group has no structural links at all. Only embeddings (all three are comment-only) can tie it together; otherwise expect three misc singletons.",
+    "validation.ts is split: #0 is the email fix, #1 is update-user. tests/users/validation.test.ts belongs to the email fix even though it imports the same module that validateUserPatch lives in.",
+    "tests/users/userService.test.ts#0 only adds a `put` stub to a test helper; it links to update-user through the identifier put.",
+    "src/index.ts#0 links to cache-stats only through stats().",
+    "tsconfig.json#0 changes every line but is whitespace-only."
+  ]
+}

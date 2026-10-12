@@ -1,0 +1,15 @@
+{
+  "pr": "pr4",
+  "groups": [
+    {
+      "id": "fix-truncate",
+      "title": "Fix truncate() exceeding max length",
+      "why": "truncate() now reserves one character for the ellipsis; the test pins the max-length contract.",
+      "mechanical": false,
+      "hunks": ["src/utils/strings.ts#0", "tests/utils/strings.test.ts#0"]
+    }
+  ],
+  "notes": [
+    "Sanity check: anything other than a single group is over-splitting. ARI is undefined when both partitions have exactly one cluster, so evaluation treats an exact match as 1.0."
+  ]
+}

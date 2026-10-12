@@ -1,0 +1,15 @@
+{
+  "name": "acme-users-sdk",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "vitest run",
+    "gen:routes": "routegen openapi.yaml -o src/generated/routes.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.3"
+  }
+}

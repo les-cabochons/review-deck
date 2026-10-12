@@ -1,0 +1,35 @@
+diff --git a/src/utils/strings.ts b/src/utils/strings.ts
+index c3df051..e48672b 100644
+--- a/src/utils/strings.ts
++++ b/src/utils/strings.ts
+@@ -11,10 +11,11 @@ export function capitalize(input: string): string {
+   return input[0].toUpperCase() + input.slice(1);
+ }
+ 
+-/** Shortens `input` so it is at most `max` characters, adding an ellipsis. */
++/** Shortens `input` so it is at most `max` characters, including the ellipsis. */
+ export function truncate(input: string, max: number): string {
+   if (input.length <= max) return input;
+-  return input.slice(0, max) + "…";
++  if (max <= 0) return "";
++  return input.slice(0, max - 1) + "…";
+ }
+ 
+ export function isBlank(input: string | null | undefined): boolean {
+diff --git a/tests/utils/strings.test.ts b/tests/utils/strings.test.ts
+index df574ba..ad7dfb6 100644
+--- a/tests/utils/strings.test.ts
++++ b/tests/utils/strings.test.ts
+@@ -18,6 +18,12 @@ describe("truncate", () => {
+   it("leaves short strings alone", () => {
+     expect(truncate("abc", 5)).toBe("abc");
+   });
++
++  it("never exceeds max, ellipsis included", () => {
++    expect(truncate("abcdefgh", 5)).toBe("abcd…");
++    expect(truncate("abcdefgh", 5)).toHaveLength(5);
++    expect(truncate("abc", 0)).toBe("");
++  });
+ });
+ 
+ describe("isBlank", () => {

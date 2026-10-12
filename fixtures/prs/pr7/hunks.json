@@ -1,0 +1,11 @@
+[
+  {
+    "id": "src/users/validation.ts#0",
+    "file": "src/users/validation.ts",
+    "header": "@@ -8,7 +8,7 @@ export type UserInput = Omit<UserRecord, \"id\" | \"createdAt\">;",
+    "preview": [
+      "-    errors.push(\"email is invalid\");",
+      "+    errors.push(\"email must be a valid address like name@example.com\");"
+    ]
+  }
+]

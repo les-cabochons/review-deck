@@ -1,0 +1,83 @@
+[
+  {
+    "id": "src/config/defaults.ts#0",
+    "file": "src/config/defaults.ts",
+    "header": "@@ -3,7 +3,7 @@ import type { AppConfig } from \"./index\";",
+    "preview": [
+      "-    timeoutMs: 5000,",
+      "+    timeoutMs: 10_000,"
+    ]
+  },
+  {
+    "id": "src/http/client.ts#0",
+    "file": "src/http/client.ts",
+    "header": "@@ -1,17 +1,8 @@",
+    "preview": [
+      "+import { buildQueryString } from \"../utils/query\";",
+      "-export function buildQueryString(query: QueryParams | undefined): string {",
+      "-  if (!query) return \"\";",
+      "-  const parts: string[] = [];"
+    ]
+  },
+  {
+    "id": "src/users/userService.ts#0",
+    "file": "src/users/userService.ts",
+    "header": "@@ -1,6 +1,6 @@",
+    "preview": [
+      "-import { buildQueryString } from \"../http/client\";",
+      "+import { buildQueryString } from \"../utils/query\";"
+    ]
+  },
+  {
+    "id": "src/utils/query.ts#0",
+    "file": "src/utils/query.ts",
+    "header": "@@ -0,0 +1,11 @@",
+    "preview": [
+      "+import type { QueryParams } from \"../http/types\";",
+      "+",
+      "+export function buildQueryString(query: QueryParams | undefined): string {",
+      "+  if (!query) return \"\";"
+    ]
+  },
+  {
+    "id": "tests/http/client.test.ts#0",
+    "file": "tests/http/client.test.ts",
+    "header": "@@ -1,5 +1,5 @@",
+    "preview": [
+      "-import { buildQueryString, HttpClient } from \"../../src/http/client\";",
+      "+import { HttpClient } from \"../../src/http/client\";"
+    ]
+  },
+  {
+    "id": "tests/http/client.test.ts#1",
+    "file": "tests/http/client.test.ts",
+    "header": "@@ -11,17 +11,6 @@ function jsonResponse(status: number, body: unknown): Response {",
+    "preview": [
+      "-describe(\"buildQueryString\", () => {",
+      "-  it(\"returns an empty string for no params\", () => {",
+      "-    expect(buildQueryString(undefined)).toBe(\"\");",
+      "-    expect(buildQueryString({})).toBe(\"\");"
+    ]
+  },
+  {
+    "id": "tests/utils/query.test.ts#0",
+    "file": "tests/utils/query.test.ts",
+    "header": "@@ -0,0 +1,13 @@",
+    "preview": [
+      "+import { describe, expect, it } from \"vitest\";",
+      "+import { buildQueryString } from \"../../src/utils/query\";",
+      "+",
+      "+describe(\"buildQueryString\", () => {"
+    ]
+  },
+  {
+    "id": "tests/utils/strings.spec.ts#0",
+    "file": "tests/utils/strings.spec.ts",
+    "header": "(no hunks)",
+    "preview": [
+      "similarity index 100%",
+      "rename from tests/utils/strings.test.ts",
+      "rename to tests/utils/strings.spec.ts"
+    ]
+  }
+]

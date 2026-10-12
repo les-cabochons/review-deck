@@ -1,0 +1,13 @@
+{
+  "pr": "pr9",
+  "groups": [
+    {
+      "id": "mechanical",
+      "title": "Mechanical changes",
+      "why": "vitest 1.5.0 -> 1.5.3: manifest range plus lockfile.",
+      "mechanical": true,
+      "hunks": ["package.json#0", "package-lock.json#0", "package-lock.json#1"]
+    }
+  ],
+  "notes": ["Simple: everything should land in the collapsed mechanical group and nothing else."]
+}

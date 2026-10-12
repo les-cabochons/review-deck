@@ -1,0 +1,7 @@
+{
+  "id": "pr6",
+  "title": "Request IDs, cache kill-switch, baseUrl validation, dead code",
+  "description": "Four concerns that share files and vocabulary: X-Request-Id tracing (new ids util, client, HttpError, test), a CACHE_ENABLED kill-switch (config, defaults, cache, tests, plus a test helper that must now pass the new field), baseUrl validation in the HttpClient constructor (same files as tracing), and removal of an unused time helper.",
+  "renames": [],
+  "deletes": []
+}

@@ -1,0 +1,7 @@
+{
+  "id": "pr7",
+  "title": "Clarify invalid email message",
+  "description": "Trivial: one-line copy change in a validation error message.",
+  "renames": [],
+  "deletes": []
+}
