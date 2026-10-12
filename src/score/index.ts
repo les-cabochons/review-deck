@@ -8,7 +8,12 @@ export interface Embedder {
 }
 
 /** Scores every pair of (non-mechanical) hunks with every enabled signal. Returns pairs with any evidence. */
-export async function scorePairs(hunks: HunkInfo[], config: PipelineConfig, embedder: Embedder | null): Promise<PairScore[]> {
+export async function scorePairs(
+  hunks: HunkInfo[],
+  config: PipelineConfig,
+  embedder: Embedder | null,
+  onProgress?: (progress: { stage: "score"; done: number; total: number }) => void,
+): Promise<PairScore[]> {
   const symbolDf = new Map<string, number>();
   const tokenDf = new Map<string, number>();
   for (const h of hunks) {
@@ -26,7 +31,12 @@ export async function scorePairs(hunks: HunkInfo[], config: PipelineConfig, embe
   const enabled = (Object.keys(SIGNALS) as SignalName[]).filter((name) => name !== "semantic" || embeddings);
 
   const pairs: PairScore[] = [];
+  // Row i scores n-i-1 pairs, so report the share of pairs done, not of rows.
+  const totalPairs = (hunks.length * (hunks.length - 1)) / 2;
+  let pairsDone = 0;
   for (let i = 0; i < hunks.length; i++) {
+    onProgress?.({ stage: "score", done: pairsDone, total: totalPairs });
+    pairsDone += hunks.length - i - 1;
     for (let j = i + 1; j < hunks.length; j++) {
       const a = hunks[i];
       const b = hunks[j];

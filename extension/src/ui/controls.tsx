@@ -1,6 +1,7 @@
 // Azure DevOps-native buttons used across pages: a dropdown button ("Inline ▾") and split buttons
 // ("Approve | ▾"). They wrap azure-devops-ui so look, keyboard handling and menus match the host.
 import { MenuButton, MenuItemType, type IMenuItem } from "azure-devops-ui/Menu";
+import { Button } from "azure-devops-ui/Button";
 import { SplitButton } from "azure-devops-ui/SplitButton";
 import * as React from "react";
 
@@ -99,3 +100,26 @@ export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled
     />
   );
 };
+
+/**
+ * A two-state view toggle ("Side by side", "Group by concern"): one click flips it and the pressed
+ * look shows it's on, like Azure DevOps' own view toggles. No menu.
+ */
+export const ToggleButton: React.FC<{
+  text: string;
+  icon: string;
+  pressed: boolean;
+  onToggle: (pressed: boolean) => void;
+  tooltip?: string;
+  disabled?: boolean;
+}> = ({ text, icon, pressed, onToggle, tooltip, disabled }) => (
+  <Button
+    className={pressed ? "toggle-button pressed" : "toggle-button"}
+    text={text}
+    iconProps={{ iconName: icon }}
+    ariaPressed={pressed}
+    tooltipProps={tooltip ? { text: tooltip } : undefined}
+    disabled={disabled}
+    onClick={() => onToggle(!pressed)}
+  />
+);

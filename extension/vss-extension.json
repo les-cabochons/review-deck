@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "semantic-pr-review",
   "publisher": "Cabochonio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "name": "Semantic PR Review",
   "description": "A pull request review page that groups changes by concern instead of by file.",
   "public": false,

@@ -18,16 +18,25 @@ export async function analyzeHunks(
   provider: FileProvider,
   parsers: SyntaxParsers,
   config: PipelineConfig,
+  onProgress?: (progress: { stage: "parse"; done: number; total: number }) => void,
 ): Promise<Map<string, HunkInfo>> {
   const stop = makeStopFilter(config.stopwords);
   const lockfileChanged = prHasLockfileChange(files);
   const changedModules = files.flatMap((f) => [f.oldPath, f.newPath]).filter((p): p is string => !!p).map(stripExtension);
+  // Package imports resolve against every changed module; the same specifier recurs across files.
+  const packageImports = new Map<string, string[]>();
+  const resolvePackage = (spec: string) => {
+    let modules = packageImports.get(spec);
+    if (!modules) packageImports.set(spec, (modules = resolvePackageImport(spec, changedModules)));
+    return modules;
+  };
   const out = new Map<string, HunkInfo>();
 
-  for (const file of files) {
+  for (const [i, file] of files.entries()) {
+    onProgress?.({ stage: "parse", done: i, total: files.length });
     const sides = await loadSides(file, provider, parsers);
     const head = (sides.content.new ?? sides.content.old ?? "").split("\n").slice(0, 5).join("\n");
-    const imports = resolveImports(file, sides, changedModules);
+    const imports = resolveImports(file, sides, resolvePackage);
     for (const hunk of file.hunks) {
       const info = analyzeHunk(file, hunk, sides, stop, imports, parsers.languageFor(file.path));
       info.mechanical = detectMechanical(file, hunk, { lockfileChanged, head });
@@ -54,7 +63,7 @@ async function loadSides(file: FileDiff, provider: FileProvider, parsers: Syntax
   };
 }
 
-function resolveImports(file: FileDiff, sides: FileSides, changedModules: string[]): Set<string> {
+function resolveImports(file: FileDiff, sides: FileSides, resolvePackage: (spec: string) => string[]): Set<string> {
   const out = new Set<string>();
   for (const side of ["old", "new"] as const) {
     const path = side === "old" ? file.oldPath : file.newPath;
@@ -62,7 +71,7 @@ function resolveImports(file: FileDiff, sides: FileSides, changedModules: string
     if (!path || !syms) continue;
     for (const spec of syms.imports) {
       if (spec.startsWith(".")) out.add(stripExtension(join(dirname(path), spec)));
-      else for (const m of resolvePackageImport(spec, changedModules)) out.add(m);
+      else for (const m of resolvePackage(spec)) out.add(m);
     }
   }
   return out;

@@ -21,6 +21,14 @@ export interface PipelineDeps {
   parsers: SyntaxParsers;
   embedder?: Embedder | null;
   titler?: Titler;
+  /** Reports how far the slow stages are (per file while parsing, per hunk while scoring). */
+  onProgress?: (progress: PipelineProgress) => void;
+}
+
+export interface PipelineProgress {
+  stage: "parse" | "score" | "group";
+  done: number;
+  total: number;
 }
 
 /** diff text -> grouped, ordered, titled hunks. Browser-safe: all host specifics come in through `deps`. */
@@ -37,7 +45,7 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   };
 
   const files = await time("parse", () => parseDiff(input.diff));
-  const hunks = await time("analyze", () => analyzeHunks(files, input.files, deps.parsers, config));
+  const hunks = await time("analyze", () => analyzeHunks(files, input.files, deps.parsers, config, deps.onProgress));
 
   const all = [...hunks.values()];
   const mechanical = all.filter((h) => h.mechanical);
@@ -45,8 +53,9 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
 
   const embedder = config.semantic.enabled ? (deps.embedder ?? null) : null;
   if (config.semantic.enabled && !embedder) warnings.push("semantic signal enabled but no embedder supplied; skipped");
-  const pairs = await time("score", () => scorePairs(reviewable, config, embedder));
+  const pairs = await time("score", () => scorePairs(reviewable, config, embedder, deps.onProgress));
 
+  deps.onProgress?.({ stage: "group", done: 0, total: 1 });
   const { communities, merges } = await time("cluster", () => {
     const raw = clusterHunks(reviewable.map((h) => h.hunk.id), pairs, config);
     return config.cluster.mergeNewSymbolUsers ? mergeNewSymbolUsers(raw, hunks, { maxSize: config.cluster.mergeMaxSize }) : { communities: raw, merges: [] };

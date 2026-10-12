@@ -1,14 +1,16 @@
 import { Icon } from "azure-devops-ui/Icon";
 import { Tab, TabBar, TabSize } from "azure-devops-ui/Tabs";
+import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
-import type { ReviewModel } from "../review/engine";
+import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { CommitsTab } from "./CommitsTab";
 import { MoreMenu, SplitActionButton } from "./controls";
 import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
-import { FilesTab, type FileView } from "./FilesTab";
+import type { FileView } from "./FilesTab";
+import { GroupingStatus } from "./GroupingStatus";
 import { OverviewTab } from "./OverviewTab";
 import { readPreference, writePreference } from "./preferences";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
@@ -17,6 +19,18 @@ import { ReviewButton, VoteButton } from "./review/ReviewControls";
 import { Avatar, cx, IdentityNames, plural, Time } from "./util";
 
 type TabId = "overview" | "files" | "commits";
+/** Announce finished grouping only if the A–Z preview was up this long; small PRs group almost instantly. */
+const ANNOUNCE_AFTER_MS = 2000;
+/** Scrolled further than this into the preview, finishing doesn't swap the view under the reader. */
+const KEEP_PREVIEW_SCROLL = 300;
+
+interface ToastSpec {
+  message: string;
+  callToAction?: string;
+  onCallToAction?: () => void;
+}
+
+const FilesTab = React.lazy(() => import("./FilesTab").then(module => ({ default: module.FilesTab })));
 
 function usePref<T extends string>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = React.useState<T>(() => readPreference(key, initial));
@@ -50,6 +64,12 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [focusGroup, setFocusGroup] = React.useState<string | null>(null);
   const [view, setView] = usePref<FileView>("fileView", "grouped");
   const [mode, setMode] = usePref<DiffMode>("diffMode", "inline");
+  const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
+  /** Grouping finished while the reader was deep in the A–Z preview: keep it until they ask. */
+  const [holdPreview, setHoldPreview] = React.useState(false);
+  const [toast, setToast] = React.useState<ToastSpec | null>(null);
+  const live = React.useRef({ tab, view });
+  live.current = { tab, view };
 
   React.useEffect(() => {
     source
@@ -68,19 +88,39 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   React.useEffect(() => {
     if (!data || selection.iteration === 0) return;
     let cancelled = false;
+    const abort = new AbortController();
+    let previewAt: number | null = null;
     setReviewLoading(true);
     setReview(null);
     setReviewError(null);
+    setProgress(null);
+    setHoldPreview(false);
     import("../review/engine")
       .then(({ buildReview }) => {
         if (cancelled) return null;
-        return buildReview(source, { title: data.pr.title, description: data.pr.description }, selection.iteration, selection.compareTo);
+        // The preview (diff only) shows at once; grouping replaces it when the worker finishes.
+        return buildReview(source, { title: data.pr.title, description: data.pr.description }, selection.iteration, selection.compareTo, {
+          signal: abort.signal,
+          onPreview: (preview) => {
+            if (cancelled) return;
+            previewAt = Date.now();
+            setReview(preview);
+            setProgress({ fraction: 0, label: "Starting" });
+          },
+          onProgress: (p) => !cancelled && setProgress(p),
+        });
       })
-      .then((r) => !cancelled && setReview(r))
+      .then((r) => {
+        if (cancelled || !r) return;
+        setReview(r);
+        setProgress(null);
+        if (previewAt !== null && Date.now() - previewAt >= ANNOUNCE_AFTER_MS) announceGrouped(r);
+      })
       .catch((e: Error) => !cancelled && setReviewError(`Could not analyze changes: ${e.message}`))
       .finally(() => !cancelled && setReviewLoading(false));
     return () => {
       cancelled = true;
+      abort.abort();
     };
   }, [source, data?.pr.id, selection.iteration, selection.compareTo]);
 
@@ -101,6 +141,23 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       cancelled = true;
     };
   }, [source, data?.threads, selection.iteration, selection.compareTo]);
+
+  const showGrouped = () => {
+    setHoldPreview(false);
+    setView("grouped");
+    document.querySelector(".files-tab")?.scrollIntoView({ block: "start" });
+  };
+
+  function announceGrouped(r: ReviewModel) {
+    const concerns = r.result.groups.filter((g) => g.kind === "semantic").length;
+    const message = `Grouped ${plural(r.result.files.length, "file")} into ${plural(concerns, "concern")}.`;
+    const { tab, view } = live.current;
+    if (tab !== "files") setToast({ message, callToAction: "View files", onCallToAction: () => selectTab("files") });
+    else if (view === "grouped" && window.scrollY > KEEP_PREVIEW_SCROLL) {
+      setHoldPreview(true);
+      setToast({ message, callToAction: "Show grouped", onCallToAction: showGrouped });
+    } else setToast({ message });
+  }
 
   const people = React.useMemo(() => knownPeople(data, source.currentUser), [data, source.currentUser]);
   const names = React.useMemo(() => new Map(people.map((p) => [p.id, p.displayName])), [people]);
@@ -144,7 +201,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
             <HostLinks.Provider value={links}>
               <div className="review-page">
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
-                <PrHeader data={data} review={review} />
+                <PrHeader data={data} review={review} progress={progress} />
                 <TabBar className="pr-tabs" selectedTabId={tab} onSelectedTabChanged={(id) => selectTab(id as TabId)} tabSize={TabSize.Tall}>
                   <Tab id="overview" name="Overview" />
                   <Tab id="files" name="Files" badgeCount={review?.result.files.length} />
@@ -164,6 +221,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                     />
                   )}
                   {tab === "files" && (
+                    <React.Suspense fallback={<div className="loading">Loading diff renderer…</div>}>
                     <FilesTab
                       review={review}
                       loading={reviewLoading}
@@ -177,10 +235,15 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       mode={mode}
                       onMode={setMode}
                       focusGroup={focusGroup}
+                      progress={progress}
+                      holdPreview={holdPreview}
+                      onShowGrouped={showGrouped}
                     />
+                    </React.Suspense>
                   )}
                   {tab === "commits" && <CommitsTab data={data} />}
                 </main>
+                {toast && <TimedToast key={toast.message} spec={toast} onDone={() => setToast(null)} />}
               </div>
             </HostLinks.Provider>
           </MentionProvider>
@@ -235,13 +298,36 @@ const STATUS: Record<string, { label: string; icon: string; className: string }>
   abandoned: { label: "Abandoned", icon: "BranchRequestClosed", className: "status-abandoned" },
 };
 
-const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null }> = ({ data: { pr }, review }) => {
+/** An azure-devops-ui toast that fades out on its own after a few seconds. */
+const TimedToast: React.FC<{ spec: ToastSpec; onDone: () => void }> = ({ spec, onDone }) => {
+  const ref = React.useRef<Toast>(null);
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (ref.current) ref.current.fadeOut().promise.then(onDone, onDone);
+      else onDone();
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <Toast
+      ref={ref}
+      message={spec.message}
+      callToAction={spec.callToAction}
+      onCallToActionClick={() => {
+        spec.onCallToAction?.();
+        onDone();
+      }}
+    />
+  );
+};
+
+const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data: { pr }, review, progress }) => {
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
   const status = STATUS[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const todo = "Completion arrives in milestone 3";
   const stats = review ? diffStats(review) : null;
-  const groups = review?.result.groups.filter((g) => g.kind === "semantic").length;
+  const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : undefined;
   return (
     <header className="pr-header">
       <div className="pr-title-row">
@@ -287,8 +373,14 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null }> = ({ 
         </span>
         {stats && (
           <span className="meta-stats">
-            {plural(stats.files, "file")} · <span className="adds">+{stats.adds}</span> <span className="dels">−{stats.dels}</span>
+            {plural(stats.files, "file")} · <span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
             {groups !== undefined && <> · {plural(groups, "concern")}</>}
+            {progress && (
+              <>
+                {" · "}
+                <GroupingStatus progress={progress} />
+              </>
+            )}
           </span>
         )}
       </div>

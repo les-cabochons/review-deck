@@ -18,6 +18,37 @@ export type Signal = (a: HunkInfo, b: HunkInfo, ctx: ScoringContext) => SignalSc
 
 const symbolWeight = (s: string, ctx: ScoringContext) => 1 / Math.sqrt(Math.max(1, (ctx.symbolDf.get(s) ?? 1) - 1));
 
+/*
+ * Signals run for every hunk pair (O(n²): ~5M calls for a 3,000-hunk PR), so anything that depends
+ * on one hunk alone is computed once and cached here. The arithmetic is unchanged.
+ */
+function memo<K extends object, V>(compute: (key: K) => V): (key: K) => V {
+  const cache = new WeakMap<K, V>();
+  return (key) => {
+    let value = cache.get(key);
+    if (value === undefined && !cache.has(key)) cache.set(key, (value = compute(key)));
+    return value as V;
+  };
+}
+
+/** Per-context caches (IDF depends on the PR's token counts). */
+const lexicalCache = memo((ctx: ScoringContext) => {
+  const idfs = new Map<string, number>();
+  const idf = (t: string) => {
+    let v = idfs.get(t);
+    if (v === undefined) idfs.set(t, (v = Math.log(1 + ctx.hunkCount / (ctx.tokenDf.get(t) ?? 1))));
+    return v;
+  };
+  return { idf, total: memo((h: HunkInfo) => [...h.tokens].reduce((acc, t) => acc + idf(t), 0)) };
+});
+
+const codeModules = memo((h: HunkInfo) => [h.file.newPath, h.file.oldPath].filter((p): p is string => !!p).map(stripExtension));
+const usedSymbols = memo((h: HunkInfo) => new Set([...h.references, ...h.defines]));
+const directory = memo((h: HunkInfo) => {
+  const dir = dirname(logicalModule(h.file.path));
+  return { dir, top: dir.split("/")[0] };
+});
+
 /** One hunk defines/changes a symbol the other references (or both change the same symbol). */
 export const structural: Signal = (a, b, ctx) => {
   const evidence: string[] = [];
@@ -44,10 +75,9 @@ export const structural: Signal = (a, b, ctx) => {
 export const testPairing: Signal = (a, b, ctx) => {
   if (a.isTest === b.isTest) return null;
   const [test, code] = a.isTest ? [a, b] : [b, a];
-  const codeModules = [code.file.newPath, code.file.oldPath].filter((p): p is string => !!p).map(stripExtension);
-  const imported = codeModules.find((m) => test.fileImports.has(m));
+  const imported = codeModules(code).find((m) => test.fileImports.has(m));
   if (!imported) return null;
-  const used = new Set([...test.references, ...test.defines]);
+  const used = usedSymbols(test);
   const direct = [...code.defines].filter((s) => used.has(s));
   if (direct.length > 0) return { score: 1, evidence: [`test uses ${unique(direct).join(", ")}`] };
   const indirect = [...code.impacts].filter((s) => used.has(s));
@@ -59,12 +89,12 @@ export const testPairing: Signal = (a, b, ctx) => {
 
 /** IDF-weighted overlap of identifiers and string literals on changed lines. */
 export const lexical: Signal = (a, b, ctx) => {
-  const idf = (t: string) => Math.log(1 + ctx.hunkCount / (ctx.tokenDf.get(t) ?? 1));
-  const total = (s: Set<string>) => [...s].reduce((acc, t) => acc + idf(t), 0);
-  const shared = [...a.tokens].filter((t) => b.tokens.has(t));
+  const { idf, total } = lexicalCache(ctx);
+  const shared: string[] = [];
+  for (const t of a.tokens) if (b.tokens.has(t)) shared.push(t);
   if (shared.length === 0) return null;
   // Geometric mean, not min: a 2-token hunk sharing 1 token with a 20-token hunk is weak evidence.
-  const denom = Math.sqrt(total(a.tokens) * total(b.tokens));
+  const denom = Math.sqrt(total(a) * total(b));
   if (denom === 0) return null;
   const score = shared.reduce((acc, t) => acc + idf(t), 0) / denom;
   const top = shared.sort((x, y) => idf(y) - idf(x)).slice(0, 6);
@@ -86,12 +116,10 @@ export const semantic: Signal = (a, b, ctx) => {
 /** Weak tiebreaker: same file > same (logical) directory > shared top-level directory. */
 export const path: Signal = (a, b) => {
   if (a.file.path === b.file.path) return { score: 1, evidence: ["same file"] };
-  const da = dirname(logicalModule(a.file.path));
-  const db = dirname(logicalModule(b.file.path));
-  if (da === db) return { score: 0.6, evidence: [`same dir ${da || "/"}`] };
-  const pa = da.split("/");
-  const pb = db.split("/");
-  if (pa[0] && pa[0] === pb[0]) return { score: 0.3, evidence: [`under ${pa[0]}/`] };
+  const da = directory(a);
+  const db = directory(b);
+  if (da.dir === db.dir) return { score: 0.6, evidence: [`same dir ${da.dir || "/"}`] };
+  if (da.top && da.top === db.top) return { score: 0.3, evidence: [`under ${da.top}/`] };
   return null;
 };
 

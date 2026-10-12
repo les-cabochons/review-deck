@@ -28,13 +28,24 @@ const grammars = dirname(require.resolve("tree-sitter-typescript/package.json"))
 for (const g of ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"]) cpSync(join(grammars, g), join(assets, g));
 
 const options = {
-  entryPoints: { review: join(here, "src", "index.ts"), action: join(here, "src", "action.ts") },
+  entryPoints: {
+    review: join(here, "src", "index.ts"),
+    action: join(here, "src", "action.ts"),
+    // Loaded by src/review/engine.ts as new URL("./review-worker.js", import.meta.url).
+    "review-worker": join(here, "src", "review", "worker.ts"),
+  },
   outdir: dist,
   bundle: true,
   format: "esm",
   splitting: true,
   target: "es2022",
   platform: "browser",
+  plugins: [{
+    name: "pierre-local-highlighter",
+    setup(build) {
+      build.onResolve({ filter: /^shiki$/ }, () => ({ path: join(here, "src/ui/pierre/shiki.ts") }));
+    },
+  }],
   sourcemap: serve ? "inline" : "linked",
   minify: !serve,
   loader: { ".woff": "file", ".woff2": "file", ".ttf": "file", ".svg": "file", ".png": "file" },

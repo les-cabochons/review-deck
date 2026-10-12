@@ -2,22 +2,19 @@ import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import type { FileDiff, Group, HunkInfo } from "../../../src/core/types";
 import type { Iteration, Thread } from "../data/model";
-import type { ReviewModel } from "../review/engine";
-import { type DiffMode, DiffHunk, type ThreadIndex } from "./DiffHunk";
+import type { AnalysisProgress, ReviewModel } from "../review/engine";
+import { type DiffMode, DiffHunk, estimateHunkHeight, type ThreadIndex } from "./DiffHunk";
 import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
-import { DropdownButton } from "./controls";
+import { DropdownButton, ToggleButton } from "./controls";
+import { GroupingStatus } from "./GroupingStatus";
 import { cx, plural } from "./util";
+import { PierreTree } from "./pierre/PierreTree";
+import { LazyMount, LazyRoot } from "./LazyMount";
+import { groupColor } from "./groupColors";
 
 export type FileView = "grouped" | "alpha";
-
-export const GROUP_COLORS = ["#0078d4", "#d97706", "#059669", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#dc2626"];
-
-export function groupColor(groups: Group[], g: Group): string {
-  if (g.kind !== "semantic") return "#8a8886";
-  return GROUP_COLORS[groups.filter((x) => x.kind === "semantic").indexOf(g) % GROUP_COLORS.length];
-}
 
 interface Props {
   review: ReviewModel | null;
@@ -33,36 +30,79 @@ interface Props {
   onMode: (m: DiffMode) => void;
   /** Scroll target requested by another tab (group id). */
   focusGroup?: string | null;
+  /** Grouping progress while the worker runs; null once done. */
+  progress: AnalysisProgress | null;
+  /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
+  holdPreview: boolean;
+  onShowGrouped: () => void;
 }
 
 export const FilesTab: React.FC<Props> = (props) => {
   const { review, view, mode } = props;
   const fileThreads = React.useMemo(() => indexThreads(props.threads), [props.threads]);
+  const commentable = React.useMemo(() => new Set(review?.changes.filter((c) => c.changeTrackingId).map((c) => c.path)), [review]);
+  // Groups exist only once analysis finishes; until then the diff is shown A–Z.
+  const shownView: FileView = review?.analyzed && !props.holdPreview ? view : "alpha";
+  const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : 0;
 
   React.useEffect(() => {
-    if (props.focusGroup && review) document.getElementById(`group-${props.focusGroup}`)?.scrollIntoView({ block: "start" });
+    if (props.focusGroup && review) scrollToId(`group-${props.focusGroup}`);
   }, [props.focusGroup, review]);
 
   return (
     <div className="files-tab">
-      <Toolbar {...props} />
+      {/* The toolbar shows what's on screen; picking "Grouped" while held switches over. */}
+      <Toolbar
+        {...props}
+        view={props.holdPreview ? "alpha" : view}
+        onView={(v) => (v === "grouped" && props.holdPreview ? props.onShowGrouped() : props.onView(v))}
+        ready={props.holdPreview && view === "grouped" ? groups : null}
+      />
       {props.error && <div className="error-box">{props.error}</div>}
-      {!review && props.error ? null : !review || props.loading ? (
-        <div className="loading">Analyzing changes…</div>
+      {!review && props.error ? null : !review ? (
+        <div className="loading">Loading changes…</div>
       ) : (
         <LineCommentContext.Provider
           value={{
             canComment: (path) =>
               review.comparison.iteration === props.selection.iteration &&
               review.comparison.compareTo === props.selection.compareTo &&
-              !!review.changes.find((c) => c.path === path)?.changeTrackingId,
+              commentable.has(path),
             toThread: (file, content) => lineThreadInput(review, props.selection, file, content),
           }}
         >
+          {!review.analyzed && props.progress && (
+            <div className="analyzing-note" role="status">
+              <div className="analyzing-text">
+                <span className="spinner" aria-hidden="true" />
+                <span>
+                  <strong>Grouping {plural(review.result.files.length, "file")} by concern…</strong> {props.progress.label}. Showing files A–Z
+                  until it's done.
+                </span>
+                <span className="analyzing-percent">{Math.round(props.progress.fraction * 100)}%</span>
+              </div>
+              <div className="progress-track" aria-hidden="true">
+                <div className="progress-fill" style={{ width: `${Math.round(props.progress.fraction * 100)}%` }} />
+              </div>
+            </div>
+          )}
+          {review.analyzed && props.holdPreview && view === "grouped" && (
+            <div className="analyzing-note ready" role="status">
+              <div className="analyzing-text">
+                <Icon iconName="CheckMark" />
+                <span>
+                  <strong>Grouping is done:</strong> {plural(groups, "concern")}. You're still on the A–Z list so you don't lose your place.
+                </span>
+                <button className="link-button" onClick={props.onShowGrouped}>
+                  Show grouped
+                </button>
+              </div>
+            </div>
+          )}
           <div className="files-layout">
-            <Navigator review={review} view={view} />
+            <Navigator review={review} view={shownView} />
             <div className="files-content">
-              {view === "grouped" ? (
+              {shownView === "grouped" ? (
                 <GroupedView review={review} mode={mode} fileThreads={fileThreads} />
               ) : (
                 <AlphaView review={review} mode={mode} fileThreads={fileThreads} />
@@ -75,28 +115,28 @@ export const FilesTab: React.FC<Props> = (props) => {
   );
 };
 
-const Toolbar: React.FC<Props> = ({ review, iterations, selection, onSelection, view, onView, mode, onMode }) => {
+/** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
+const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iterations, selection, onSelection, view, onView, mode, onMode, progress, ready, onShowGrouped }) => {
   const { disabled } = useReviewActions();
   const stats = review ? diffStats(review) : null;
+  const grouping = !!review && !review.analyzed;
   const latest = iterations.at(-1)?.id;
   const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
   return (
     <div className="files-toolbar">
-      <DropdownButton
-        text={view === "grouped" ? "Grouped by concern" : "Files A–Z"}
-        icon={view === "grouped" ? "ViewListGroup" : "SortLines"}
-        options={[
-          { id: "grouped", text: "Grouped by concern", secondaryText: "Semantic", icon: "ViewListGroup", checked: view === "grouped", onSelect: () => onView("grouped") },
-          { id: "alpha", text: "Files A–Z", icon: "SortLines", checked: view === "alpha", onSelect: () => onView("alpha") },
-        ]}
+      <ToggleButton
+        text="Group by concern"
+        icon="ViewListGroup"
+        pressed={view === "grouped"}
+        onToggle={(on) => onView(on ? "grouped" : "alpha")}
+        tooltip={view === "grouped" ? (grouping ? "Grouping is still running. Click for files A–Z" : "Click for files A–Z") : "Group changes by concern"}
       />
-      <DropdownButton
-        text={mode === "inline" ? "Inline" : "Side by side"}
-        icon={mode === "inline" ? "DiffInline" : "DiffSideBySide"}
-        options={[
-          { id: "inline", text: "Inline", icon: "DiffInline", checked: mode === "inline", onSelect: () => onMode("inline") },
-          { id: "split", text: "Side by side", icon: "DiffSideBySide", checked: mode === "split", onSelect: () => onMode("split") },
-        ]}
+      <ToggleButton
+        text="Side by side"
+        icon="DiffSideBySide"
+        pressed={mode === "split"}
+        onToggle={(on) => onMode(on ? "split" : "inline")}
+        tooltip={mode === "split" ? "Click for an inline diff" : "Show old and new side by side"}
       />
       <span className="compare">
         <DropdownButton
@@ -125,9 +165,19 @@ const Toolbar: React.FC<Props> = ({ review, iterations, selection, onSelection, 
           }))}
         />
       </span>
+      {/* The toolbar is sticky, so progress stays visible however far the reader scrolls. */}
+      {progress && <GroupingStatus progress={progress} />}
+      {ready !== null && (
+        <span className="grouping-status ready" role="status">
+          <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}
+          <button className="link-button" onClick={onShowGrouped}>
+            Show grouped
+          </button>
+        </span>
+      )}
       {stats && (
         <span className="stats">
-          {plural(stats.files, "file")} · <span className="adds">+{stats.adds}</span> <span className="dels">−{stats.dels}</span>
+          {plural(stats.files, "file")} · <span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
         </span>
       )}
     </div>
@@ -136,12 +186,21 @@ const Toolbar: React.FC<Props> = ({ review, iterations, selection, onSelection, 
 
 // ---------- navigator ----------
 
+/** Scrolls to an element, then again once lazily mounted content above it has settled. */
+function scrollToId(id: string) {
+  const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
+  go();
+  setTimeout(go, 300);
+}
+
 const Navigator: React.FC<{ review: ReviewModel; view: FileView }> = ({ review, view }) => {
   const { result } = review;
-  const go = (id: string) => document.getElementById(id)?.scrollIntoView({ block: "start" });
+  const go = scrollToId;
+  const [nav, setNav] = React.useState<HTMLElement | null>(null);
   if (view === "grouped") {
     return (
-      <nav className="navigator">
+      <nav className="navigator" ref={setNav}>
+        <LazyRoot.Provider value={nav}>
         {result.groups.map((g, i) => (
           <div key={g.id} className="nav-group">
             <button className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
@@ -151,35 +210,40 @@ const Navigator: React.FC<{ review: ReviewModel; view: FileView }> = ({ review, 
               <span className="text">{g.title}</span>
               <span className="count">{g.hunkIds.length}</span>
             </button>
-            {g.kind === "semantic" &&
-              unique(g.hunkIds.map((id) => result.hunks.get(id)!.file.path)).map((path) => (
-                <button key={path} className="nav-file" onClick={() => go(`hunk-${g.hunkIds.find((h) => h.startsWith(`${path}#`))}`)}>
-                  {basename(path)}
-                </button>
-              ))}
+            <GroupTree review={review} group={g} />
           </div>
         ))}
+        </LazyRoot.Provider>
       </nav>
     );
   }
   const files = [...result.files].sort((a, b) => a.path.localeCompare(b.path));
-  let lastDir = "";
   return (
     <nav className="navigator">
-      {files.map((f) => {
-        const dir = dirname(f.path);
-        const header = dir !== lastDir ? <div className="nav-dir">{dir || "/"}</div> : null;
-        lastDir = dir;
-        return (
-          <React.Fragment key={f.path}>
-            {header}
-            <button className="nav-file" onClick={() => go(`file-${f.path}`)}>
-              <ChangeBadge file={f} /> {basename(f.path)}
-            </button>
-          </React.Fragment>
-        );
-      })}
+      <PierreTree files={files} maxHeight={Infinity} onSelect={path => go(`file-${path}`)} />
     </nav>
+  );
+};
+
+const GroupTree: React.FC<{ review: ReviewModel; group: Group }> = ({ review, group }) => {
+  const { result } = review;
+  const files = React.useMemo(() => {
+    const paths = new Set(group.hunkIds.map((id) => result.hunks.get(id)!.file.path));
+    return result.files.filter((file) => paths.has(file.path));
+  }, [result, group]);
+  // Rough tree height before it renders: a row per file and per folder, capped like the tree itself.
+  const rows = files.length + new Set(files.map((f) => dirname(f.path))).size;
+  return (
+    <LazyMount estimate={Math.min(360, rows * 24 + 8)}>
+      <PierreTree
+        files={files}
+        onSelect={(path) => {
+          const section = document.getElementById(`group-${group.id}`);
+          section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
+          requestAnimationFrame(() => scrollToId(`hunk-${group.hunkIds.find((id) => result.hunks.get(id)!.file.path === path)}`));
+        }}
+      />
+    </LazyMount>
   );
 };
 
@@ -252,6 +316,8 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: ThreadIndex 
   const dels = info.hunk.lines.filter((l) => l.kind === "del").length;
   return (
     <article className="hunk-card" id={`hunk-${info.hunk.id}`}>
+      {/* The article stays as a scroll target; its contents mount near the viewport. */}
+      <LazyMount estimate={FILE_HEADER_HEIGHT + estimateHunkHeight(info.hunk, mode)}>
       <header className="file-header">
         <ChangeBadge file={info.file} />
         <FilePath path={info.file.path} from={info.file.status === "renamed" ? info.file.oldPath : null} />
@@ -260,7 +326,8 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: ThreadIndex 
         <span className="spacer" />
         <span className="adds">+{adds}</span> <span className="dels">−{dels}</span>
       </header>
-      <DiffHunk hunk={info.hunk} mode={mode} threads={threads} symbol={info.symbol} filePath={info.file.path} />
+      <DiffHunk file={info.file} hunk={info.hunk} mode={mode} threads={threads} symbol={info.symbol} />
+      </LazyMount>
     </article>
   );
 };
@@ -280,6 +347,7 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
         const dels = f.hunks.reduce((n, h) => n + h.lines.filter((l) => l.kind === "del").length, 0);
         return (
           <article key={f.path} className="file-card" id={`file-${f.path}`}>
+            <LazyMount estimate={FILE_HEADER_HEIGHT + f.hunks.reduce((n, h) => n + estimateHunkHeight(h, mode), 0)}>
             <header className="file-header">
               <ChangeBadge file={f} />
               <FilePath path={f.path} from={f.status === "renamed" ? f.oldPath : null} />
@@ -298,8 +366,9 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
               <ThreadCard key={t.id} thread={t} fileLabel={`line ${t.file!.line} (outside the diff)`} compact />
             ))}
             {f.hunks.map((h) => (
-              <DiffHunk key={h.id} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} filePath={f.path} />
+              <DiffHunk key={h.id} file={f} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} />
             ))}
+            </LazyMount>
           </article>
         );
       })}
@@ -308,6 +377,8 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
 };
 
 // ---------- helpers ----------
+
+const FILE_HEADER_HEIGHT = 38;
 
 const ChangeBadge: React.FC<{ file: FileDiff }> = ({ file }) => {
   const letter = { added: "A", deleted: "D", renamed: "R", modified: "M" }[file.status];
@@ -377,6 +448,5 @@ function diffStats(review: ReviewModel) {
   return { files: review.result.files.length, adds, dels };
 }
 
-const unique = <T,>(xs: T[]) => [...new Set(xs)];
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
 const dirname = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");

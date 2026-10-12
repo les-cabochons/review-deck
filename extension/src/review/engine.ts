@@ -1,84 +1,144 @@
-import { structuredPatch } from "diff";
-import { mergeConfig } from "../../../src/core/config";
-import type { FileProvider, ReviewResult } from "../../../src/core/types";
-import { SyntaxParsers } from "../../../src/parse/treesitter";
-import { runPipeline } from "../../../src/pipeline";
+import type { ReviewResult } from "../../../src/core/types";
+import { parseDiff } from "../../../src/diff/parse";
 import type { FileChange, PrSource } from "../data/model";
+import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 
-/** Old/new text for every changed file, keyed by repo path. `null` = absent on that side. */
-export interface FileContents {
-  old: string | null;
-  new: string | null;
-  binary: boolean;
-  tooLarge: boolean;
-}
+export type { AnalysisProgress, FileContents } from "./analysis";
 
 export interface ReviewModel {
   comparison: { iteration: number; compareTo: number };
   result: ReviewResult;
   changes: FileChange[];
   contents: Map<string, FileContents>;
+  /** False for the preview shown while the semantic pipeline runs: files and hunks only, no groups. */
+  analyzed: boolean;
 }
 
+/** Git treats text containing a NUL character as binary. */
+const NUL = String.fromCharCode(0);
 const MAX_DIFF_LINES = 20_000;
+/** Parallel blob requests; Azure DevOps throttles bursts, and a huge PR can have thousands of blobs. */
+const FETCH_CONCURRENCY = 16;
 
-let parsersPromise: Promise<SyntaxParsers> | null = null;
-
-/** tree-sitter WASM files ship in ../assets relative to the page (see extension/build.mjs). */
-function parsers(): Promise<SyntaxParsers> {
-  const asset = (name: string) => new URL(`../assets/${name}`, document.baseURI).toString();
-  parsersPromise ??= SyntaxParsers.create(
-    { typescript: asset("tree-sitter-typescript.wasm"), tsx: asset("tree-sitter-tsx.wasm") },
-    { locateFile: (file: string) => asset(file) },
-  );
-  return parsersPromise;
+export interface BuildOptions {
+  /** Called once the diff is ready, before the semantic analysis (slow on huge PRs) finishes. */
+  onPreview?: (model: ReviewModel) => void;
+  /** Grouping progress, while the worker runs. */
+  onProgress?: (progress: AnalysisProgress) => void;
+  signal?: AbortSignal;
 }
 
 /**
- * Loads both sides of every changed file, builds a git-style unified diff, and runs the semantic
- * pipeline on it (structural signals + heuristic titles; embeddings and LLM titles are Node-only for now).
+ * Loads both sides of every changed file, then diffs them and runs the semantic pipeline
+ * (structural signals + heuristic titles; embeddings and LLM titles are Node-only for now).
+ * Diffing and analysis run in a Web Worker so huge PRs don't freeze the page.
  */
 export async function buildReview(
   source: PrSource,
   meta: { title: string; description: string },
   iteration: number,
   compareTo: number,
+  options: BuildOptions = {},
 ): Promise<ReviewModel> {
+  const started = performance.now();
   const changes = await source.getChanges(iteration, compareTo);
   const contents = new Map<string, FileContents>();
-  await Promise.all(
-    changes.map(async (c) => {
+  await forEachLimited(
+    changes,
+    FETCH_CONCURRENCY,
+    async (c) => {
       const [oldText, newText] = await Promise.all([
         c.oldObjectId ? source.getBlob(c.oldObjectId) : Promise.resolve(null),
         c.newObjectId ? source.getBlob(c.newObjectId) : Promise.resolve(null),
       ]);
-      const binary = [oldText, newText].some((t) => t !== null && t.includes("\u0000"));
+      const binary = [oldText, newText].some((t) => t !== null && t.includes(NUL));
       const lines = Math.max(countLines(oldText), countLines(newText));
       contents.set(c.path, { old: oldText, new: newText, binary, tooLarge: lines > MAX_DIFF_LINES });
-    }),
-  );
-
-  const diff = changes.map((c) => fileDiff(c, contents.get(c.path)!)).join("");
-  const byPath = new Map<string, FileContents>();
-  for (const c of changes) {
-    byPath.set(`new:${c.path}`, contents.get(c.path)!);
-    if (c.originalPath) byPath.set(`old:${c.originalPath}`, contents.get(c.path)!);
-    else byPath.set(`old:${c.path}`, contents.get(c.path)!);
-  }
-  const files: FileProvider = {
-    async get(path, side) {
-      const entry = byPath.get(`${side}:${path}`);
-      if (!entry || entry.binary || entry.tooLarge) return null;
-      return side === "old" ? entry.old : entry.new;
     },
-  };
-
-  const result = await runPipeline(
-    { title: meta.title, description: meta.description, diff, files },
-    mergeConfig({ semantic: { enabled: false } }),
-    { parsers: await parsers() },
+    options.signal,
   );
-  return { result, changes, contents, comparison: { iteration, compareTo } };
+  const fetchMs = Math.round(performance.now() - started);
+  const comparison = { iteration, compareTo };
+
+  const job: AnalysisJob = { ...meta, changes, contents, assetBase: new URL("../assets/", document.baseURI).toString() };
+  const result = await runAnalysis(job, options.signal, (message) => {
+    if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
+    else if (message.type === "progress") options.onProgress?.(message.progress);
+  });
+  console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  return { result, changes, contents, comparison, analyzed: true };
+}
+
+/** Files and hunks straight from the diff (a few ms even for huge PRs), so the page can show them at once. */
+function previewResult(meta: { title: string; description: string }, diff: string): ReviewResult {
+  return {
+    ...meta,
+    files: parseDiff(diff),
+    hunks: new Map(),
+    pairs: [],
+    groups: [],
+    merges: [],
+    timings: {},
+    options: { semantic: false, titler: "none", weights: { structural: 0, testPairing: 0, lexical: 0, semantic: 0, path: 0 }, minEdgeWeight: 0 },
+    warnings: [],
+  };
+}
+
+/** Runs the job in review-worker.js; falls back to the page if the worker can't start. */
+function runAnalysis(
+  job: AnalysisJob,
+  signal: AbortSignal | undefined,
+  onUpdate: (message: Extract<AnalysisMessage, { type: "diff" | "progress" }>) => void,
+): Promise<ReviewResult> {
+  return new Promise<ReviewResult>((resolve, reject) => {
+    const receive = (message: AnalysisMessage) => {
+      if (message.type === "diff" || message.type === "progress") onUpdate(message);
+      else if (message.type === "result") resolve(message.result);
+      else reject(new Error(message.error));
+    };
+    const onPage = () => {
+      if (!signal?.aborted) import("./analysis").then(({ runJob }) => runJob(job, receive), reject);
+    };
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./review-worker.js", import.meta.url), { type: "module" });
+    } catch {
+      onPage();
+      return;
+    }
+    const stop = () => {
+      worker.terminate();
+      signal?.removeEventListener("abort", abort);
+    };
+    const abort = () => {
+      stop();
+      reject(new DOMException("Analysis cancelled", "AbortError"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    worker.onmessage = (e: MessageEvent<AnalysisMessage>) => {
+      if (e.data.type === "result" || e.data.type === "error") stop();
+      receive(e.data);
+    };
+    // Fires when the worker script can't load (missing file, blocked by CSP): do the work on the page.
+    worker.onerror = (e) => {
+      e.preventDefault();
+      stop();
+      console.warn("[semantic-pr] analysis worker unavailable, running on the page:", e.message);
+      onPage();
+    };
+    worker.postMessage(job);
+  });
+}
+
+async function forEachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>, signal?: AbortSignal): Promise<void> {
+  let next = 0;
+  const run = async () => {
+    while (next < items.length) {
+      signal?.throwIfAborted();
+      await fn(items[next++]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
 }
 
 function countLines(text: string | null): number {
@@ -86,31 +146,4 @@ function countLines(text: string | null): number {
   let n = 1;
   for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
   return n;
-}
-
-/** One file's section of a `git diff -M` style patch, so the shared diff parser can consume it. */
-function fileDiff(change: FileChange, content: FileContents): string {
-  const oldPath = change.originalPath ?? change.path;
-  const head = [`diff --git a/${oldPath} b/${change.path}`];
-  if (change.changeType === "add") head.push("new file mode 100644");
-  if (change.changeType === "delete") head.push("deleted file mode 100644");
-  if (change.changeType === "rename") {
-    head.push(`similarity index ${content.old === content.new ? 100 : 90}%`, `rename from ${oldPath}`, `rename to ${change.path}`);
-  }
-  if (content.binary || content.tooLarge) {
-    return `${[...head, `Binary files a/${oldPath} and b/${change.path} differ`].join("\n")}\n`;
-  }
-  if (content.old === content.new) return `${head.join("\n")}\n`;
-
-  const patch = structuredPatch(oldPath, change.path, content.old ?? "", content.new ?? "", "", "", { context: 3 });
-  const lines = [
-    ...head,
-    `--- ${change.changeType === "add" ? "/dev/null" : `a/${oldPath}`}`,
-    `+++ ${change.changeType === "delete" ? "/dev/null" : `b/${change.path}`}`,
-  ];
-  for (const h of patch.hunks) {
-    lines.push(`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`);
-    lines.push(...h.lines);
-  }
-  return `${lines.join("\n")}\n`;
 }

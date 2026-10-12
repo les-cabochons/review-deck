@@ -195,10 +195,14 @@ Run `just check` for both typechecks and the write regression tests.
   - Search and add reviewers, change required/optional status, remove reviewers,
     and add or remove tags. Vote as the signed-in user using any Azure DevOps vote option.
 - **Files:**
-  - Azure DevOps dropdown buttons: "Grouped by concern ▾" / "Files A–Z",
-    "Inline ▾" / "Side by side", and "Base ▾ → Update n ▾".
+  - Toolbar in Azure DevOps' style. "Group by concern" and "Side by side" are
+    toggle buttons: one click flips them, and they look pressed when on.
+    "Base ▾ → Update n ▾" are dropdowns, since they pick one of several updates.
   - Grouped (concern, rationale, hunks ordered definitions-first) or A–Z.
-  - Inline or side-by-side diffs with word-level highlights.
+  - Pierre Diffs (`@pierre/diffs`) renders inline or side-by-side diffs with
+    syntax highlighting and word-level highlights.
+  - Pierre Trees (`@pierre/trees`) provides file navigation with folders,
+    keyboard selection, file icons, and change badges in both views.
   - Existing comment threads shown under their lines.
   - Click a line number to comment on either side. Reply to threads and change
     their status in both the activity timeline and the diff.
@@ -234,7 +238,7 @@ threads remain resolved.
 Milestone 2 write checks used version `0.1.2`. Live testing exposed Azure DevOps reviewer PUT requests resetting omitted vote
 or requirement fields. The adapter now reads the current reviewer and sends both
 values. Reviewer search avatars also resolve against the organization URL.
-All 26 startup, adapter, and mock regression tests pass. An injected HTTP 403 confirmed
+All 37 startup, hub, editor, Pierre adapter, and mock regression tests pass. An injected HTTP 403 confirmed
 that the installed page retains rejected drafts and displays the server error.
 Actual organization permissions were unchanged. Test PR #1 has only one update
 and one README edit, so it cannot establish cross-update or rename behavior.
@@ -269,11 +273,51 @@ count submissions and diff analyses. The test page lives outside the packaged
   `PrSource` implementations are `adoSource.ts` (Azure DevOps REST via
   `azure-devops-extension-api`) and `mockSource.ts` (snapshot JSON).
 - **Diffing:** Azure DevOps doesn't return unified diffs, so
-  `src/review/engine.ts` fetches both blob versions per changed file, diffs
-  them with jsdiff, and runs the shared pipeline.
+  `src/review/engine.ts` fetches both blob versions per changed file (16
+  requests at a time), diffs them with jsdiff, and runs the shared pipeline.
+- **Large PRs:** the page stays responsive however big the PR is.
+  - Diffing and the pipeline run in a Web Worker (`dist/review-worker.js`,
+    from `src/review/worker.ts`). If the worker can't start, they run on the
+    page instead.
+  - The worker sends the diff first, so the Files tab shows it A–Z while
+    grouping runs.
+    - Progress shows in the PR header and the sticky Files toolbar
+    ("Grouping by concern… 42%"), with a progress bar above the list.
+    - When grouping finishes after more than 2 s, a toast says so.
+    - If you've scrolled into the A–Z list, the view doesn't switch under
+    you. The toast and toolbar offer "Show grouped" instead.
+  - Hunk cards, Pierre diffs and the navigator's group trees mount within
+    1,500px of the viewport and unmount beyond 5,000px (`ui/LazyMount.tsx`).
+    Placeholders keep the estimated or last measured height. Content holding
+    focus or a non-empty comment box is never unmounted.
+  - Hunks over 1,000 lines show a "Load diff" button unless they already have
+    comments.
+  - Measured on a synthetic 990-file, 3,090-hunk PR (`npx tsx
+    scripts/build-huge-mock.ts`, then open !99999), Chrome on a desktop:
+
+    | | Before | After |
+    |---|---|---|
+    | First diff on screen | 50 s | 2.4 s |
+    | Grouped by concern | 50 s | 18 s |
+    | Longest main-thread freeze | 26 s | 0.7 s |
+    | Pierre diffs mounted | 3,090 | ~12 |
+    | DOM nodes | 41k | 6.7k |
+    | JS heap | 722 MB | 136 MB |
+
+  - `npm run bench -- <snapshot>` times the pipeline in Node and prints a
+    fingerprint of its output. Optimizations must keep the fingerprint
+    unchanged.
 - **UI:** React 16 plus `azure-devops-ui` (Microsoft's own component
-  library), and a custom diff renderer, since comments must attach inside
-  semantically ordered hunks.
+  library). The framework-neutral APIs of `@pierre/diffs` and `@pierre/trees`
+  mount inside React wrappers. React portals attach comments, composers, and
+  pending drafts to Pierre's line annotations without losing review context.
+  Pierre's unused React bindings have scoped peer overrides to the host's
+  React version. Import the package roots, not `/react`.
+- **Highlighting:** Shiki's JavaScript engine and selected grammar chunks ship
+  in the extension. TS/TSX, JS/JSX, JSON/JSONC, Markdown, CSS, HTML, YAML, and
+  shell scripts have syntax highlighting. Other files render as text.
+  Pierre loads when the Files tab opens. No highlighting assets use a CDN.
+  Highlighting still runs on the page, as each diff mounts.
 - **Theme:** colors come from the host's theme variables (`SDK.init({
   applyTheme: true })`), so dark mode follows Azure DevOps.
 

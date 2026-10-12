@@ -2,7 +2,7 @@ import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import type { PrOverview, Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
-import { groupColor } from "./FilesTab";
+import { groupColor } from "./groupColors";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
@@ -196,8 +196,8 @@ const Side: React.FC<{ title: string; action?: string }> = ({ title, action, chi
 
 const SemanticSummary: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: string) => void }> = ({ review, onOpenGroup }) => (
   <Side title="Changes by concern">
-    {!review ? (
-      <p className="muted">Analyzing…</p>
+    {!review?.analyzed ? (
+      <p className="muted">Grouping by concern…</p>
     ) : (
       <ul className="summary-groups">
         {review.result.groups.map((g, i) => (

@@ -8,6 +8,7 @@
     "fixtures": "tsx scripts/build-fixtures.ts",
     "review": "tsx src/node/cli.ts",
     "eval": "tsx scripts/eval.ts",
+    "bench": "tsx extension/tests/bench-pipeline.ts",
     "debug": "tsx scripts/debug-pr.ts",
     "typecheck": "tsc --noEmit",
     "ext:mock": "tsx scripts/build-ado-mock.ts && tsx scripts/build-ado-mock-list.ts",
@@ -29,6 +30,9 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@pierre/diffs": "1.5.2",
+    "@pierre/trees": "1.0.0-beta.6",
+    "@shikijs/langs": "4.5.0",
     "@huggingface/transformers": "^4.3.1",
     "azure-devops-extension-api": "^5.279.1",
     "azure-devops-extension-sdk": "^4.2.0",
@@ -41,7 +45,13 @@
     "marked": "^18.1.0",
     "react": "^16.14.0",
     "react-dom": "^16.14.0",
+    "shiki": "4.5.0",
     "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.27.1"
+  },
+  "overrides": {
+    "@pierre/diffs": { "react": "$react", "react-dom": "$react-dom" },
+    "@pierre/trees": { "react": "$react", "react-dom": "$react-dom" },
+    "@pierre/theming": { "react": "$react", "react-dom": "$react-dom" }
   }
 }
