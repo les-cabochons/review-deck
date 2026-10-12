@@ -3,8 +3,10 @@ import louvainModule from "graphology-communities-louvain";
 import type { PipelineConfig } from "../core/config.js";
 import type { PairScore } from "../core/types.js";
 
-// CJS package: under NodeNext the default import is module.exports, typed as the module namespace.
-const louvain = louvainModule as unknown as typeof louvainModule.default;
+// CJS package: depending on the loader the default import is the function itself (Node, esbuild)
+// or a namespace with `.default`; typings also differ between NodeNext and Bundler resolution.
+type Louvain = (graph: UndirectedGraph, options: object) => Record<string, number>;
+const louvain = ((louvainModule as unknown as { default?: Louvain }).default ?? louvainModule) as unknown as Louvain;
 
 /** Clusters hunk IDs with Louvain on the weighted pair graph. Returns communities (largest first). */
 export function clusterHunks(ids: string[], pairs: PairScore[], config: PipelineConfig): string[][] {

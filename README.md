@@ -108,6 +108,74 @@ Example LLM-titled groups for t3code#17901 (104 hunks → 5 groups):
 "Add GitCafe token setting ahead of CAFE_TOKEN" (26),
 "Replace patched host fields per source control host" (3).
 
+## Azure DevOps extension (milestone 1: read path)
+
+`extension/` is a full-page pull request review for Azure DevOps. It has an
+Overview / Files / Commits layout like the native PR page; Files is
+**semantically grouped by default**, with an A–Z toggle and inline /
+side-by-side diffs. It reuses the pipeline above in the browser (tree-sitter
+WASM, structural signals, heuristic titles).
+
+```sh
+npm run ext:mock        # build mock snapshots from the real t3code PRs (uses gh + the blobless clone)
+npm run ext:dev         # http://127.0.0.1:5173/dist/review.html?mock=t3code-17901
+npm run ext:build       # production bundle -> extension/dist + extension/assets
+npm run ext:package     # .vsix (set "publisher" in extension/vss-extension.json first)
+npm run ext:typecheck
+```
+
+**What's there:**
+- **Header:** title, status, author, source → target branch.
+- **Overview:**
+  - The description (markdown) and a GitHub-style timeline: updates with
+    their commits, votes, and comment threads (general and file-anchored)
+    with replies and status.
+  - A sidebar with a semantic summary ("Changes by concern"; click to jump
+    to a group), reviewers and votes, required/optional checks (policy
+    evaluations), tags and work items.
+- **Files:**
+  - Grouped (concern, rationale, hunks ordered definitions-first) or A–Z.
+  - Inline or side-by-side diffs with word-level highlights.
+  - Existing comment threads shown under their lines.
+  - An update picker (compare base/update N → update M), a navigator, and
+    change stats.
+- **Commits:** commits grouped by update.
+- **Entry points:** a "PR Review" hub under Repos, and an "Open in semantic
+  review" item in the PR's action menu, which opens the hub with
+  `?pr=<id>&repo=<id>`.
+
+**Not yet:**
+- **Write actions** (milestone 2): vote, complete/abandon, reviewers, tags,
+  comments and replies, thread status, description edits. The buttons are
+  shown but disabled.
+- **Viewed-file state, auto-complete, merge options:** milestone 3.
+- **Stack navigation:** later.
+- **Syntax highlighting and "expand context".**
+- **Embeddings and LLM titles in the browser** (structural + heuristic only
+  for now).
+- **Comment line tracking across updates.** Threads are placed at their
+  stored line.
+
+**How it's built:**
+- **Data:** `src/data/model.ts` defines the normalized view model; the
+  `PrSource` implementations are `adoSource.ts` (Azure DevOps REST via
+  `azure-devops-extension-api`) and `mockSource.ts` (snapshot JSON).
+- **Diffing:** Azure DevOps doesn't return unified diffs, so
+  `src/review/engine.ts` fetches both blob versions per changed file, diffs
+  them with jsdiff, and runs the shared pipeline.
+- **UI:** React 16 plus `azure-devops-ui` (Microsoft's own component
+  library), and a custom diff renderer, since comments must attach inside
+  semantically ordered hunks.
+- **Theme:** colors come from the host's theme variables (`SDK.init({
+  applyTheme: true })`), so dark mode follows Azure DevOps.
+
+**Installing in an organization:**
+1. Create a publisher on the Visual Studio Marketplace.
+2. Put its ID in `extension/vss-extension.json` and run `npm run ext:package`.
+3. Upload the `.vsix` as a private extension, share it with your
+   organization, and install it.
+4. Open a PR, then choose ⋯ → "Open in semantic review".
+
 ## Pipeline
 
 ```

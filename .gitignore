@@ -1,3 +1,7 @@
 node_modules/
 out/
 .cache/
+extension/dev-data/
+extension/dist/
+*.vsix
+extension/assets/

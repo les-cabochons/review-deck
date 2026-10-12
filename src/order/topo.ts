@@ -55,5 +55,12 @@ export function orderGroups(groups: Group[], hunks: Map<string, HunkInfo>): Grou
     return [...out];
   };
   const ordered = topoSort(semantic, groupDeps, (a, b) => b.hunkIds.length - a.hunkIds.length || a.id.localeCompare(b.id));
-  return [...ordered, ...groups.filter((g) => g.kind === "misc"), ...groups.filter((g) => g.kind === "mechanical")];
+  // Groups with no parsed code (docs, config) read best after the code they describe.
+  const hasCode = (g: Group) => g.hunkIds.some((id) => hunks.get(id)!.language !== null);
+  return [
+    ...ordered.filter(hasCode),
+    ...ordered.filter((g) => !hasCode(g)),
+    ...groups.filter((g) => g.kind === "misc"),
+    ...groups.filter((g) => g.kind === "mechanical"),
+  ];
 }

@@ -1,0 +1,71 @@
+{
+  "manifestVersion": 1,
+  "id": "semantic-pr-review",
+  "publisher": "REPLACE-WITH-YOUR-PUBLISHER-ID",
+  "version": "0.1.0",
+  "name": "Semantic PR Review",
+  "description": "A pull request review page that groups changes by concern instead of by file.",
+  "public": false,
+  "categories": [
+    "Azure Repos"
+  ],
+  "targets": [
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
+  ],
+  "scopes": [
+    "vso.code_write",
+    "vso.work"
+  ],
+  "contributions": [
+    {
+      "id": "review-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Full-page pull request review with semantic grouping.",
+      "targets": [
+        "ms.vss-code-web.code-hub-group"
+      ],
+      "properties": {
+        "name": "PR Review",
+        "uri": "dist/review.html",
+        "order": 100
+      }
+    },
+    {
+      "id": "open-review-action",
+      "type": "ms.vss-web.action",
+      "description": "Opens the current pull request in the semantic review page.",
+      "targets": [
+        "ms.vss-code-web.pull-request-action-menu"
+      ],
+      "properties": {
+        "text": "Open in semantic review",
+        "title": "Open this pull request in the semantic review page",
+        "uri": "dist/action.html",
+        "registeredObjectId": "open-review-action"
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "dist",
+      "addressable": true
+    },
+    {
+      "path": "assets/web-tree-sitter.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-typescript.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-tsx.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    }
+  ]
+}
