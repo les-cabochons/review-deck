@@ -1,0 +1,69 @@
+# Checks every push and PR; on main, also publishes the Azure DevOps extension privately and
+# shares it with the test organization. Needs the MARKETPLACE_TOKEN repository secret (a Marketplace
+# personal access token with Marketplace > Manage on "All accessible organizations").
+name: Extension
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PUBLISHER: Cabochonio
+  SHARE_WITH: cabochons
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run ext:typecheck
+      - run: npm run ext:test
+      - run: npm run ext:build
+
+  publish:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # One publish at a time; the Marketplace rejects out-of-order versions.
+    concurrency: marketplace-publish
+    env:
+      MARKETPLACE_TOKEN: ${{ secrets.MARKETPLACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run ext:build
+      # The Marketplace needs a new version per upload: major.minor from the manifest, patch = run number.
+      - name: Version
+        id: version
+        run: |
+          base=$(node -p "require('./extension/vss-extension.json').version.split('.').slice(0, 2).join('.')")
+          echo "version=$base.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Package
+        run: >
+          npx tfx extension create --root extension --manifest-globs vss-extension.json
+          --override '{"version": "${{ steps.version.outputs.version }}"}'
+          --output-path extension/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ steps.version.outputs.version }}
+          path: extension/*.vsix
+      - name: Publish and share with ${{ env.SHARE_WITH }}
+        if: env.MARKETPLACE_TOKEN != ''
+        run: >
+          npx tfx extension publish --vsix extension/${{ env.PUBLISHER }}.semantic-pr-review-${{ steps.version.outputs.version }}.vsix
+          --share-with ${{ env.SHARE_WITH }} --token "$MARKETPLACE_TOKEN" --no-prompt
+      - name: Token missing
+        if: env.MARKETPLACE_TOKEN == ''
+        run: echo "::warning::MARKETPLACE_TOKEN secret is not set; packaged ${{ steps.version.outputs.version }} as an artifact but did not publish."

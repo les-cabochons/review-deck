@@ -321,6 +321,16 @@ count submissions and diff analyses. The test page lives outside the packaged
 - **Theme:** colors come from the host's theme variables (`SDK.init({
   applyTheme: true })`), so dark mode follows Azure DevOps.
 
+**CI publishing:** `.github/workflows/extension.yml` runs both typechecks, the
+extension tests and a build on every push and pull request.
+- On `main`, it also publishes the extension privately and shares it with the
+  `cabochons` organization.
+- Each upload is version `major.minor.<run number>`; major.minor comes from
+  `vss-extension.json`. Bump major.minor there to start a new line.
+- Publishing needs the `MARKETPLACE_TOKEN` repository secret: a Marketplace
+  personal access token with *Marketplace › Manage* on *All accessible
+  organizations*. Without it, the run still uploads the `.vsix` as an artifact.
+
 **Installing in an organization:**
 1. Create a publisher on the Visual Studio Marketplace.
 2. Put its ID in `extension/vss-extension.json` and run `npm run ext:package`.
