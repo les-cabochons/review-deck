@@ -3,6 +3,11 @@ import * as React from "react";
 import type { DiffLine, Hunk } from "../../../src/core/types";
 import type { Thread } from "../data/model";
 import { ThreadCard } from "./ThreadCard";
+import { CommentComposer } from "./CommentComposer";
+import { LineCommentContext } from "./LineComments";
+import { useReviewActions } from "./ReviewActions";
+import { DraftCard } from "./review/DraftCard";
+import { type Draft, usePendingReview } from "./review/PendingReview";
 
 export type DiffMode = "inline" | "split";
 
@@ -10,6 +15,7 @@ export type DiffMode = "inline" | "split";
 export type ThreadIndex = Map<string, Thread[]>;
 
 interface Props {
+  filePath: string;
   hunk: Hunk;
   mode: DiffMode;
   threads: ThreadIndex;
@@ -18,10 +24,23 @@ interface Props {
 }
 
 /** Renders one hunk as a table, inline (unified) or side by side, with comment threads under their lines. */
-export const DiffHunk: React.FC<Props> = ({ hunk, mode, threads, symbol }) => {
+export const DiffHunk: React.FC<Props> = ({ hunk, mode, threads, symbol, filePath }) => {
+  const comments = React.useContext(LineCommentContext);
+  const { actions, disabled } = useReviewActions();
+  const pending = usePendingReview();
+  const [anchor, setAnchor] = React.useState<{ side: "left" | "right"; line: number } | null>(null);
+  const onComment =
+    comments?.canComment(filePath) && !disabled ? (side: "left" | "right", line: number) => setAnchor({ side, line }) : undefined;
   if (!hunk.header) return <div className="diff-note">No content changes (rename or mode change only).</div>;
   const rows = mode === "inline" ? inlineRows(hunk.lines) : splitRows(hunk.lines);
   const range = hunk.header.match(/^@@[^@]+@@/)?.[0] ?? hunk.header;
+  const span = mode === "inline" ? 3 : 4;
+  const drafts = new Map<string, Draft[]>();
+  for (const d of pending.draftsAt(filePath)) {
+    const f = d.thread.file!;
+    drafts.set(`${f.side}:${f.endLine}`, [...(drafts.get(`${f.side}:${f.endLine}`) ?? []), d]);
+  }
+  const inReview = pending.drafts.length > 0;
   return (
     <table className={`diff diff-${mode}`}>
       <colgroup>
@@ -42,22 +61,58 @@ export const DiffHunk: React.FC<Props> = ({ hunk, mode, threads, symbol }) => {
       </colgroup>
       <tbody>
         <tr className="diff-hunk-header">
-          <td colSpan={mode === "inline" ? 3 : 4}>
+          <td colSpan={span}>
             <span className="range">{range}</span> {symbol && <span className="hunk-symbol">{symbol}</span>}
           </td>
         </tr>
-        {rows.map((row, i) => (
-          <React.Fragment key={i}>
-            {mode === "inline" ? <InlineRow row={row as InlineRowData} /> : <SplitRow row={row as SplitRowData} />}
-            {threadsFor(row, threads).map((t) => (
-              <tr key={`t${t.id}`} className="diff-thread-row">
-                <td colSpan={mode === "inline" ? 3 : 4}>
-                  <ThreadCard thread={t} compact />
-                </td>
-              </tr>
-            ))}
-          </React.Fragment>
-        ))}
+        {rows.map((row, i) => {
+          const keys = rowKeys(row);
+          return (
+            <React.Fragment key={i}>
+              {mode === "inline" ? (
+                <InlineRow row={row as InlineRowData} onComment={onComment} />
+              ) : (
+                <SplitRow row={row as SplitRowData} onComment={onComment} />
+              )}
+              {keys.flatMap((k) => threads.get(k) ?? []).map((t) => (
+                <tr key={`t${t.id}`} className="diff-thread-row">
+                  <td colSpan={span}>
+                    <ThreadCard thread={t} compact />
+                  </td>
+                </tr>
+              ))}
+              {keys.flatMap((k) => drafts.get(k) ?? []).map((d) => (
+                <tr key={d.id} className="diff-thread-row">
+                  <td colSpan={span}>
+                    <DraftCard draft={d} />
+                  </td>
+                </tr>
+              ))}
+              {anchor && rowHasAnchor(row, anchor) && (
+                <tr className="diff-thread-row">
+                  <td colSpan={span}>
+                    <CommentComposer
+                      label={`Comment on ${filePath}, ${anchor.side} line ${anchor.line}`}
+                      onCancel={() => setAnchor(null)}
+                      onSaved={() => setAnchor(null)}
+                      actions={[
+                        {
+                          text: inReview ? "Add review comment" : "Start a review",
+                          local: true,
+                          onSave: (content) => pending.addThread(comments!.toThread({ path: filePath, ...anchor, endLine: anchor.line }, content)),
+                        },
+                        {
+                          text: inReview ? "Comment now" : "Add single comment",
+                          onSave: (content) => actions.createThread(comments!.toThread({ path: filePath, ...anchor, endLine: anchor.line }, content)),
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
       </tbody>
     </table>
   );
@@ -80,16 +135,20 @@ interface SplitRowData {
   right?: Cell;
 }
 
-function threadsFor(row: InlineRowData | SplitRowData, index: ThreadIndex): Thread[] {
+function rowKeys(row: InlineRowData | SplitRowData): string[] {
   const keys: string[] = [];
   if ("kind" in row) {
     if (row.new !== undefined && row.kind !== "del") keys.push(`right:${row.new}`);
-    if (row.old !== undefined && row.kind === "del") keys.push(`left:${row.old}`);
+    if (row.old !== undefined && row.kind !== "add") keys.push(`left:${row.old}`);
   } else {
     if (row.right?.no !== undefined) keys.push(`right:${row.right.no}`);
-    if (row.left?.no !== undefined && row.left.kind === "del") keys.push(`left:${row.left.no}`);
+    if (row.left?.no !== undefined) keys.push(`left:${row.left.no}`);
   }
-  return keys.flatMap((k) => index.get(k) ?? []);
+  return keys;
+}
+
+function rowHasAnchor(row: InlineRowData | SplitRowData, anchor: { side: "left" | "right"; line: number }): boolean {
+  return "kind" in row ? (anchor.side === "left" ? row.old : row.new) === anchor.line : row[anchor.side]?.no === anchor.line;
 }
 
 /** Groups a hunk into runs: context lines, or a change block (dels followed by adds). */
@@ -172,10 +231,25 @@ function splitRows(lines: DiffLine[]): SplitRowData[] {
 
 const SIGN = { add: "+", del: "-", ctx: " " } as const;
 
-const InlineRow: React.FC<{ row: InlineRowData }> = ({ row }) => (
+type OnComment = (side: "left" | "right", line: number) => void;
+const LineNumber: React.FC<{ no?: number; side: "left" | "right"; onComment?: OnComment }> = ({ no, side, onComment }) =>
+  no === undefined ? null : onComment ? (
+    <button className="line-comment-button" aria-label={`Comment on ${side} line ${no}`} onClick={() => onComment(side, no)}>
+      {no}
+      <span aria-hidden="true">+</span>
+    </button>
+  ) : (
+    <>{no}</>
+  );
+
+const InlineRow: React.FC<{ row: InlineRowData; onComment?: OnComment }> = ({ row, onComment }) => (
   <tr className={`line ${row.kind}`}>
-    <td className="num">{row.old ?? ""}</td>
-    <td className="num">{row.new ?? ""}</td>
+    <td className="num">
+      <LineNumber no={row.old} side="left" onComment={onComment} />
+    </td>
+    <td className="num">
+      <LineNumber no={row.new} side="right" onComment={onComment} />
+    </td>
     <td className="code">
       <span className="sign">{SIGN[row.kind]}</span>
       {row.content}
@@ -183,14 +257,18 @@ const InlineRow: React.FC<{ row: InlineRowData }> = ({ row }) => (
   </tr>
 );
 
-const SplitRow: React.FC<{ row: SplitRowData }> = ({ row }) => (
+const SplitRow: React.FC<{ row: SplitRowData; onComment?: OnComment }> = ({ row, onComment }) => (
   <tr className="line">
-    <td className={`num ${row.left?.kind ?? "empty"}`}>{row.left?.no ?? ""}</td>
+    <td className={`num ${row.left?.kind ?? "empty"}`}>
+      <LineNumber no={row.left?.no} side="left" onComment={onComment} />
+    </td>
     <td className={`code ${row.left?.kind ?? "empty"}`}>
       {row.left && <span className="sign">{SIGN[row.left.kind]}</span>}
       {row.left?.content}
     </td>
-    <td className={`num ${row.right?.kind ?? "empty"}`}>{row.right?.no ?? ""}</td>
+    <td className={`num ${row.right?.kind ?? "empty"}`}>
+      <LineNumber no={row.right?.no} side="right" onComment={onComment} />
+    </td>
     <td className={`code ${row.right?.kind ?? "empty"}`}>
       {row.right && <span className="sign">{SIGN[row.right.kind]}</span>}
       {row.right?.content}

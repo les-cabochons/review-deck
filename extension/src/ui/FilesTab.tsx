@@ -5,6 +5,9 @@ import type { Iteration, Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 import { type DiffMode, DiffHunk, type ThreadIndex } from "./DiffHunk";
 import { ThreadCard } from "./ThreadCard";
+import { LineCommentContext, lineThreadInput } from "./LineComments";
+import { useReviewActions } from "./ReviewActions";
+import { DropdownButton } from "./controls";
 import { cx, plural } from "./util";
 
 export type FileView = "grouped" | "alpha";
@@ -44,78 +47,84 @@ export const FilesTab: React.FC<Props> = (props) => {
     <div className="files-tab">
       <Toolbar {...props} />
       {props.error && <div className="error-box">{props.error}</div>}
-      {!review || props.loading ? (
+      {!review && props.error ? null : !review || props.loading ? (
         <div className="loading">Analyzing changes…</div>
       ) : (
-        <div className="files-layout">
-          <Navigator review={review} view={view} />
-          <div className="files-content">
-            {view === "grouped" ? (
-              <GroupedView review={review} mode={mode} fileThreads={fileThreads} />
-            ) : (
-              <AlphaView review={review} mode={mode} fileThreads={fileThreads} />
-            )}
+        <LineCommentContext.Provider
+          value={{
+            canComment: (path) =>
+              review.comparison.iteration === props.selection.iteration &&
+              review.comparison.compareTo === props.selection.compareTo &&
+              !!review.changes.find((c) => c.path === path)?.changeTrackingId,
+            toThread: (file, content) => lineThreadInput(review, props.selection, file, content),
+          }}
+        >
+          <div className="files-layout">
+            <Navigator review={review} view={view} />
+            <div className="files-content">
+              {view === "grouped" ? (
+                <GroupedView review={review} mode={mode} fileThreads={fileThreads} />
+              ) : (
+                <AlphaView review={review} mode={mode} fileThreads={fileThreads} />
+              )}
+            </div>
           </div>
-        </div>
+        </LineCommentContext.Provider>
       )}
     </div>
   );
 };
 
 const Toolbar: React.FC<Props> = ({ review, iterations, selection, onSelection, view, onView, mode, onMode }) => {
+  const { disabled } = useReviewActions();
   const stats = review ? diffStats(review) : null;
-  const latest = iterations.length;
+  const latest = iterations.at(-1)?.id;
+  const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
   return (
     <div className="files-toolbar">
-      <Segmented
-        value={view}
-        onChange={onView}
+      <DropdownButton
+        text={view === "grouped" ? "Grouped by concern" : "Files A–Z"}
+        icon={view === "grouped" ? "ViewListGroup" : "SortLines"}
         options={[
-          { value: "grouped", label: "Grouped", icon: "ViewListGroup" },
-          { value: "alpha", label: "A–Z", icon: "SortLines" },
+          { id: "grouped", text: "Grouped by concern", secondaryText: "Semantic", icon: "ViewListGroup", checked: view === "grouped", onSelect: () => onView("grouped") },
+          { id: "alpha", text: "Files A–Z", icon: "SortLines", checked: view === "alpha", onSelect: () => onView("alpha") },
         ]}
       />
-      <Segmented
-        value={mode}
-        onChange={onMode}
+      <DropdownButton
+        text={mode === "inline" ? "Inline" : "Side by side"}
+        icon={mode === "inline" ? "DiffInline" : "DiffSideBySide"}
         options={[
-          { value: "inline", label: "Inline", icon: "DiffInline" },
-          { value: "split", label: "Side by side", icon: "DiffSideBySide" },
+          { id: "inline", text: "Inline", icon: "DiffInline", checked: mode === "inline", onSelect: () => onMode("inline") },
+          { id: "split", text: "Side by side", icon: "DiffSideBySide", checked: mode === "split", onSelect: () => onMode("split") },
         ]}
       />
-      <label className="compare">
-        Compare
-        <select
-          value={selection.compareTo}
-          onChange={(e) => onSelection({ ...selection, compareTo: Number(e.target.value) })}
-          aria-label="Base"
-        >
-          <option value={0}>Base</option>
-          {iterations
-            .filter((it) => it.id < selection.iteration)
-            .map((it) => (
-              <option key={it.id} value={it.id}>
-                Update {it.id}
-              </option>
-            ))}
-        </select>
+      <span className="compare">
+        <DropdownButton
+          text={updateName(selection.compareTo)}
+          icon="BranchCompare"
+          disabled={disabled}
+          ariaLabel="Compare from"
+          options={[0, ...iterations.filter((it) => it.id < selection.iteration).map((it) => it.id)].map((id) => ({
+            id: String(id),
+            text: updateName(id),
+            checked: id === selection.compareTo,
+            onSelect: () => onSelection({ ...selection, compareTo: id }),
+          }))}
+        />
         <Icon iconName="Forward" />
-        <select
-          value={selection.iteration}
-          onChange={(e) => {
-            const iteration = Number(e.target.value);
-            onSelection({ iteration, compareTo: Math.min(selection.compareTo, iteration - 1) });
-          }}
-          aria-label="Target"
-        >
-          {iterations.map((it) => (
-            <option key={it.id} value={it.id}>
-              Update {it.id}
-              {it.id === latest ? " (latest)" : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+        <DropdownButton
+          text={updateName(selection.iteration)}
+          disabled={disabled}
+          ariaLabel="Compare to"
+          options={iterations.map((it) => ({
+            id: String(it.id),
+            text: updateName(it.id),
+            secondaryText: it.description ? it.description.slice(0, 48) : undefined,
+            checked: it.id === selection.iteration,
+            onSelect: () => onSelection({ iteration: it.id, compareTo: Math.min(selection.compareTo, it.id - 1) }),
+          }))}
+        />
+      </span>
       {stats && (
         <span className="stats">
           {plural(stats.files, "file")} · <span className="adds">+{stats.adds}</span> <span className="dels">−{stats.dels}</span>
@@ -124,28 +133,6 @@ const Toolbar: React.FC<Props> = ({ review, iterations, selection, onSelection, 
     </div>
   );
 };
-
-function Segmented<T extends string>(props: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string; icon: string }[];
-}) {
-  return (
-    <div className="segmented" role="radiogroup">
-      {props.options.map((o) => (
-        <button
-          key={o.value}
-          role="radio"
-          aria-checked={props.value === o.value}
-          className={cx(props.value === o.value && "selected")}
-          onClick={() => props.onChange(o.value)}
-        >
-          <Icon iconName={o.icon} /> {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // ---------- navigator ----------
 
@@ -233,7 +220,11 @@ const GroupSection: React.FC<{ group: Group; index: number } & ViewProps> = ({ g
   const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!);
   const files = new Set(hunks.map((h) => h.file.path)).size;
   return (
-    <section className={cx("group-section", `kind-${group.kind}`)} id={`group-${group.id}`} style={{ borderLeftColor: groupColor(review.result.groups, group) }}>
+    <section
+      className={cx("group-section", `kind-${group.kind}`)}
+      id={`group-${group.id}`}
+      style={{ borderLeftColor: groupColor(review.result.groups, group) }}
+    >
       <button className="group-header" onClick={() => setOpen(!open)} aria-expanded={open}>
         <Icon iconName={open ? "ChevronDown" : "ChevronRight"} />
         <span className="badge" style={{ background: groupColor(review.result.groups, group) }}>
@@ -269,7 +260,7 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: ThreadIndex 
         <span className="spacer" />
         <span className="adds">+{adds}</span> <span className="dels">−{dels}</span>
       </header>
-      <DiffHunk hunk={info.hunk} mode={mode} threads={threads} symbol={info.symbol} />
+      <DiffHunk hunk={info.hunk} mode={mode} threads={threads} symbol={info.symbol} filePath={info.file.path} />
     </article>
   );
 };
@@ -307,7 +298,7 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
               <ThreadCard key={t.id} thread={t} fileLabel={`line ${t.file!.line} (outside the diff)`} compact />
             ))}
             {f.hunks.map((h) => (
-              <DiffHunk key={h.id} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} />
+              <DiffHunk key={h.id} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} filePath={f.path} />
             ))}
           </article>
         );
@@ -360,7 +351,7 @@ function visibleLines(files: FileDiff[]): Map<string, Set<string>> {
     for (const h of f.hunks) {
       for (const l of h.lines) {
         if (l.newLine !== undefined && l.kind !== "del") set.add(`right:${l.newLine}`);
-        if (l.oldLine !== undefined && l.kind === "del") set.add(`left:${l.oldLine}`);
+        if (l.oldLine !== undefined && l.kind !== "add") set.add(`left:${l.oldLine}`);
       }
     }
     out.set(f.path, set);

@@ -14,6 +14,7 @@ export interface FileContents {
 }
 
 export interface ReviewModel {
+  comparison: { iteration: number; compareTo: number };
   result: ReviewResult;
   changes: FileChange[];
   contents: Map<string, FileContents>;
@@ -77,7 +78,7 @@ export async function buildReview(
     mergeConfig({ semantic: { enabled: false } }),
     { parsers: await parsers() },
   );
-  return { result, changes, contents };
+  return { result, changes, contents, comparison: { iteration, compareTo } };
 }
 
 function countLines(text: string | null): number {

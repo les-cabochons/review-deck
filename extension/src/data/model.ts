@@ -8,6 +8,11 @@ export interface Identity {
   imageUrl?: string;
 }
 
+/** Picker images may be relative to the Azure DevOps host, not the extension iframe. */
+export function identityImageUrl(image: string | undefined, hostUrl: string): string | undefined {
+  return image ? new URL(image, hostUrl).href : undefined;
+}
+
 /** Azure DevOps vote values: 10 approved, 5 approved with suggestions, 0 none, -5 waiting for author, -10 rejected. */
 export type Vote = 10 | 5 | 0 | -5 | -10;
 
@@ -46,6 +51,7 @@ export interface Iteration {
 export type ChangeType = "add" | "edit" | "delete" | "rename";
 
 export interface FileChange {
+  changeTrackingId?: number;
   /** Repo path without the leading slash. */
   path: string;
   originalPath?: string;
@@ -75,6 +81,7 @@ export interface FileAnchor {
 }
 
 export interface Thread {
+  iterationContext?: { firstComparingIteration: number; secondComparingIteration: number };
   id: number;
   status: ThreadStatus;
   published: Date;
@@ -119,13 +126,36 @@ export interface PrOverview {
   workItems: WorkItemRef[];
 }
 
-/** Where the page gets its data. Read-only for milestone 1; write methods arrive in milestone 2. */
+export interface NewThread {
+  content: string;
+  file?: FileAnchor;
+  comparison?: { iteration: number; compareTo: number; changeTrackingId: number };
+}
+
+export interface PrActions {
+  createThread(input: NewThread): Promise<void>;
+  reply(threadId: number, parentId: number, content: string): Promise<void>;
+  setThreadStatus(threadId: number, status: ThreadStatus): Promise<void>;
+  setVote(vote: Vote): Promise<void>;
+  searchReviewers(query: string): Promise<Identity[]>;
+  addReviewer(who: Identity, required: boolean): Promise<void>;
+  setReviewerRequired(id: string, required: boolean): Promise<void>;
+  removeReviewer(id: string): Promise<void>;
+  addTag(name: string): Promise<void>;
+  removeTag(name: string): Promise<void>;
+  setDescription(description: string): Promise<void>;
+}
+
+/** Both sources implement the same read and write contracts. */
 export interface PrSource {
   readonly kind: "ado" | "mock";
+  readonly currentUser: Identity;
+  readonly actions: PrActions;
   load(): Promise<PrOverview>;
   /** Changes between iteration `compareTo` (0 = PR base) and iteration `iteration`. */
   getChanges(iteration: number, compareTo: number): Promise<FileChange[]>;
   getBlob(objectId: string): Promise<string>;
+  getThreads(iteration: number, compareTo: number): Promise<Thread[]>;
 }
 
 const THREAD_STATUS: ThreadStatus[] = ["unknown", "active", "fixed", "wontFix", "closed", "byDesign", "pending"];

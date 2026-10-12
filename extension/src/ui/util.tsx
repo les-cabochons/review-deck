@@ -31,9 +31,18 @@ export const Time: React.FC<{ date: Date }> = ({ date }) => (
 
 marked.setOptions({ gfm: true, breaks: false });
 
-/** GitHub/ADO-flavored markdown, sanitized. */
+/** Display names for `@<id>` mention tokens (Azure DevOps stores mentions as identity ids). */
+export const IdentityNames = React.createContext<Map<string, string>>(new Map());
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+
+/** GitHub/ADO-flavored markdown, sanitized, with `@<id>` mentions shown as names. */
 export const Markdown: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
-  const html = React.useMemo(() => DOMPurify.sanitize(marked.parse(text || "", { async: false }) as string), [text]);
+  const names = React.useContext(IdentityNames);
+  const html = React.useMemo(() => {
+    const withMentions = (text || "").replace(/@<([^>\s]+)>/g, (_, id: string) => `<span class="mention">@${escapeHtml(names.get(id) ?? id)}</span>`);
+    return DOMPurify.sanitize(marked.parse(withMentions, { async: false }) as string);
+  }, [text, names]);
   if (!text.trim()) return <p className="muted">No description provided.</p>;
   return <div className={`markdown ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
 };

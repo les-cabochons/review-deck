@@ -4,6 +4,9 @@ import type { PrOverview, Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 import { groupColor } from "./FilesTab";
 import { ThreadCard } from "./ThreadCard";
+import { CommentComposer } from "./CommentComposer";
+import { Reviewers, Tags } from "./MetadataEditors";
+import { useReviewActions } from "./ReviewActions";
 import { Avatar, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 
 interface Props {
@@ -13,36 +16,56 @@ interface Props {
   onOpenFiles: () => void;
 }
 
-export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpenFiles }) => (
-  <div className="overview">
-    <div className="overview-main">
-      <DescriptionCard data={data} />
-      <Timeline data={data} onOpenFiles={onOpenFiles} />
-      <div className="composer disabled" title="Commenting arrives in milestone 2">
-        <Icon iconName="Comment" /> Add a comment…
+export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpenFiles }) => {
+  const { actions } = useReviewActions();
+  return (
+    <div className="overview">
+      <div className="overview-main">
+        <DescriptionCard data={data} />
+        <Timeline data={data} onOpenFiles={onOpenFiles} />
+        <CommentComposer label="Add a comment" onSave={(content) => actions.createThread({ content })} />
       </div>
+      <aside className="overview-side">
+        <SemanticSummary review={review} onOpenGroup={onOpenGroup} />
+        <Reviewers data={data} />
+        <Checks data={data} />
+        <Tags data={data} />
+        <WorkItems data={data} />
+      </aside>
     </div>
-    <aside className="overview-side">
-      <SemanticSummary review={review} onOpenGroup={onOpenGroup} />
-      <Reviewers data={data} />
-      <Checks data={data} />
-      <Tags data={data} />
-      <WorkItems data={data} />
-    </aside>
-  </div>
-);
+  );
+};
 
-const DescriptionCard: React.FC<{ data: PrOverview }> = ({ data: { pr } }) => (
-  <div className="timeline-card description">
-    <div className="card-head">
-      <Avatar who={pr.createdBy} size={32} />
-      <div>
-        <strong>{pr.createdBy.displayName}</strong> opened this pull request <Time date={pr.creationDate} />
+const DescriptionCard: React.FC<{ data: PrOverview }> = ({ data: { pr } }) => {
+  const { actions, disabled } = useReviewActions();
+  const [editing, setEditing] = React.useState(false);
+  return (
+    <div className="timeline-card description">
+      <div className="card-head">
+        <Avatar who={pr.createdBy} size={32} />
+        <div>
+          <strong>{pr.createdBy.displayName}</strong> opened this pull request <Time date={pr.creationDate} />
+        </div>
+        <button className="link-button description-edit" disabled={disabled} onClick={() => setEditing(!editing)}>
+          {editing ? "Cancel" : "Edit description"}
+        </button>
       </div>
+      {editing ? (
+        <CommentComposer
+          label="Pull request description"
+          submitText="Save description"
+          initial={pr.description}
+          allowEmpty
+          onSave={actions.setDescription}
+          onCancel={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      ) : (
+        <Markdown text={pr.description} className="card-body" />
+      )}
     </div>
-    <Markdown text={pr.description} className="card-body" />
-  </div>
-);
+  );
+};
 
 type TimelineItem = { date: Date; key: string; node: React.ReactNode };
 
@@ -56,17 +79,23 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
       date: it.createdDate,
       key: `it${it.id}`,
       node: (
-        <Event icon="BranchPullRequest" who={it.author} date={it.createdDate}>
+        <Event
+          icon="BranchPullRequest"
+          who={it.author}
+          date={it.createdDate}
+          details={
+            commits.length > 0 && (
+              <ul className="event-commits">
+                {commits.map((c) => (
+                  <li key={c!.id}>
+                    <code>{c!.id.slice(0, 7)}</code> {c!.message.split("\n")[0]}
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        >
           {it.id === 1 ? "created update 1" : `pushed update ${it.id}`} with {plural(Math.max(commits.length, 1), "commit")}
-          {commits.length > 0 && (
-            <ul className="event-commits">
-              {commits.map((c) => (
-                <li key={c!.id}>
-                  <code>{c!.id.slice(0, 7)}</code> {c!.message.split("\n")[0]}
-                </li>
-              ))}
-            </ul>
-          )}
         </Event>
       ),
     });
@@ -128,19 +157,23 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
   );
 };
 
-const Event: React.FC<{ icon: string; tone?: string; who: { displayName: string; imageUrl?: string; id: string; uniqueName: string }; date: Date }> = ({
-  icon,
-  tone,
-  who,
-  date,
-  children,
-}) => (
+const Event: React.FC<{
+  icon: string;
+  tone?: string;
+  who: { displayName: string; imageUrl?: string; id: string; uniqueName: string };
+  date: Date;
+  details?: React.ReactNode;
+}> = ({ icon, tone, who, date, details, children }) => (
   <div className="event">
     <span className={cx("event-icon", tone && `tone-${tone}`)}>
       <Icon iconName={icon} />
     </span>
     <div className="event-text">
-      <Avatar who={who} size={20} /> <strong>{who.displayName}</strong> {children} <span className="muted">· <Time date={date} /></span>
+      <Avatar who={who} size={20} /> <strong>{who.displayName}</strong> {children}{" "}
+      <span className="muted">
+        · <Time date={date} />
+      </span>
+      {details}
     </div>
   </div>
 );
@@ -182,32 +215,6 @@ const SemanticSummary: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: 
     )}
   </Side>
 );
-
-const Reviewers: React.FC<{ data: PrOverview }> = ({ data }) => {
-  const reviewers = [...data.pr.reviewers].sort((a, b) => Number(b.isRequired) - Number(a.isRequired));
-  return (
-    <Side title="Reviewers" action="Add">
-      {reviewers.length === 0 && <p className="muted">No reviewers</p>}
-      <ul className="people">
-        {reviewers.map((r) => {
-          const v = voteInfo(r.vote);
-          return (
-            <li key={r.id}>
-              <Avatar who={r} size={24} />
-              <span className="name">
-                {r.displayName}
-                {r.isRequired && <span className="tag">Required</span>}
-              </span>
-              <span className={cx("vote", `tone-${v.tone}`)} title={v.label}>
-                {v.icon && <Icon iconName={v.icon} />} {r.vote !== 0 ? v.label : ""}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </Side>
-  );
-};
 
 const POLICY_ICON: Record<string, { icon: string; tone: string; label: string }> = {
   approved: { icon: "CompletedSolid", tone: "success", label: "Succeeded" },
@@ -255,22 +262,6 @@ const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
     </Side>
   );
 };
-
-const Tags: React.FC<{ data: PrOverview }> = ({ data }) => (
-  <Side title="Tags" action="Add">
-    {data.pr.labels.length === 0 ? (
-      <p className="muted">No tags</p>
-    ) : (
-      <div className="tags">
-        {data.pr.labels.map((l) => (
-          <span key={l} className="pill">
-            {l}
-          </span>
-        ))}
-      </div>
-    )}
-  </Side>
-);
 
 const WorkItems: React.FC<{ data: PrOverview }> = ({ data }) => (
   <Side title="Work items" action="Link">

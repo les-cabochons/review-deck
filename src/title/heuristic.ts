@@ -39,7 +39,7 @@ export function describeGroup({ group, hunks, pairs }: TitleInput): GroupTitle {
   const move = detectMove(hunks);
   if (move) {
     return {
-      title: `Move ${move.name} to ${move.to}`,
+      title: `Move ${move.name} to ${basename(move.to)}`,
       rationale: `Removed from ${move.from} and re-added in ${move.to}; ${where} update call sites and tests.${linkedBy}`,
     };
   }

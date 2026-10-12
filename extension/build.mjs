@@ -1,7 +1,7 @@
 // Bundles the review page for Azure DevOps (and for local dev with mock data).
 //   node extension/build.mjs            -> extension/dist + extension/assets (production, minified)
 //   node extension/build.mjs --serve    -> watch + serve on http://127.0.0.1:5173/dist/review.html
-import { cpSync, mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,11 @@ const dist = join(here, "dist");
 const serve = process.argv.includes("--serve");
 const require = createRequire(import.meta.url);
 
+// dist is the generated output directly inside this extension, never a source directory.
+if (!serve) {
+  if (dirname(dist) !== here) throw new Error("Unexpected build output directory");
+  rmSync(dist, { recursive: true, force: true });
+}
 mkdirSync(dist, { recursive: true });
 cpSync(join(here, "static"), dist, { recursive: true });
 // tree-sitter runtime + grammars load at runtime from ../assets: a separate folder so the
@@ -23,7 +28,7 @@ const grammars = dirname(require.resolve("tree-sitter-typescript/package.json"))
 for (const g of ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"]) cpSync(join(grammars, g), join(assets, g));
 
 const options = {
-  entryPoints: { review: join(here, "src", "index.tsx"), action: join(here, "src", "action.ts") },
+  entryPoints: { review: join(here, "src", "index.ts"), action: join(here, "src", "action.ts") },
   outdir: dist,
   bundle: true,
   format: "esm",
@@ -44,7 +49,7 @@ if (serve) {
   await ctx.watch();
   // Serve the extension root so dist/, assets/ and dev-data/ keep the same relative layout as the .vsix.
   const { port } = await ctx.serve({ servedir: here, host: "127.0.0.1", port: 5173 });
-  console.log(`\n  http://127.0.0.1:${port}/dist/review.html?mock=t3code-17901\n`);
+  console.log(`\n  Azure DevOps-like shell: http://127.0.0.1:${port}/dev/\n  Page only:              http://127.0.0.1:${port}/dist/review.html\n`);
 } else {
   await esbuild.build(options);
 }

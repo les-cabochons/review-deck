@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  Local dev shell: a fake Azure DevOps frame around the review page, so layout, full width and theme
+  can be checked without installing the extension. Served by `npm run ext:dev` (never packaged).
+  The page runs in an iframe like in Azure DevOps, with ?local so it uses mock data.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Semantic PR review · local Azure DevOps shell</title>
+    <style>
+      :root { --bg: #fff; --fg: rgba(0,0,0,.9); --fg2: rgba(0,0,0,.55); --line: rgba(0,0,0,.1); --nav: #f8f8f8; --sel: rgba(0,120,212,.1); }
+      :root[data-theme="dark"] { --bg: #201f1e; --fg: rgba(255,255,255,.87); --fg2: rgba(255,255,255,.55); --line: rgba(255,255,255,.1); --nav: #2b2a29; --sel: rgba(71,158,245,.18); }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px "Segoe UI", -apple-system, sans-serif; }
+      body { display: grid; grid-template-rows: 40px 1fr; grid-template-columns: auto 1fr; height: 100vh; }
+      header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--bg); }
+      .logo { width: 22px; height: 22px; border-radius: 3px; background: linear-gradient(135deg, #0078d4, #2b88d8); }
+      .crumbs { display: flex; gap: 8px; color: var(--fg2); font-size: 13px; }
+      .crumbs b { color: var(--fg); font-weight: 600; }
+      .spacer { flex: 1; }
+      .fake-search { width: 240px; height: 28px; border: 1px solid var(--line); border-radius: 2px; color: var(--fg2); font-size: 13px; display: flex; align-items: center; padding: 0 8px; }
+      header button, header select { font: inherit; font-size: 12px; height: 28px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 2px; padding: 0 10px; cursor: pointer; }
+      nav { width: 240px; background: var(--nav); border-right: 1px solid var(--line); overflow: auto; padding: 8px 0; transition: width .15s; }
+      body.collapsed nav { width: 48px; }
+      body.collapsed nav .label, body.collapsed nav .sub { display: none; }
+      .project { display: flex; align-items: center; gap: 10px; padding: 8px 14px 12px; font-weight: 600; }
+      .project i { width: 24px; height: 24px; border-radius: 3px; background: #8764b8; flex: none; }
+      .item { display: flex; align-items: center; gap: 12px; padding: 8px 14px; color: var(--fg); font-size: 13px; cursor: default; white-space: nowrap; }
+      .item i { width: 18px; height: 18px; border-radius: 3px; flex: none; opacity: .8; }
+      .sub { padding: 6px 14px 6px 44px; font-size: 13px; color: var(--fg2); cursor: default; }
+      .sub.active { background: var(--sel); color: var(--fg); font-weight: 600; box-shadow: inset 3px 0 0 #0078d4; cursor: pointer; }
+      .sub.link { cursor: pointer; }
+      .sub.link:hover { color: var(--fg); }
+      main { min-width: 0; min-height: 0; }
+      iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo"></span>
+      <span class="crumbs"><span>Azure DevOps</span>/<span>cabochons</span>/<span>Semantic_pr</span>/<span>Repos</span>/<b>PR Review</b></span>
+      <span class="spacer"></span>
+      <span class="fake-search">Search</span>
+      <button id="collapse" title="Collapse navigation">☰</button>
+      <select id="theme" aria-label="Theme">
+        <option value="light">Light theme</option>
+        <option value="dark">Dark theme</option>
+      </select>
+      <button id="reload" title="Reload the page (also happens automatically on rebuild)">Reload</button>
+    </header>
+    <nav>
+      <div class="project"><i></i><span class="label">Semantic_pr</span></div>
+      <div class="item"><i style="background:#0078d4"></i><span class="label">Overview</span></div>
+      <div class="item"><i style="background:#009ccc"></i><span class="label">Boards</span></div>
+      <div class="item"><i style="background:#e05c2e"></i><span class="label">Repos</span></div>
+      <div class="sub">Files</div>
+      <div class="sub">Commits</div>
+      <div class="sub">Branches</div>
+      <div class="sub">Pull requests</div>
+      <div class="sub active" id="hub-link">PR Review</div>
+      <div class="item"><i style="background:#2b88d8"></i><span class="label">Pipelines</span></div>
+      <div class="item"><i style="background:#3ea24f"></i><span class="label">Test Plans</span></div>
+      <div class="item"><i style="background:#c239b3"></i><span class="label">Artifacts</span></div>
+    </nav>
+    <main><iframe id="frame" title="PR Review"></iframe></main>
+    <script>
+      const frame = document.getElementById("frame");
+      const theme = document.getElementById("theme");
+      const shell = new URLSearchParams(location.search);
+      theme.value = shell.get("theme") === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = theme.value;
+      if (shell.get("nav") === "collapsed") document.body.classList.add("collapsed");
+
+      // The review page's own route (pr/repo) is mirrored into the shell URL so reloads and links keep it.
+      const inner = new URLSearchParams();
+      inner.set("local", "1");
+      inner.set("theme", theme.value);
+      for (const k of ["pr", "repo"]) if (shell.get(k)) inner.set(k, shell.get(k));
+      frame.src = `/dist/review.html?${inner}${location.hash}`;
+
+      function mirror() {
+        try {
+          const loc = frame.contentWindow.location;
+          const p = new URLSearchParams(loc.search);
+          const next = new URLSearchParams(location.search);
+          for (const k of ["pr", "repo"]) p.get(k) ? next.set(k, p.get(k)) : next.delete(k);
+          next.set("theme", theme.value);
+          const url = `${location.pathname}?${next}${loc.hash}`;
+          if (url !== location.pathname + location.search + location.hash) history.replaceState(null, "", url);
+        } catch {}
+      }
+      setInterval(mirror, 400);
+
+      theme.addEventListener("change", () => {
+        document.documentElement.dataset.theme = theme.value;
+        frame.contentWindow.postMessage({ type: "semantic-review:theme", theme: theme.value }, location.origin);
+        mirror();
+      });
+      document.getElementById("collapse").addEventListener("click", () => document.body.classList.toggle("collapsed"));
+      document.getElementById("reload").addEventListener("click", () => frame.contentWindow.location.reload());
+      document.getElementById("hub-link").addEventListener("click", () => {
+        frame.src = `/dist/review.html?local=1&theme=${theme.value}`;
+      });
+    </script>
+  </body>
+</html>

@@ -1,9 +1,14 @@
 import { getClient } from "azure-devops-extension-api";
 import { type GitPullRequestCommentThread, GitRestClient } from "azure-devops-extension-api/Git";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
+import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
+import { getHost, getService } from "azure-devops-extension-sdk";
+import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
+import { createAdoActions } from "./adoActions";
 import { thread as threadFromJson } from "./mockSource";
 import {
   asVote,
+  identityImageUrl,
   type ChangeType,
   type FileChange,
   type Identity,
@@ -11,6 +16,8 @@ import {
   type PrOverview,
   type PrSource,
   type PrStatus,
+  type PrActions,
+  type Thread,
 } from "./model";
 import type { ThreadJson } from "./snapshot";
 
@@ -28,9 +35,10 @@ interface IdentityLike {
   imageUrl?: string;
 }
 
-/** Reads a pull request through the Azure DevOps REST API (runs inside the extension iframe). */
+/** Reads and writes a pull request through the host's authenticated REST clients. */
 export class AdoPrSource implements PrSource {
   readonly kind = "ado";
+  readonly actions: PrActions;
   private readonly git = getClient(GitRestClient);
   private readonly policy = getClient(PolicyRestClient);
 
@@ -38,7 +46,26 @@ export class AdoPrSource implements PrSource {
     private readonly projectId: string,
     private readonly repositoryId: string,
     private readonly pullRequestId: number,
-  ) {}
+    readonly currentUser: Identity,
+  ) {
+    this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, async (query) => {
+      if (query.trim().length < 2) return [];
+      const service = await getService<IVssIdentityService>(IdentityServiceIds.IdentityService);
+      const results = await service.searchIdentitiesAsync(query.trim(), ["user", "group"]);
+      return results
+        .map((result) => {
+          const person = result as PickerIdentity;
+          // localId is the Azure DevOps identity GUID. originId belongs to the backing directory.
+          return {
+            id: person.localId ?? "",
+            displayName: person.displayName ?? person.signInAddress ?? person.entityId,
+            uniqueName: person.signInAddress ?? person.mail ?? "",
+            imageUrl: identityImageUrl(person.image, `https://dev.azure.com/${encodeURIComponent(getHost().name)}/`),
+          };
+        })
+        .filter((person) => !!person.id);
+    });
+  }
 
   async load(): Promise<PrOverview> {
     const { git, projectId: project, repositoryId: repo, pullRequestId: id } = this;
@@ -49,9 +76,7 @@ export class AdoPrSource implements PrSource {
       git.getPullRequestCommits(repo, id, project),
       git.getPullRequestLabels(repo, id, project),
       git.getPullRequestWorkItemRefs(repo, id, project),
-      this.policy
-        .getPolicyEvaluations(project, `vstfs:///CodeReview/CodeReviewId/${project}/${id}`)
-        .catch(() => []),
+      this.policy.getPolicyEvaluations(project, `vstfs:///CodeReview/CodeReviewId/${project}/${id}`).catch(() => []),
     ]);
     return {
       pr: {
@@ -105,13 +130,20 @@ export class AdoPrSource implements PrSource {
     const out: FileChange[] = [];
     for (let skip = 0; ; skip += 2000) {
       const page = await this.git.getPullRequestIterationChanges(
-        this.repositoryId, this.pullRequestId, iteration, this.projectId, 2000, skip, compareTo,
+        this.repositoryId,
+        this.pullRequestId,
+        iteration,
+        this.projectId,
+        2000,
+        skip,
+        compareTo,
       );
       for (const c of page.changeEntries ?? []) {
         if (!c.item?.path || (c.item as { isFolder?: boolean }).isFolder) continue;
         const flags = c.changeType as number;
         const changeType: ChangeType = flags & ADD ? "add" : flags & DELETE ? "delete" : flags & RENAME ? "rename" : "edit";
         out.push({
+          changeTrackingId: c.changeTrackingId,
           path: c.item.path.replace(/^\//, ""),
           originalPath: c.originalPath?.replace(/^\//, ""),
           changeType,
@@ -128,6 +160,11 @@ export class AdoPrSource implements PrSource {
     const buffer = await this.git.getBlobContent(this.repositoryId, objectId, this.projectId);
     return new TextDecoder().decode(buffer);
   }
+
+  async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {
+    const threads = await this.git.getThreads(this.repositoryId, this.pullRequestId, this.projectId, iteration, compareTo || iteration);
+    return threads.filter((t) => !t.isDeleted).map((t) => threadFromJson(toThreadJson(t)));
+  }
 }
 
 function identity(i: IdentityLike | undefined): Identity {
@@ -143,6 +180,12 @@ function identity(i: IdentityLike | undefined): Identity {
 function toThreadJson(t: GitPullRequestCommentThread): ThreadJson {
   const date = (d: Date | string | undefined) => (d ? new Date(d).toISOString() : new Date(0).toISOString());
   return {
+    pullRequestThreadContext: t.pullRequestThreadContext
+      ? {
+          changeTrackingId: t.pullRequestThreadContext.changeTrackingId,
+          iterationContext: t.pullRequestThreadContext.iterationContext,
+        }
+      : undefined,
     id: t.id,
     publishedDate: date(t.publishedDate),
     lastUpdatedDate: date(t.lastUpdatedDate),

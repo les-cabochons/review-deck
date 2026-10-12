@@ -3,6 +3,7 @@ import {
   type Comment,
   type FileChange,
   type Identity,
+  type PrActions,
   type PolicyState,
   type PrOverview,
   type PrSource,
@@ -10,17 +11,137 @@ import {
   threadStatusFromNumber,
 } from "./model";
 import type { CommentJson, IdentityJson, PrSnapshot, ThreadJson } from "./snapshot";
+import { STATUS_NUMBER, requireContent, threadPayload } from "./adoActions";
+
+export const MOCK_USER: Identity = { id: "local-reviewer", displayName: "Local reviewer", uniqueName: "reviewer@example.test" };
 
 /** Serves a PrSnapshot JSON (built by scripts/build-ado-mock.ts) for local development. */
 export class MockPrSource implements PrSource {
   readonly kind = "mock";
+  readonly actions: PrActions;
+  private readonly snap: PrSnapshot;
 
-  private constructor(private readonly snap: PrSnapshot) {}
+  constructor(
+    snapshot: PrSnapshot,
+    readonly currentUser: Identity = MOCK_USER,
+  ) {
+    this.snap = structuredClone(snapshot);
+    const findThread = (id: number) => {
+      const thread = this.snap.threads.find((t) => t.id === id);
+      if (!thread) throw new Error(`Thread ${id} no longer exists.`);
+      return thread;
+    };
+    const findReviewer = (id: string) => {
+      const reviewer = this.snap.pullRequest.reviewers.find((r) => r.id === id);
+      if (!reviewer) throw new Error("This reviewer no longer exists.");
+      return reviewer;
+    };
+    const newComment = (content: string, parentCommentId: number): CommentJson => {
+      const now = new Date().toISOString();
+      return {
+        id: Math.max(0, ...this.snap.threads.flatMap((t) => t.comments.map((c) => c.id))) + 1,
+        parentCommentId,
+        author: this.currentUser,
+        content: requireContent(content),
+        publishedDate: now,
+        lastUpdatedDate: now,
+        commentType: 1,
+        usersLiked: [],
+      };
+    };
+    this.actions = {
+      createThread: async (input) => {
+        threadPayload(input); // same validation and iteration convention as the REST adapter
+        const now = new Date().toISOString();
+        this.snap.threads.push({
+          id: Math.max(0, ...this.snap.threads.map((t) => t.id)) + 1,
+          status: 1,
+          publishedDate: now,
+          lastUpdatedDate: now,
+          properties: {},
+          comments: [newComment(input.content, 0)],
+          threadContext: input.file
+            ? {
+                filePath: `/${input.file.path}`,
+                [input.file.side === "left" ? "leftFileStart" : "rightFileStart"]: { line: input.file.line, offset: 1 },
+                [input.file.side === "left" ? "leftFileEnd" : "rightFileEnd"]: { line: input.file.endLine, offset: 1 },
+              }
+            : undefined,
+          pullRequestThreadContext: input.comparison
+            ? {
+                changeTrackingId: input.comparison.changeTrackingId,
+                iterationContext: {
+                  firstComparingIteration: input.comparison.compareTo || input.comparison.iteration,
+                  secondComparingIteration: input.comparison.iteration,
+                },
+              }
+            : undefined,
+        });
+      },
+      reply: async (id, parentId, content) => {
+        const thread = findThread(id);
+        if (!thread.comments.some((c) => c.id === parentId)) throw new Error("The parent comment no longer exists.");
+        thread.comments.push(newComment(content, parentId));
+        thread.lastUpdatedDate = new Date().toISOString();
+      },
+      setThreadStatus: async (id, status) => {
+        const thread = findThread(id);
+        thread.status = STATUS_NUMBER[status];
+        thread.lastUpdatedDate = new Date().toISOString();
+      },
+      setVote: async (vote) => {
+        let reviewer = this.snap.pullRequest.reviewers.find((r) => r.id === this.currentUser.id);
+        if (!reviewer) {
+          reviewer = { ...this.currentUser, vote: 0, isRequired: false };
+          this.snap.pullRequest.reviewers.push(reviewer);
+        }
+        reviewer.vote = vote;
+      },
+      searchReviewers: async (query) => {
+        const people = new Map(
+          [
+            this.currentUser,
+            this.snap.pullRequest.createdBy,
+            ...this.snap.pullRequest.reviewers,
+            ...this.snap.threads.flatMap((t) => t.comments.map((c) => c.author)),
+            { id: "mock-engineer", displayName: "Alex Engineer", uniqueName: "alex@example.test" },
+            { id: "mock-team", displayName: "Platform team", uniqueName: "platform@example.test" },
+          ].map((who) => [who.id, who]),
+        );
+        const q = query.trim().toLowerCase();
+        return q.length < 2 ? [] : [...people.values()].filter((who) => `${who.displayName} ${who.uniqueName}`.toLowerCase().includes(q));
+      },
+      addReviewer: async (who, required) => {
+        if (this.snap.pullRequest.reviewers.some((r) => r.id === who.id)) throw new Error("This reviewer is already added.");
+        this.snap.pullRequest.reviewers.push({ ...who, vote: 0, isRequired: required });
+      },
+      setReviewerRequired: async (id, required) => {
+        findReviewer(id).isRequired = required;
+      },
+      removeReviewer: async (id) => {
+        findReviewer(id);
+        this.snap.pullRequest.reviewers = this.snap.pullRequest.reviewers.filter((r) => r.id !== id);
+      },
+      addTag: async (name) => {
+        name = name.trim();
+        if (!name) throw new Error("Enter a tag name.");
+        if (this.snap.pullRequest.labels.some((l) => l.active && l.name.toLowerCase() === name.toLowerCase()))
+          throw new Error("This tag is already added.");
+        this.snap.pullRequest.labels.push({ id: `local-${name}`, name, active: true });
+      },
+      removeTag: async (name) => {
+        this.snap.pullRequest.labels = this.snap.pullRequest.labels.filter((l) => l.name !== name);
+      },
+      setDescription: async (description) => {
+        this.snap.pullRequest.description = description;
+      },
+    };
+  }
 
-  static async fetch(url: string): Promise<MockPrSource> {
+  static async fetch(url: string, currentUser: Identity = MOCK_USER): Promise<MockPrSource> {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Could not load mock data ${url}: ${res.status}`);
-    return new MockPrSource((await res.json()) as PrSnapshot);
+    return new MockPrSource((await res.json()) as PrSnapshot, currentUser);
   }
 
   async load(): Promise<PrOverview> {
@@ -36,7 +157,12 @@ export class MockPrSource implements PrSource {
         creationDate: new Date(p.creationDate),
         sourceBranch: p.sourceRefName.replace(/^refs\/heads\//, ""),
         targetBranch: p.targetRefName.replace(/^refs\/heads\//, ""),
-        repository: { id: p.repository.id, name: p.repository.name, projectId: p.repository.project.id, projectName: p.repository.project.name },
+        repository: {
+          id: p.repository.id,
+          name: p.repository.name,
+          projectId: p.repository.project.id,
+          projectName: p.repository.project.name,
+        },
         reviewers: p.reviewers.map((r) => ({ ...identity(r), vote: asVote(r.vote), isRequired: r.isRequired })),
         labels: p.labels.filter((l) => l.active).map((l) => l.name),
       },
@@ -86,13 +212,26 @@ export class MockPrSource implements PrSource {
       else if (!newId) out.push({ path: strip(path), changeType: "delete", oldObjectId: oldId });
       else out.push({ path: strip(path), changeType: "edit", oldObjectId: oldId, newObjectId: newId });
     }
-    return out.sort((a, b) => a.path.localeCompare(b.path));
+    const paths = [...new Set(Object.values(this.snap.trees).flatMap((tree) => Object.keys(tree)))].sort();
+    return out.sort((a, b) => a.path.localeCompare(b.path)).map((c) => ({ ...c, changeTrackingId: paths.indexOf(`/${c.path}`) + 1 }));
   }
 
   async getBlob(objectId: string): Promise<string> {
     const blob = this.snap.blobs[objectId];
     if (blob === undefined) throw new Error(`blob ${objectId} not in snapshot`);
     return blob;
+  }
+
+  async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {
+    return this.snap.threads
+      .map(thread)
+      .filter(
+        (t) =>
+          !t.file ||
+          !t.iterationContext ||
+          (t.iterationContext.firstComparingIteration === (compareTo || iteration) &&
+            t.iterationContext.secondComparingIteration === iteration),
+      );
   }
 }
 
@@ -122,12 +261,16 @@ export function thread(t: ThreadJson): Thread {
   const end = right ? ctx?.rightFileEnd : ctx?.leftFileEnd;
   const comments = t.comments.map(comment);
   return {
+    iterationContext: t.pullRequestThreadContext?.iterationContext,
     id: t.id,
     status: threadStatusFromNumber(t.status),
     published: new Date(t.publishedDate),
     updated: new Date(t.lastUpdatedDate),
     comments,
-    file: ctx && pos ? { path: strip(ctx.filePath), side: right ? "right" : "left", line: pos.line, endLine: end?.line ?? pos.line } : undefined,
+    file:
+      ctx && pos
+        ? { path: strip(ctx.filePath), side: right ? "right" : "left", line: pos.line, endLine: end?.line ?? pos.line }
+        : undefined,
     kind: type === "VoteUpdate" ? "vote" : type || comments.every((c) => c.isSystem) ? "system" : "comment",
     vote: type === "VoteUpdate" ? asVote(Number(t.properties.CodeReviewVoteResult?.$value ?? 0)) : undefined,
   };

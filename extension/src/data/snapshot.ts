@@ -26,6 +26,10 @@ export interface PositionJson {
 }
 
 export interface ThreadJson {
+  pullRequestThreadContext?: {
+    changeTrackingId: number;
+    iterationContext: { firstComparingIteration: number; secondComparingIteration: number };
+  };
   id: number;
   publishedDate: string;
   lastUpdatedDate: string;

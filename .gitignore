@@ -3,5 +3,8 @@ out/
 .cache/
 extension/dev-data/
 extension/dist/
+extension/test-dist/
+.playwright-mcp/
+.playwright-cli/
 *.vsix
 extension/assets/

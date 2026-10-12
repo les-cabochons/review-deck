@@ -108,35 +108,100 @@ Example LLM-titled groups for t3code#17901 (104 hunks → 5 groups):
 "Add GitCafe token setting ahead of CAFE_TOKEN" (26),
 "Replace patched host fields per source control host" (3).
 
-## Azure DevOps extension (milestone 1: read path)
+## Azure DevOps Services extension
 
-`extension/` is a full-page pull request review for Azure DevOps. It has an
-Overview / Files / Commits layout like the native PR page; Files is
-**semantically grouped by default**, with an A–Z toggle and inline /
-side-by-side diffs. It reuses the pipeline above in the browser (tree-sitter
-WASM, structural signals, heuristic titles).
+`extension/` replaces the Azure DevOps pull request pages with two full-width
+pages:
+- **A PR hub:** a Graphite-style inbox of the pull requests that involve you.
+- **A review page:** Overview / Files / Commits. Files is **semantically
+  grouped by default**, with an A–Z toggle and inline / side-by-side diffs.
+
+The visual language is Graphite's layout and density in an Azure DevOps skin:
+- Azure DevOps theme variables, fonts and icons.
+- `azure-devops-ui` buttons, split buttons and menus.
+
+It reuses the pipeline above in the browser (tree-sitter WASM, structural
+signals, heuristic titles).
 
 ```sh
-npm run ext:mock        # build mock snapshots from the real t3code PRs (uses gh + the blobless clone)
-npm run ext:dev         # http://127.0.0.1:5173/dist/review.html?mock=t3code-17901
+npm run ext:mock        # mock PR list + full snapshots from real t3code PRs (uses gh + the blobless clone)
+npm run ext:dev         # http://127.0.0.1:5173/dev/ : fake Azure DevOps frame, live reload, light/dark
 npm run ext:build       # production bundle -> extension/dist + extension/assets
-npm run ext:package     # .vsix (set "publisher" in extension/vss-extension.json first)
+npm run ext:package     # private .vsix using publisher Cabochonio
 npm run ext:typecheck
+npm run ext:test        # adapter and local write regression tests
+npm run ext:test:browser # build the isolated browser failure-test page
 ```
 
+The `justfile` wraps development, checks, builds, packaging, review, and evaluation.
+Run `just check` for both typechecks and the write regression tests.
+
+**Local development without installing:**
+- **The dev shell** (`/dev/`) wraps the page in a fake Azure DevOps frame:
+  top bar, left nav with Repos › PR Review, and the page in an iframe, like
+  the real hub.
+- **Mock data:** the page runs against `extension/dev-data`. This includes a
+  63-PR list built from real T3 Code PRs (some reviewer votes are synthetic so
+  every inbox section has rows) and three openable PRs with in-memory writes.
+- **Live reload and themes:** the page reloads on every rebuild, and the theme
+  dropdown switches the Azure DevOps light/dark variables.
+- **Shareable URLs:** the shell URL mirrors the route (`?pr=17901&repo=t3code`),
+  so reloads and links keep the page.
+
 **What's there:**
-- **Header:** title, status, author, source → target branch.
+- **PR hub:**
+  - Inbox sections: Needs your review, Returned to you, Approved, Waiting for
+    review, Drafts, You reviewed, Recently completed, Other active.
+  - A sidebar filter and a search box (`/` to focus).
+  - A repository filter.
+  - Dense rows: state, author, review state, reviewer votes, checks, active
+    comments, size, age.
+  - j/k to move, Enter to open.
+  - Opening a PR stays inside the hub and updates the host URL
+    (`?pr=<id>&repo=<id>`).
+- **Header:**
+  - A breadcrumb back to the hub, plus title, status, author, and source →
+    target branch.
+  - Stats: files, +/−, number of concerns.
+  - "Review" / "Finish review (n)".
+  - The Azure DevOps vote split button: **Approve | ▾** with the other votes
+    and "Reset feedback".
+  - Complete ▾ (disabled, milestone 3) and ⋯.
+- **Reviews like GitHub:**
+  - Line comments and replies can "Start a review" instead of posting
+    immediately. Drafts show inline as Pending, can be edited or deleted, and
+    survive reloads (stored per PR and user).
+  - "Finish review" opens a panel for a summary plus a verdict (Comment,
+    Approve, Approve with suggestions, Wait for author, Reject) and posts
+    everything at once. Azure DevOps has no server-side pending review, so
+    drafts stay private until you submit.
+- **Comment editor:**
+  - Write / Preview.
+  - An Azure DevOps-style toolbar: heading, bold, italic, strikethrough,
+    quote, code, link, lists, checklist, @mention.
+  - Shortcuts: Ctrl+B/I/E/K, and Ctrl+Enter to submit.
+  - `@` suggestions from the PR's people plus the identity directory, inserted
+    as Azure DevOps `@<id>` mentions and rendered as names.
+  - Each comment's ⋯ menu has Quote reply (quotes the selected text, or the
+    whole comment), Copy link and Copy text.
 - **Overview:**
+  - An editable description with Markdown preview and a general comment composer.
   - The description (markdown) and a GitHub-style timeline: updates with
     their commits, votes, and comment threads (general and file-anchored)
     with replies and status.
   - A sidebar with a semantic summary ("Changes by concern"; click to jump
     to a group), reviewers and votes, required/optional checks (policy
     evaluations), tags and work items.
+  - Search and add reviewers, change required/optional status, remove reviewers,
+    and add or remove tags. Vote as the signed-in user using any Azure DevOps vote option.
 - **Files:**
+  - Azure DevOps dropdown buttons: "Grouped by concern ▾" / "Files A–Z",
+    "Inline ▾" / "Side by side", and "Base ▾ → Update n ▾".
   - Grouped (concern, rationale, hunks ordered definitions-first) or A–Z.
   - Inline or side-by-side diffs with word-level highlights.
   - Existing comment threads shown under their lines.
+  - Click a line number to comment on either side. Reply to threads and change
+    their status in both the activity timeline and the diff.
   - An update picker (compare base/update N → update M), a navigator, and
     change stats.
 - **Commits:** commits grouped by update.
@@ -145,16 +210,59 @@ npm run ext:typecheck
   `?pr=<id>&repo=<id>`.
 
 **Not yet:**
-- **Write actions** (milestone 2): vote, complete/abandon, reviewers, tags,
-  comments and replies, thread status, description edits. The buttons are
-  shown but disabled.
-- **Viewed-file state, auto-complete, merge options:** milestone 3.
+- **Complete/abandon, viewed-file state, auto-complete, merge options:** milestone 3.
+- **Work item linking, comment editing/deletion, likes.**
+- **PR hub:** reviewer groups (teams) aren't expanded, so "Needs your review"
+  only counts direct assignments. In Azure DevOps, checks and comment counts
+  load lazily for visible rows, and size isn't shown. The host's browser
+  Back button doesn't notify the iframe; use the breadcrumb.
 - **Stack navigation:** later.
 - **Syntax highlighting and "expand context".**
 - **Embeddings and LLM titles in the browser** (structural + heuristic only
   for now).
-- **Comment line tracking across updates.** Threads are placed at their
-  stored line.
+- **Remaining live validation:** cross-update and renamed-file comment positions,
+  group identities, another reviewer's vote preservation, and real permission denials.
+
+Version `0.1.5` is installed privately in `cabochons`. The
+[live review of test PR #1](https://dev.azure.com/cabochons/Semantic_pr/_apps/hub/Cabochonio.semantic-pr-review.review-hub?pr=1&repo=d97ed793-6e2d-4caa-a2d5-f2387971e41a)
+verified general and line comments, replies, resolving and reopening threads,
+every vote option, reviewer search/add/remove/required controls, tags, and
+description edits. Native PR data confirmed the saved results. The PR's original
+description, empty reviewer list, and empty tags were restored. Three smoke-test
+threads remain resolved.
+
+Milestone 2 write checks used version `0.1.2`. Live testing exposed Azure DevOps reviewer PUT requests resetting omitted vote
+or requirement fields. The adapter now reads the current reviewer and sends both
+values. Reviewer search avatars also resolve against the organization URL.
+All 26 startup, adapter, and mock regression tests pass. An injected HTTP 403 confirmed
+that the installed page retains rejected drafts and displays the server error.
+Actual organization permissions were unchanged. Test PR #1 has only one update
+and one README edit, so it cannot establish cross-update or rename behavior.
+
+Mock edits stay in memory for the current page session. Reloading the page resets
+the mock. Every successful write reloads PR data without resetting the chosen diff
+comparison or recomputing clustering. Failed writes keep the draft. If the write
+succeeds but refreshing fails, the page asks for a refresh before another write.
+
+New line comments carry the changed file's tracking ID and selected iteration
+comparison. The Azure DevOps source asks the API to track existing threads into
+that comparison. The mock displays newly anchored threads only in their original
+comparison. Imported snapshot comments without iteration data retain their stored
+line positions.
+
+The milestone plan and remaining backlog are in [docs/milestone-2.md](docs/milestone-2.md).
+Startup and Firefox regression checks are in [docs/startup-loading.md](docs/startup-loading.md).
+Opening the PR Review hub without a PR shows the inbox. Preferences still
+work for the current session when browser storage is denied. The SDK handshake
+runs before loading the review UI, and parsing/clustering code loads separately.
+
+For browser failure checks, run `npm run ext:test:browser` while `npm run ext:dev`
+is running, then open `http://127.0.0.1:5173/test-dist/index.html`. This renders the
+actual app against a mock with test hooks on `window.reviewTest`. Set `failWrite`
+or `failRefresh` to fail the next comment write or reload. Set `pauseWrite` to
+pause a submission, then call `resume()` to complete it. `writes` and `analyses`
+count submissions and diff analyses. The test page lives outside the packaged
+`dist` folder.
 
 **How it's built:**
 - **Data:** `src/data/model.ts` defines the normalized view model; the
