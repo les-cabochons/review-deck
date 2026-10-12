@@ -26,5 +26,7 @@ export interface PrSummaryJson {
 export interface PrListSnapshot {
   source: { github: string; note: string };
   currentUser: IdentityJson;
+  /** Teams the local user belongs to (synthetic). */
+  currentUserGroups?: { id: string; name: string }[];
   pullRequests: PrSummaryJson[];
 }

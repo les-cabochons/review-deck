@@ -1815,3 +1815,7 @@ kbd {
   flex: 0 3 auto;
   min-width: 24px;
 }
+.via-team {
+  flex: none;
+  color: var(--link);
+}

@@ -17,6 +17,12 @@ import { listRealPrIds, ROOT } from "../src/node/fixtures.js";
 const SLUG = "pingdotgg/t3code";
 const ME = "juliusmarminge";
 const HUMANS = ["maria-rcks", "mweinbach", "otavio", "flamboh", "PixPMusic"];
+// Synthetic Azure DevOps teams the local user belongs to; reviews requested from them count as "needs your review".
+const TEAMS = [
+  { id: "team-t3-core", name: "T3 Core" },
+  { id: "team-t3-web", name: "T3 Web" },
+];
+const team = (t: (typeof TEAMS)[number]) => ({ id: t.id, displayName: `[t3code]\\${t.name}`, uniqueName: `t3code\\${t.name}` });
 const OUT = join(ROOT, "extension", "dev-data");
 
 interface GhListPr {
@@ -82,6 +88,10 @@ function reviewers(p: GhListPr, active: boolean): PrSummaryJson["reviewers"] {
   } else if (active && (n % 3 === 0 || n % 7 === 0)) {
     // Others' PRs: I'm asked to review about a third of them; I've already voted on some.
     out.set(ME, { ...identity(ME), vote: (n % 7 === 0 ? 10 : 0) as never, isRequired: n % 2 === 0, synthetic: true });
+  } else if (active && (/^\w+\(web\)/.test(p.title) || n % 5 === 2)) {
+    // Others' PRs where review was requested from one of my teams instead of me.
+    const t = /^\w+\(web\)/.test(p.title) ? TEAMS[1] : TEAMS[0];
+    out.set(t.id, { ...team(t), vote: 0, isRequired: true, synthetic: true });
   } else if (!active && n % 2 === 0) {
     out.set(ME, { ...identity(ME), vote: 10, isRequired: false, synthetic: true });
   }
@@ -118,6 +128,7 @@ const unique = [...new Map(all.map((p) => [p.number, p])).values()];
 const list: PrListSnapshot = {
   source: { github: `https://github.com/${SLUG}/pulls`, note: `Built from GitHub PRs as seen by ${ME}; reviewer votes marked synthetic are invented.` },
   currentUser: identity(ME),
+  currentUserGroups: TEAMS,
   pullRequests: unique.map(summary),
 };
 mkdirSync(OUT, { recursive: true });

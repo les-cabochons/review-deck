@@ -24,10 +24,18 @@ export interface PrSummary {
   openable: boolean;
 }
 
+/** A team (or group) the current user belongs to; reviews requested from it count as requested from you. */
+export interface MyGroup {
+  id: string;
+  name: string;
+}
+
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;
   list(): Promise<PrSummary[]>;
+  /** Teams the current user belongs to. */
+  myGroups(): Promise<MyGroup[]>;
   /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
   details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size">>>;
   /** Link to the native Azure DevOps page for creating a pull request, when available. */
@@ -38,11 +46,13 @@ export class MockPrListSource implements PrListSource {
   readonly kind = "mock";
   readonly currentUser: Identity;
   private readonly rows: PrSummary[];
+  private readonly groups: MyGroup[];
   /** PR id -> dev-data snapshot id */
   readonly snapshots = new Map<number, string>();
 
   private constructor(list: PrListSnapshot) {
     this.currentUser = list.currentUser;
+    this.groups = list.currentUserGroups ?? [];
     this.rows = list.pullRequests.map((p) => {
       if (p.snapshot) this.snapshots.set(p.pullRequestId, p.snapshot);
       return {
@@ -76,6 +86,10 @@ export class MockPrListSource implements PrListSource {
   async list(): Promise<PrSummary[]> {
     return this.rows.map((r) => ({ ...r, reviewers: r.reviewers.map((x) => ({ ...x })) }));
   }
+
+  async myGroups(): Promise<MyGroup[]> {
+    return this.groups;
+  }
 }
 
 // ---------- inbox sections (Graphite-style) ----------
@@ -103,30 +117,41 @@ export const SECTION_META: Record<SectionId, { title: string; empty: string; ico
 
 export const SECTION_ORDER: SectionId[] = ["needs-review", "returned", "approved", "waiting", "drafts", "reviewed", "completed", "other"];
 
+/** Your teams that were asked to review this PR. */
+export function requestedVia(pr: PrSummary, groups: ReadonlySet<string>): Reviewer[] {
+  return pr.reviewers.filter((r) => groups.has(r.id));
+}
+
 /**
- * Assigns each PR to the first matching section. Group reviewers (Azure DevOps teams) are not expanded:
- * only direct assignments to the current user count.
+ * Assigns each PR to the first matching section. A review requested from one of your teams counts as
+ * requested from you until you vote yourself (Azure DevOps then adds you as a reviewer with your vote).
  */
-export function sectionOf(pr: PrSummary, me: Identity): SectionId {
+export function sectionOf(pr: PrSummary, me: Identity, groups: ReadonlySet<string> = new Set()): SectionId {
   const mine = pr.createdBy.id === me.id;
   const myVote = pr.reviewers.find((r) => r.id === me.id);
   if (pr.status !== "active") return "completed";
   if (mine) {
     if (pr.isDraft) return "drafts";
     if (pr.reviewers.some((r) => r.vote < 0)) return "returned";
-    if (pr.reviewers.some((r) => r.vote >= 5)) return "approved";
+    if (pr.reviewers.some((r) => r.vote >= 5 && !groups.has(r.id))) return "approved";
     return "waiting";
   }
-  if (myVote && !pr.isDraft) return myVote.vote === 0 ? "needs-review" : "reviewed";
+  if (pr.isDraft) return "other";
+  if (myVote && myVote.vote !== 0) return "reviewed";
+  if (myVote || requestedVia(pr, groups).length > 0) return "needs-review";
   return "other";
 }
 
-export function inboxSections(prs: PrSummary[], me: Identity): InboxSection[] {
+export function involvesMe(pr: PrSummary, me: Identity, groups: ReadonlySet<string>): boolean {
+  return pr.createdBy.id === me.id || pr.reviewers.some((r) => r.id === me.id || groups.has(r.id));
+}
+
+export function inboxSections(prs: PrSummary[], me: Identity, groups: ReadonlySet<string> = new Set()): InboxSection[] {
   const buckets = new Map<SectionId, PrSummary[]>(SECTION_ORDER.map((id) => [id, []]));
   for (const pr of prs) {
-    const section = sectionOf(pr, me);
+    const section = sectionOf(pr, me, groups);
     // Completed PRs only matter when they involve you.
-    if (section === "completed" && pr.createdBy.id !== me.id && !pr.reviewers.some((r) => r.id === me.id)) continue;
+    if (section === "completed" && !involvesMe(pr, me, groups)) continue;
     buckets.get(section)!.push(pr);
   }
   const recency = (p: PrSummary) => (p.updatedDate ?? p.closedDate ?? p.creationDate).getTime();

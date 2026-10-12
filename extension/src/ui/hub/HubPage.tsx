@@ -2,7 +2,16 @@ import { Button } from "azure-devops-ui/Button";
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
-import { inboxSections, matchesQuery, type PrListSource, type PrSummary, SECTION_META, type SectionId } from "../../data/list";
+import {
+  inboxSections,
+  matchesQuery,
+  type MyGroup,
+  type PrListSource,
+  type PrSummary,
+  requestedVia,
+  SECTION_META,
+  type SectionId,
+} from "../../data/list";
 import { DropdownButton } from "../controls";
 import { readPreference, writePreference } from "../preferences";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
@@ -22,13 +31,27 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
 
+  const [groups, setGroups] = React.useState<MyGroup[]>([]);
+  const [groupError, setGroupError] = React.useState<string | null>(null);
+
   const load = React.useCallback(() => {
     setError(null);
     host
       .listSource()
       .then(async (s) => {
         setSource(s);
-        setPrs(await s.list());
+        // Teams only widen "Needs your review"; the list still works without them.
+        const [list] = await Promise.all([
+          s.list(),
+          s.myGroups().then(
+            (g) => {
+              setGroups(g);
+              setGroupError(null);
+            },
+            (e: Error) => setGroupError(e.message),
+          ),
+        ]);
+        setPrs(list);
       })
       .catch((e: Error) => setError(e.message));
   }, [host]);
@@ -42,7 +65,8 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const me = host.currentUser;
   const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
   const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query));
-  const sections = inboxSections(visible, me);
+  const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
+  const sections = inboxSections(visible, me, groupIds);
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
   const rows = shown.flatMap((s) => (collapsed.has(s.id) && filter === "inbox" ? [] : s.prs));
 
@@ -129,7 +153,17 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             />
           ))}
         </nav>
-        {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes are synthetic.</p>}
+        {groups.length > 0 && (
+          <p className="hub-sidebar-note muted" title={groups.map((g) => g.name).join(", ")}>
+            Includes reviews requested from your {groups.length === 1 ? `team ${groups[0].name}` : `${groups.length} teams`}.
+          </p>
+        )}
+        {groupError && (
+          <p className="hub-sidebar-note tone-warning" role="status">
+            Couldn't load your teams, so only reviews assigned to you directly are counted. {groupError}
+          </p>
+        )}
+        {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
       </aside>
 
       <main className="hub-main">
@@ -188,6 +222,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                             key={pr.id}
                             pr={{ ...pr, ...details.get(pr.id) }}
                             me={me.id}
+                            via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             selected={index === selected}
                             onOpen={() => open(pr)}
                             onHover={() => setSelected(index)}
@@ -245,9 +280,10 @@ const CHECKS: Record<string, { icon: string; tone: string; label: string }> = {
   none: { icon: "CircleRing", tone: "neutral", label: "No checks" },
 };
 
-const PrRow: React.FC<{ pr: PrSummary; me: string; selected: boolean; onOpen: () => void; onHover: () => void }> = ({
+const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; selected: boolean; onOpen: () => void; onHover: () => void }> = ({
   pr,
   me,
+  via,
   selected,
   onOpen,
   onHover,
@@ -289,6 +325,12 @@ const PrRow: React.FC<{ pr: PrSummary; me: string; selected: boolean; onOpen: ()
             {pr.sourceBranch} → {pr.targetBranch}
           </span>
           <span>{pr.createdBy.id === me ? "you" : pr.createdBy.displayName}</span>
+          {via.length > 0 && !pr.reviewers.some((r) => r.id === me) && (
+            <span className="via-team" title={`Review requested from ${via.map((v) => v.displayName).join(", ")}`}>
+              via {via[0].displayName}
+              {via.length > 1 ? ` +${via.length - 1}` : ""}
+            </span>
+          )}
           {pr.labels.slice(0, 3).map((l) => (
             <span key={l} className="label-pill">
               {l}

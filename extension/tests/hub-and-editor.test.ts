@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inboxSections, matchesQuery, type PrSummary, sectionOf } from "../src/data/list";
+import { inboxSections, matchesQuery, type PrSummary, requestedVia, sectionOf } from "../src/data/list";
 import type { Identity, Vote } from "../src/data/model";
 import { code, insertMention, link, mentionQuery, prefixLines, quote, wrap } from "../src/ui/editor/format";
 
@@ -95,4 +95,20 @@ test("Given an @ being typed, then the query is detected and replaced by an Azur
   const done = insertMention(typing, 7, "ana-id");
   assert.equal(done.text, "thanks @<ana-id> ");
   assert.equal(done.start, done.text.length);
+});
+
+test("Given a review requested from one of my teams, then it needs my review until I vote myself", () => {
+  const team: Identity = { id: "team-web", displayName: "[repo]\Web", uniqueName: "repo\Web" };
+  const groups = new Set([team.id]);
+  const viaTeam = pr(1, { reviewers: [reviewer(team, 0, true)] });
+  assert.equal(sectionOf(viaTeam, me), "other", "without team membership it is someone else's review");
+  assert.equal(sectionOf(viaTeam, me, groups), "needs-review");
+  assert.deepEqual(requestedVia(viaTeam, groups).map((r) => r.id), ["team-web"]);
+  // Azure DevOps adds me as a reviewer with my vote once I vote on behalf of the team.
+  assert.equal(sectionOf(pr(2, { reviewers: [reviewer(team, 10, true), reviewer(me, 10)] }), me, groups), "reviewed");
+  assert.equal(sectionOf(pr(3, { isDraft: true, reviewers: [reviewer(team, 0)] }), me, groups), "other");
+  // A team's vote on my own PR doesn't count as an approval of it by someone else.
+  assert.equal(sectionOf(pr(4, { createdBy: me, reviewers: [reviewer(team, 10)] }), me, groups), "waiting");
+  const sections = inboxSections([pr(5, { status: "completed", reviewers: [reviewer(team, 10)] })], me, groups);
+  assert.equal(sections.find((s) => s.id === "completed")!.prs.length, 1, "completed team reviews involve me");
 });

@@ -1,7 +1,8 @@
 import { getClient } from "azure-devops-extension-api";
 import { type GitPullRequest, type GitPullRequestSearchCriteria, GitRestClient, PullRequestStatus } from "azure-devops-extension-api/Git";
+import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
-import type { PrListSource, PrSummary } from "./list";
+import type { MyGroup, PrListSource, PrSummary } from "./list";
 import { asVote, type Identity, identityImageUrl, type PrStatus } from "./model";
 
 const PR_STATUS: Record<number, PrStatus> = { 1: "active", 2: "abandoned", 3: "completed" };
@@ -12,6 +13,7 @@ export class AdoPrListSource implements PrListSource {
   readonly kind = "ado";
   private readonly git = getClient(GitRestClient);
   private readonly policy = getClient(PolicyRestClient);
+  private readonly core = getClient(CoreRestClient);
 
   constructor(
     private readonly projectId: string,
@@ -32,6 +34,12 @@ export class AdoPrListSource implements PrListSource {
     const unique = new Map<number, GitPullRequest>();
     for (const p of [...active, ...done]) unique.set(p.pullRequestId, p);
     return [...unique.values()].map((p) => this.summary(p));
+  }
+
+  /** Every team you belong to in the organization; a team reviewer's id is the team's identity id. */
+  async myGroups(): Promise<MyGroup[]> {
+    const teams = await this.core.getAllTeams(true, 1000);
+    return teams.map((t) => ({ id: t.id, name: t.name }));
   }
 
   async details(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments">>> {
