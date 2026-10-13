@@ -129,6 +129,46 @@
       "path": "assets/tree-sitter-tsx.wasm",
       "addressable": true,
       "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-python.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-go.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-rust.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-java.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-c_sharp.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-ruby.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-php.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-cpp.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
     }
   ]
 }

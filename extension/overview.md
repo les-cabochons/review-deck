@@ -75,7 +75,7 @@ A build with the Review Deck backend adds two things. Sentence embeddings make t
 Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
 
 **Which languages are supported?**
-Every file shows up and gets a diff. Structural grouping is deepest for TypeScript and JavaScript (including TSX/JSX), and syntax highlighting covers TS/TSX, JS/JSX, JSON, Markdown, CSS, HTML, YAML and shell scripts. Other files are grouped by their paths and shared names.
+Every file shows up and gets a diff. Structural grouping understands TypeScript, JavaScript (including TSX/JSX), Python, Go, Rust, Java, C#, Ruby, PHP, C and C++. For these languages it links a change to the code that uses it and pairs tests with the code they test. Syntax highlighting covers about 75 languages and formats, including Kotlin, Swift, Scala, Dart, SQL, Terraform, Dockerfiles, Vue and Svelte. Other files are grouped by their paths and shared names.
 
 **Can I still use the normal pull request page?**
 Yes. Review Deck adds pages; it doesn't remove or change the built-in ones. Use **Classic review** to switch at any time.

@@ -25,8 +25,11 @@ cpSync(join(here, "static"), dist, { recursive: true });
 const assets = join(here, "assets");
 mkdirSync(assets, { recursive: true });
 cpSync(require.resolve("web-tree-sitter/web-tree-sitter.wasm"), join(assets, "web-tree-sitter.wasm"));
-const grammars = dirname(require.resolve("tree-sitter-typescript/package.json"));
-for (const g of ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"]) cpSync(join(grammars, g), join(assets, g));
+const { GRAMMARS } = await import("../src/parse/grammars.ts");
+for (const g of Object.values(GRAMMARS)) {
+  const pkg = dirname(require.resolve(`${g.package}/package.json`));
+  cpSync(join(pkg, g.file), join(assets, g.file));
+}
 
 const options = {
   entryPoints: {
