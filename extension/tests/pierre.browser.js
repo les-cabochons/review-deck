@@ -8,12 +8,12 @@ async page => {
     await page.goto('http://127.0.0.1:5173/dev/?pr=17901&repo=t3code#files');
     const f = page.frameLocator('#frame');
     await f.locator('[data-renderer="pierre-diffs"]').first().waitFor();
-    // View toggles are pressed/unpressed buttons: one click flips them.
-    const groupToggle = f.getByRole('button',{name:'Group by concern',exact:true});
-    const splitToggle = f.getByRole('button',{name:'Side by side',exact:true});
-    const pressed = async (toggle) => (await toggle.getAttribute('aria-pressed')) === 'true';
-    if (!(await pressed(groupToggle))) await groupToggle.click();
-    if (await pressed(splitToggle)) await splitToggle.click();
+    // View toggles name the current mode, like Azure DevOps' "Inline ▾": one click flips them.
+    const viewToggle = f.locator('.files-toolbar .mode-toggle').nth(0).locator('button').first();
+    const diffToggle = f.locator('.files-toolbar .mode-toggle').nth(1).locator('button').first();
+    const label = async (toggle) => (await toggle.innerText()).trim();
+    if (await label(viewToggle) !== 'By concern') await viewToggle.click();
+    if (await label(diffToggle) !== 'Inline') await diffToggle.click();
     await f.locator('diffs-container [data-column-number="22"]').first().waitFor();
     await f.locator('file-tree-container').first().waitFor();
     const firstTreeFile=f.locator('file-tree-container').first().getByRole('treeitem',{name:'ProviderSettingsForm.tsx',exact:true});
@@ -27,8 +27,8 @@ async page => {
     await f.getByRole('button',{name:'Add single comment',exact:true}).click();
     await f.getByText('Pierre browser check: right-side comment.',{exact:true}).waitFor();
 
-    await splitToggle.click();
-    if (!(await pressed(splitToggle))) throw new Error('Side-by-side toggle did not turn on');
+    await diffToggle.click();
+    if (await label(diffToggle) !== 'Side-by-side') throw new Error('Diff toggle did not switch to side-by-side');
     const deletion=f.locator('diffs-container [data-column-number][data-line-type="change-deletion"]').first();
     const leftLine=await deletion.getAttribute('data-column-number');
     await deletion.click();
@@ -42,8 +42,8 @@ async page => {
     await f.getByRole('button',{name:'Update comment',exact:true}).click();
     await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor();
 
-    await groupToggle.click();
-    if (await pressed(groupToggle)) throw new Error('Group toggle did not turn off');
+    await viewToggle.click();
+    if (await label(viewToggle) !== 'Files A–Z') throw new Error('View toggle did not switch to A–Z');
     if(await f.locator('file-tree-container').count()!==1)throw new Error('Alphabetical view should have one Pierre tree');
     // Diffs mount lazily near the viewport, so jump to the commented file the way a reviewer would.
     await f.locator('file-tree-container').getByRole('treeitem',{name:'ProviderSettingsForm.tsx',exact:true}).click();

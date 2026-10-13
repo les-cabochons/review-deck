@@ -1385,17 +1385,6 @@ kbd {
 }
 
 /* ---------- files ---------- */
-/* view toggles: pressed = on, in the host's primary color (Azure DevOps' toggled button look) */
-.toggle-button.bolt-button.pressed {
-  background-color: rgba(var(--palette-primary, 0, 120, 212), 0.12);
-  color: var(--communication-foreground, #005a9e);
-}
-.toggle-button.bolt-button.pressed .fabric-icon {
-  color: var(--communication-foreground, #005a9e);
-}
-.toggle-button.bolt-button.pressed:hover {
-  background-color: rgba(var(--palette-primary, 0, 120, 212), 0.18);
-}
 .files-toolbar {
   display: flex;
   align-items: center;
