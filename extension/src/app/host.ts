@@ -1,5 +1,6 @@
 import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
 import type { PrListSource } from "../data/list";
+import { DEFAULT_RELEASE_SETTINGS, type ReleaseCatalog, readReleaseSettings, type ReleaseSettings } from "../data/releases";
 import type { Identity, PrSource } from "../data/model";
 import type { TagStore } from "../data/tags";
 import type { BackendService } from "../review/backend";
@@ -21,9 +22,11 @@ export interface ProjectSettings {
   trunkBranches: string[];
   /** The backend keeps stacks rebased on their parents (service hooks -> src/stack/restack.ts). */
   autoRestack: boolean;
+  /** The Changelog hub's tag convention and publishing pipelines. */
+  releases: ReleaseSettings;
 }
 
-export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false, trunkBranches: DEFAULT_TRUNK_PATTERNS, autoRestack: false };
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false, trunkBranches: DEFAULT_TRUNK_PATTERNS, autoRestack: false, releases: DEFAULT_RELEASE_SETTINGS };
 
 /** Settings from storage, with anything missing or malformed at its default. */
 export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings, unknown>> | null | undefined): ProjectSettings {
@@ -32,6 +35,7 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
     aiTitles: saved?.aiTitles === true,
     trunkBranches: trunks.length ? trunks : DEFAULT_TRUNK_PATTERNS,
     autoRestack: saved?.autoRestack === true,
+    releases: readReleaseSettings(saved?.releases),
   };
 }
 
@@ -63,8 +67,11 @@ export interface AppHost {
   backendService(): Promise<BackendService | null>;
   /** This project's settings. Resolves to the defaults (all off) when they can't be read, so a failure never turns AI on. */
   projectSettings(): Promise<ProjectSettings>;
-  /** Saves this project's settings; the UI offers it to project administrators only. */
-  saveProjectSettings(settings: ProjectSettings): Promise<void>;
+  /**
+   * Saves changed settings on top of the ones stored now, so sections of the settings page don't overwrite each
+   * other, and resolves to the result. The UI offers it to project administrators only.
+   */
+  updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings>;
   /** Whether the user may change project settings (Azure DevOps: "Edit project-level information"). False if unknown. */
   canManageProject(): Promise<boolean>;
   /**
@@ -78,6 +85,8 @@ export interface AppHost {
   tags(): TagStore;
   /** Your starred repositories, kept per user across projects. */
   favoriteRepos(): FavoriteRepos;
+  /** Git tags, pipeline runs and release descriptions, for the Changelog hub. Loaded on first use, so other pages don't carry it. */
+  releases(): Promise<ReleaseCatalog>;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
 }

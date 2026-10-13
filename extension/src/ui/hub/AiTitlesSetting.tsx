@@ -48,12 +48,11 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
   const canTurnOn = state.hasBackend && model !== null;
 
   const change = (aiTitles: boolean) => {
-    const settings = { ...state.settings, aiTitles };
     setSaving(true);
     setError(null);
     host
-      .saveProjectSettings(settings)
-      .then(() => setState({ ...state, settings }))
+      .updateProjectSettings({ aiTitles })
+      .then((settings) => setState({ ...state, settings }))
       .catch((e: Error) => setError(`Couldn't save: ${e.message}`))
       .finally(() => setSaving(false));
   };

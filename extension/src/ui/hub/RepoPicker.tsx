@@ -12,6 +12,10 @@ import {
   repoChecked,
   type RepoSelection,
   ALL_PROJECTS,
+  CURRENT_PROJECT,
+  CURRENT_REPO,
+  type CurrentContext,
+  resolveSelection,
   searchCatalog,
   selectionLabel,
   toggleProject,
@@ -27,6 +31,8 @@ interface PickerProps {
   catalog: RepoCatalog | null;
   catalogError: string | null;
   selection: RepoSelection;
+  /** What "current project" and "current repository" stand for; null until known. */
+  context: CurrentContext | null;
   onChange: (selection: RepoSelection) => void;
   favorites: readonly string[];
   onToggleFavorite: (repoId: string) => void;
@@ -37,12 +43,21 @@ interface PickerProps {
  * Search finds both. Starred repositories make up "Favorites".
  */
 export const RepoPicker: React.FC<PickerProps> = (props) => {
-  const { catalog, selection, favorites } = props;
-  const icon = isAll(selection) ? "Globe" : selection.favorites && !selection.projects.length && !selection.repos.length ? "FavoriteStarFill" : "Repo";
+  const { catalog, selection, context, favorites } = props;
+  const shown = concrete(selection, context);
+  const icon = isAll(shown) ? "Globe" : shown.favorites && !shown.projects.length && !shown.repos.length ? "FavoriteStarFill" : "Repo";
   return (
     <ExpandableButton
       className="repo-picker-button"
-      text={catalog || isAll(selection) ? selectionLabel(selection, catalog ?? []) : "Loading projects…"}
+      text={
+        selection.current && !context
+          ? selection.current === "repo"
+            ? "Current repository"
+            : "Current project"
+          : catalog || isAll(shown)
+            ? selectionLabel(shown, catalog ?? [])
+            : "Loading projects…"
+      }
       iconProps={{ iconName: icon }}
       ariaLabel="Choose projects and repositories"
       tooltipProps={{ text: favorites.length ? `${plural(favorites.length, "favorite repository", "favorite repositories")}` : "Choose projects and repositories" }}
@@ -68,8 +83,13 @@ export const RepoPicker: React.FC<PickerProps> = (props) => {
   );
 };
 
+/** The projects and repositories a selection stands for: a "current" choice as its project or repository (none while unknown). */
+const concrete = (s: RepoSelection, context: CurrentContext | null): RepoSelection =>
+  !s.current ? s : context ? resolveSelection(s, context) : { ...ALL_PROJECTS, projects: [""] };
+
 type Row =
   | { kind: "all" }
+  | { kind: "current"; current: "project" | "repo" }
   | { kind: "favorites" }
   | { kind: "back"; project: CatalogProject }
   | { kind: "whole-project"; project: CatalogProject }
@@ -84,7 +104,9 @@ interface Group {
   empty?: string;
 }
 
-const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog, catalogError, selection, onChange, favorites, onToggleFavorite, onClose }) => {
+const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog, catalogError, selection: chosen, context, onChange, favorites, onToggleFavorite, onClose }) => {
+  // Checking projects and repositories starts from what a "current" choice stands for.
+  const selection = concrete(chosen, context);
   const [query, setQuery] = React.useState("");
   const [openProject, setOpenProject] = React.useState<string | null>(null);
   const [active, setActive] = React.useState(0);
@@ -109,7 +131,11 @@ const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog,
     if (found.repos.length) groups.push(capped("Repositories", found.repos.map((r) => ({ kind: "repo", repo: r, project: byId.get(r.projectId), projectName: r.projectName }))));
     if (!groups.length) groups.push({ rows: [], hidden: 0, empty: catalog ? "No projects or repositories match." : undefined });
   } else {
-    groups.push({ title: "Selection", rows: [{ kind: "all" }, { kind: "favorites" }], hidden: 0 });
+    groups.push({
+      title: "Selection",
+      rows: [{ kind: "all" }, { kind: "current", current: "project" }, { kind: "current", current: "repo" }, { kind: "favorites" }],
+      hidden: 0,
+    });
     if (catalog) groups.push(capped("Projects", projects.map((project) => ({ kind: "project", project })), "No projects."));
   }
   const rows = groups.flatMap((g) => g.rows);
@@ -129,6 +155,8 @@ const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog,
     switch (row.kind) {
       case "all":
         return onChange(ALL_PROJECTS);
+      case "current":
+        return onChange(row.current === "repo" ? CURRENT_REPO : CURRENT_PROJECT);
       case "favorites":
         return favorites.length > 0 && onChange({ ...selection, favorites: !selection.favorites });
       case "back":
@@ -190,6 +218,9 @@ const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog,
                   row={row}
                   active={i === current}
                   selection={selection}
+                  chosen={chosen}
+                  context={context}
+                  catalog={projects}
                   favorites={favorites}
                   onHover={() => setActive(i)}
                   onActivate={() => activate(row)}
@@ -208,18 +239,22 @@ const PickerPanel: React.FC<PickerProps & { onClose: () => void }> = ({ catalog,
   );
 };
 
-const rowKey = (row: Row) => `${row.kind}:${"repo" in row ? row.repo.id : "project" in row ? row.project.id : ""}`;
+const rowKey = (row: Row) => `${row.kind}:${"repo" in row ? row.repo.id : "project" in row ? row.project.id : "current" in row ? row.current : ""}`;
 
 const PickerRow: React.FC<{
   row: Row;
   active: boolean;
   selection: RepoSelection;
+  /** The choice as made, which may be a "current" one. */
+  chosen: RepoSelection;
+  context: CurrentContext | null;
+  catalog: RepoCatalog;
   favorites: readonly string[];
   onHover: () => void;
   onActivate: () => void;
   onOpen: (projectId: string) => void;
   onToggleFavorite: (repoId: string) => void;
-}> = ({ row, active, selection, favorites, onHover, onActivate, onOpen, onToggleFavorite }) => {
+}> = ({ row, active, selection, chosen, context, catalog, favorites, onHover, onActivate, onOpen, onToggleFavorite }) => {
   const common = { onMouseEnter: onHover, onClick: onActivate, className: cx("picker-row", active && "active") };
   switch (row.kind) {
     case "back":
@@ -234,9 +269,23 @@ const PickerRow: React.FC<{
         <div {...common} role="menuitemradio" aria-checked={isAll(selection)}>
           <Icon iconName="Globe" className="picker-lead" />
           <span className="picker-name">All projects</span>
-          {isAll(selection) && <Icon iconName="CheckMark" className="picker-tick" />}
+          {isAll(chosen) && <Icon iconName="CheckMark" className="picker-tick" />}
         </div>
       );
+    case "current": {
+      const on = chosen.current === row.current;
+      const project = context && catalog.find((p) => p.id === context.projectId);
+      const name = row.current === "repo" ? project?.repos.find((r) => r.id === context?.repoId)?.name : project?.name;
+      return (
+        <div {...common} role="menuitemradio" aria-checked={on} title="Follows what's selected in Azure DevOps each time you open the hub">
+          <Icon iconName={row.current === "repo" ? "Repo" : "ProjectCollection"} className="picker-lead" />
+          <span className="picker-name">{row.current === "repo" ? "Current repository" : "Current project"}</span>
+          {/* Without a repository in the breadcrumb (e.g. TFVC), "current repository" lists the current project. */}
+          {name ? <span className="picker-meta muted">{name}</span> : row.current === "repo" && context && <span className="picker-meta muted">None selected: the project</span>}
+          {on && <Icon iconName="CheckMark" className="picker-tick" />}
+        </div>
+      );
+    }
     case "favorites": {
       const none = favorites.length === 0;
       return (

@@ -1,6 +1,7 @@
 import { MockPrListSource } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
+import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
@@ -20,6 +21,7 @@ export class LocalHost implements AppHost {
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
   private readonly reviews = new Map<string, SavedReview>();
+  private readonly releaseCatalog = new MockReleaseCatalog();
 
   private constructor(private readonly list: MockPrListSource) {
     window.addEventListener("popstate", () => this.listeners.emit(this.route()));
@@ -58,9 +60,16 @@ export class LocalHost implements AppHost {
     return this.list;
   }
 
-  /** The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. */
+  /**
+   * The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. The Changelog page opens on the
+   * made-up repository with tags, as Azure DevOps always has one selected there.
+   */
   async currentRepository(): Promise<{ id: string; name: string } | null> {
     const id = new URLSearchParams(location.search).get("currentRepo");
+    const releaseRepos = await this.releaseCatalog.repositories();
+    if (!id && document.body.dataset.page === "changelog") return releaseRepos[0] ?? null;
+    const known = releaseRepos.find((r) => r.id === id);
+    if (known) return known;
     const pr = id && (await this.list.list()).find((p) => p.repository.id === id);
     return pr ? { id, name: pr.repository.name } : null;
   }
@@ -106,8 +115,10 @@ export class LocalHost implements AppHost {
     }
   }
 
-  async saveProjectSettings(settings: ProjectSettings): Promise<void> {
+  async updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings> {
+    const settings = { ...(await this.projectSettings()), ...change };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    return settings;
   }
 
   async canManageProject(): Promise<boolean> {
@@ -151,6 +162,11 @@ export class LocalHost implements AppHost {
       },
       save: async (ids) => localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids)),
     };
+  }
+
+  /** A made-up repository's tags and pipeline runs (data/mockReleases.ts). */
+  async releases(): Promise<MockReleaseCatalog> {
+    return this.releaseCatalog;
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
