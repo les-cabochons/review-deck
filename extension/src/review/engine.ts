@@ -34,6 +34,8 @@ export interface BuildOptions {
   aiTitles?: boolean;
   /** Reuses the grouping saved for this comparison, and saves a fresh one. */
   saved?: { store: SavedReviews; key: ReviewKey };
+  /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it. */
+  fresh?: boolean;
 }
 
 /**
@@ -53,7 +55,7 @@ export async function buildReview(
   const backend = options.backend ?? null;
   if (backend) warmBackend(backend);
   // Read while the files download; restoreReview (in the worker) checks it still fits.
-  const saved = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
+  const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
   const changes = await source.getChanges(iteration, compareTo);
   const contents = new Map<string, FileContents>();
   await forEachLimited(
@@ -96,7 +98,7 @@ function previewResult(meta: { title: string; description: string }, diff: strin
     groups: [],
     merges: [],
     timings: {},
-    options: { semantic: false, titler: "none", weights: { structural: 0, testPairing: 0, lexical: 0, semantic: 0, path: 0 }, minEdgeWeight: 0 },
+    options: { semantic: false, titler: "none", weights: { structural: 0, testPairing: 0, lexical: 0, semantic: 0, path: 0, description: 0 }, minEdgeWeight: 0 },
     warnings: [],
   };
 }

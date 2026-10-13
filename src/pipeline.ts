@@ -7,6 +7,7 @@ import { parseDiff } from "./diff/parse.js";
 import { orderGroups } from "./order/topo.js";
 import type { SyntaxParsers } from "./parse/treesitter.js";
 import { type Embedder, scorePairs } from "./score/index.js";
+import { titlesFromDescription } from "./title/fromDescription.js";
 import { describeGroup, HeuristicTitler } from "./title/heuristic.js";
 import type { Titler, TitleInput } from "./title/types.js";
 
@@ -55,13 +56,13 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   if (config.semantic.enabled && !embedder) warnings.push("semantic signal enabled but no embedder supplied; skipped");
   const pairs = await time("score", async () => {
     try {
-      return await scorePairs(reviewable, config, embedder, deps.onProgress);
+      return await scorePairs(reviewable, config, embedder, input.description, deps.onProgress);
     } catch (e) {
       // Embedding runs before any pair is scored, so retrying without it repeats no work.
       if (!embedder) throw e;
       warnings.push(`semantic signal skipped: ${e instanceof Error ? e.message : String(e)}`);
       embedder = null;
-      return scorePairs(reviewable, config, null, deps.onProgress);
+      return scorePairs(reviewable, config, null, input.description, deps.onProgress);
     }
   });
 
@@ -122,22 +123,30 @@ async function applyTitles(
     };
   });
   // Only semantic groups go to a pluggable titler; misc/mechanical always use fixed heuristic labels.
+  // Without an LLM answer, a group the description has a step for uses the author's words; others, the rules'.
   const semantic = inputs.filter((i) => i.group.kind === "semantic");
-  let titles = semantic.map(describeGroup);
+  const fromDescription = titlesFromDescription(semantic, input.description);
+  const fallback = semantic.map((i, k) => fromDescription[k] ?? describeGroup(i));
+  let titles = fallback;
   if (titler.name !== "heuristic" && semantic.length > 0) {
     try {
-      titles = await titler.title(semantic, { prTitle: input.title, prDescription: input.description });
+      const answered = await titler.title(semantic, { prTitle: input.title, prDescription: input.description });
+      titles = answered.map((t, k) => (t.source === "llm" ? t : { ...fallback[k], position: t.position }));
     } catch (err) {
       warnings.push(`${titler.name} titler failed, fell back to heuristic: ${(err as Error).message}`);
     }
   }
   const storyPositions = new Map<Group, number>();
   semantic.forEach((i, k) => {
-    const { title, rationale, position } = titles[k];
-    Object.assign(i.group, { title, rationale });
+    const { title, rationale, position, source } = titles[k];
+    Object.assign(i.group, { title, rationale, titleSource: source });
     if (position !== undefined) storyPositions.set(i.group, position);
   });
-  for (const i of inputs) if (i.group.kind !== "semantic") Object.assign(i.group, describeGroup(i));
+  for (const i of inputs) {
+    if (i.group.kind === "semantic") continue;
+    const { title, rationale, source } = describeGroup(i);
+    Object.assign(i.group, { title, rationale, titleSource: source });
+  }
   return storyPositions;
 }
 

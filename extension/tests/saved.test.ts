@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReviewResult } from "../../src/core/types";
-import { packReview, restoreReview, reviewMode } from "../src/review/saved";
+import { basisOf, packReview, restoreReview, reviewMode } from "../src/review/saved";
 
 const meta = { title: "Rename fetch helper", description: "" };
 const diff = [
@@ -25,11 +25,12 @@ const diff = [
 function analyzed(): ReviewResult {
   const result = restoreReview(
     {
-      format: 1,
+      format: 3,
       mode: { semantic: true, llmTitles: true },
+      basis: basisOf(meta),
       groups: [{ id: "g1", kind: "semantic", hunkIds: ["src/api.ts#0", "src/api.test.ts#0"], title: "Rename get to fetchJson", rationale: "Same rename." }],
       merges: [],
-      options: { semantic: true, titler: "llm:backend", weights: { structural: 1, testPairing: 1, lexical: 1, semantic: 1, path: 1 }, minEdgeWeight: 0.1 },
+      options: { semantic: true, titler: "llm:backend", weights: { structural: 1, testPairing: 1, lexical: 1, semantic: 1, path: 1, description: 1 }, minEdgeWeight: 0.1 },
       hunks: {},
     },
     { semantic: true, llmTitles: true },
@@ -63,6 +64,17 @@ test("Given a grouping made another way, or for other hunks, then the PR is anal
   assert.equal(restoreReview(saved, reviewMode({}, true), meta, diff.replace(/diff --git a\/src\/api\.test\.ts[\s\S]*/, "")), null);
   assert.equal(restoreReview({ ...saved, format: 0 }, reviewMode({}, true), meta, diff), null);
   assert.equal(restoreReview(null, reviewMode({}, true), meta, diff), null);
+});
+
+test("Given the title or description was edited since, then the PR is grouped again", () => {
+  const saved = packReview(analyzed(), reviewMode({}, true));
+  const mode = reviewMode({}, true);
+  assert.notEqual(restoreReview(saved, mode, meta, diff), null);
+  // The description's steps guide the grouping, and both feed the titles.
+  assert.equal(restoreReview(saved, mode, { ...meta, description: "1. Rename `get` in `src/api.ts`" }, diff), null);
+  assert.equal(restoreReview(saved, mode, { ...meta, title: "Rename get" }, diff), null);
+  // Saved before the description guided grouping.
+  assert.equal(restoreReview({ ...saved, basis: undefined }, mode, meta, diff), null);
 });
 
 test("Given an analysis that fell back (backend down, titles failed), then it isn't saved, so the next open retries", () => {

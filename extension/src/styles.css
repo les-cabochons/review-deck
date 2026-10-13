@@ -1787,6 +1787,26 @@ kbd {
 .files-toolbar .grouping-status + .stats {
   margin-left: 16px;
 }
+/* Sits on the right, before the stats; stale = the description was edited after grouping. */
+.files-toolbar .regroup {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.files-toolbar .regroup .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.files-toolbar .regroup.stale .regroup-hint {
+  color: var(--warn);
+}
+.files-toolbar .regroup + .stats,
+.files-toolbar .grouping-status + .regroup {
+  margin-left: 16px;
+}
 .grouping-status {
   display: inline-flex;
   align-items: center;
@@ -2062,6 +2082,17 @@ kbd {
 .kind-mechanical .gtitle,
 .kind-misc .gtitle {
   color: var(--fg2);
+}
+/* Who wrote the group's title: AI, the PR description, or rules over the code (TitleSource.tsx). */
+.title-source {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  font-size: 13px;
+  color: var(--fg2);
+}
+.title-source.source-llm {
+  color: var(--link);
 }
 .rationale {
   margin: 0;

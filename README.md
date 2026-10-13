@@ -193,16 +193,20 @@ Run `just check` for both typechecks and the write regression tests.
   - The description (markdown) and a GitHub-style timeline: updates with
     their commits, votes, and comment threads (general and file-anchored)
     with replies and status.
-  - A sidebar with a semantic summary ("Changes by concern"; click to jump
+  - A sidebar with a semantic summary ("Guided review"; click to jump
     to a group), reviewers and votes, required/optional checks (policy
     evaluations), tags and work items.
   - Search and add reviewers, change required/optional status, remove reviewers,
     and add or remove tags. Vote as the signed-in user using any Azure DevOps vote option.
 - **Files:**
-  - Toolbar in Azure DevOps' style. "Group by concern" and "Side by side" are
+  - Toolbar in Azure DevOps' style. "Guided / Files A–Z" and "Inline / Side-by-side" are
     toggle buttons: one click flips them, and they look pressed when on.
     "Base ▾ → Update n ▾" are dropdowns, since they pick one of several updates.
-  - Grouped (concern, rationale, hunks ordered definitions-first) or A–Z.
+  - Guided (groups with a title, rationale, and hunks ordered definitions-first) or A–Z.
+  - **Regroup** in the toolbar groups the changes again with the current title and
+    description, skipping the saved grouping. After you edit the description on the
+    page, the toolbar says "Description changed" next to it. A saved grouping is only
+    reused while the title and description are the ones it was made with.
   - Pierre Diffs (`@pierre/diffs`) renders inline or side-by-side diffs with
     syntax highlighting and word-level highlights.
   - Pierre Trees (`@pierre/trees`) provides file navigation with folders,
@@ -286,10 +290,10 @@ count submissions and diff analyses. The test page lives outside the packaged
   - The worker sends the diff first, so the Files tab shows it A–Z while
     grouping runs.
     - Progress shows in the PR header and the sticky Files toolbar
-    ("Grouping by concern… 42%"), with a progress bar above the list.
+    ("Building guided view… 42%"), with a progress bar above the list.
     - When grouping finishes after more than 2 s, a toast says so.
     - If you've scrolled into the A–Z list, the view doesn't switch under
-    you. The toast and toolbar offer "Show grouped" instead.
+    you. The toast and toolbar offer "Show guided" instead.
   - Hunk cards, Pierre diffs and the navigator's group trees mount within
     1,500px of the viewport and unmount beyond 5,000px (`ui/LazyMount.tsx`).
     Placeholders keep the estimated or last measured height. Content holding
@@ -354,7 +358,7 @@ extension tests and a build on every push and pull request.
 ```
 diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ HunkInfo
    ──mechanical?──▶ collapsed group
-   ──score pairs (5 signals)──▶ weighted graph ──Louvain + refine──▶ communities
+   ──score pairs (6 signals)──▶ weighted graph ──Louvain + refine──▶ communities
    ──order (topological)──▶ groups ──titler──▶ ReviewResult ──render──▶ HTML
 ```
 
@@ -367,7 +371,7 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | `src/score/signals.ts`, `index.ts` | Pairwise signals, each 0..1 with evidence strings (see below). |
 | `src/cluster/louvain.ts`, `refine.ts` | graphology + Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. Refine step: a small community (≤ 4 hunks) whose newly added symbols are used by exactly one other community is absorbed into it, with no chaining. A new private helper belongs with its caller. Singletons go to **misc**. |
 | `src/order/topo.ts` | Kahn's algorithm: definitions before usages, code before tests. Groups are ordered the same way; misc and mechanical come last. |
-| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR, with its title and description, to `claude -p` / `codex exec`. The model orders the groups as a story for the reviewer and names each step. It returns a JSON array in reading order. The titler falls back to heuristics per group on any failure. |
+| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR, with its title and description, to `claude -p` / `codex exec`. The model orders the groups as a story for the reviewer and names each step. It returns a JSON array in reading order. The titler falls back per group on any failure. Without an LLM title, a group that mostly matches one step of the PR description (`src/title/fromDescription.ts`) takes that step's heading and first sentences; otherwise the heuristic one. Each group records its `titleSource` (`llm`, `description` or `heuristic`), and the Files tab marks it with an icon. |
 | `src/render/html.ts` | Self-contained page; diff2html renders the diffs (server-side, so the page needs no diff JS). |
 | `src/pipeline.ts` | Orchestration. When an LLM titler picks a reading order, the semantic groups follow it. |
 | `src/eval/ari.ts`, `scripts/eval.ts` | Adjusted Rand Index and the comparison table. |
@@ -382,6 +386,7 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | lexical | 0.45 | IDF-weighted overlap of identifiers/string literals on changed lines (geometric-mean normalized). |
 | semantic | 0.5 | Cosine similarity of `Xenova/all-MiniLM-L6-v2` embeddings (path + symbol + changed lines), rescaled above 0.5. Only with `--embeddings`. |
 | path | 0.25 | Same file 1, same logical dir 0.6 (tests/x ≡ src/x), same top dir 0.3. Never enough to link on its own. |
+| description | 1.0 | Both hunks belong to the same step of the PR description (`src/score/description.ts`). Steps are top-level list items, heading sections, or paragraphs. A hunk belongs to a step that names its file (1.0), its file's folder (0.75) or the file it tests (0.85), a symbol it changes (0.8) or only uses (0.4), or, with embeddings, one whose wording is close (up to 0.6). Pairs the description confidently puts in different steps keep half their weight from other signals. A description with fewer than two steps changes nothing. |
 
 Edges below `minEdgeWeight` (0.22) are dropped, so one weak coincidence (a
 shared token, the same directory) never links two hunks by itself.

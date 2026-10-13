@@ -1,6 +1,7 @@
 import type { PipelineConfig } from "../core/config.js";
 import { dirname, logicalModule, stripExtension } from "../core/paths.js";
 import type { HunkInfo, SignalName, SignalScore } from "../core/types.js";
+import type { DescriptionStep, StepAffinity } from "./description.js";
 
 /** Shared, per-PR context for signal functions. */
 export interface ScoringContext {
@@ -12,6 +13,9 @@ export interface ScoringContext {
   hunkCount: number;
   /** Unit-normalized embedding per hunk ID (only when the semantic signal is enabled). */
   embeddings: Map<string, number[]> | null;
+  /** The PR description's steps, and which of them each hunk belongs to (empty when the description has no steps). */
+  steps: DescriptionStep[];
+  affinities: Map<string, StepAffinity>;
 }
 
 export type Signal = (a: HunkInfo, b: HunkInfo, ctx: ScoringContext) => SignalScore | null;
@@ -123,12 +127,40 @@ export const path: Signal = (a, b) => {
   return null;
 };
 
+/** Both hunks belong to the same step of the PR description: the author said they go together. */
+export const description: Signal = (a, b, ctx) => {
+  const sa = ctx.affinities.get(a.hunk.id);
+  const sb = ctx.affinities.get(b.hunk.id);
+  if (!sa || !sb) return null;
+  let score = 0;
+  let step = 0;
+  for (const [i, x] of sa) {
+    const shared = Math.min(x, sb.get(i) ?? 0);
+    if (shared > score) [score, step] = [shared, i];
+  }
+  if (score === 0) return null;
+  const label = ctx.steps.find((s) => s.index === step)?.label;
+  return { score, evidence: [`description step ${step}${label ? `: ${label}` : ""}`] };
+};
+
+/** The description confidently puts the two hunks in different steps, and neither in a step of the other. */
+export function inDifferentSteps(a: HunkInfo, b: HunkInfo, ctx: ScoringContext): boolean {
+  const sa = ctx.affinities.get(a.hunk.id);
+  const sb = ctx.affinities.get(b.hunk.id);
+  if (!sa || !sb) return false;
+  const confident = ctx.config.description.confident;
+  if (Math.max(...sa.values()) < confident || Math.max(...sb.values()) < confident) return false;
+  for (const i of sa.keys()) if (sb.has(i)) return false;
+  return true;
+}
+
 export const SIGNALS: Record<SignalName, Signal> = {
   structural,
   testPairing,
   lexical,
   semantic,
   path,
+  description,
 };
 
 function unique<T>(xs: T[]): T[] {

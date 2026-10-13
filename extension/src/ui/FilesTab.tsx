@@ -10,6 +10,7 @@ import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
 import { DropdownButton, ModeToggle } from "./controls";
 import { GroupingStatus } from "./GroupingStatus";
+import { TitleSourceIcon } from "./TitleSource";
 import { cx, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
@@ -37,6 +38,10 @@ interface Props {
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
   holdPreview: boolean;
   onShowGrouped: () => void;
+  /** Groups the changes again (the title or description may have been edited since). */
+  onRegroup: () => void;
+  /** The title or description changed since the grouping was made. */
+  groupingStale: boolean;
 }
 
 export const FilesTab: React.FC<Props> = (props) => {
@@ -83,7 +88,7 @@ export const FilesTab: React.FC<Props> = (props) => {
               <div className="analyzing-text">
                 <span className="spinner" aria-hidden="true" />
                 <span>
-                  <strong>Grouping {plural(review.result.files.length, "file")} by concern…</strong> {props.progress.label}. Showing files A–Z
+                  <strong>Building the guided view of {plural(review.result.files.length, "file")}…</strong> {props.progress.label}. Showing files A–Z
                   until it's done.
                 </span>
                 <span className="analyzing-percent">{Math.round(props.progress.fraction * 100)}%</span>
@@ -101,7 +106,7 @@ export const FilesTab: React.FC<Props> = (props) => {
                   <strong>Grouping is done:</strong> {plural(groups, "concern")}. You're still on the A–Z list so you don't lose your place.
                 </span>
                 <button className="link-button" onClick={props.onShowGrouped}>
-                  Show grouped
+                  Show guided
                 </button>
               </div>
             </div>
@@ -133,7 +138,21 @@ export const FilesTab: React.FC<Props> = (props) => {
 };
 
 /** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
-const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iterations, selection, onSelection, view, onView, mode, onMode, progress, ready, onShowGrouped }) => {
+const Toolbar: React.FC<Props & { ready: number | null }> = ({
+  review,
+  iterations,
+  selection,
+  onSelection,
+  view,
+  onView,
+  mode,
+  onMode,
+  progress,
+  ready,
+  onShowGrouped,
+  onRegroup,
+  groupingStale,
+}) => {
   const { disabled } = useReviewActions();
   const stats = review ? diffStats(review) : null;
   const grouping = !!review && !review.analyzed;
@@ -143,7 +162,7 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iteration
     <div className="files-toolbar">
       <ModeToggle
         options={[
-          { value: "grouped", text: "By concern", icon: "ViewListGroup" },
+          { value: "grouped", text: "Guided", icon: "ViewListGroup" },
           { value: "alpha", text: "Files A–Z", icon: "SortLines" },
         ]}
         value={view}
@@ -193,7 +212,15 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iteration
         <span className="grouping-status ready" role="status">
           <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}
           <button className="link-button" onClick={onShowGrouped}>
-            Show grouped
+            Show guided
+          </button>
+        </span>
+      )}
+      {review?.analyzed && !progress && (
+        <span className={cx("regroup", groupingStale && "stale")} role={groupingStale ? "status" : undefined}>
+          {groupingStale && <span className="regroup-hint">Description changed ·</span>}
+          <button className="link-button" onClick={onRegroup} title="Group the changes again, using the current title and description">
+            <Icon iconName="Refresh" /> Regroup
           </button>
         </span>
       )}
@@ -472,6 +499,7 @@ const GroupSection: React.FC<{ group: Group; index: number } & ViewProps> = ({ g
           {index + 1}
         </span>
         <span className="gtitle">{group.title}</span>
+        <TitleSourceIcon group={group} />
         <span className="count">
           {plural(hunks.length, "change")} · {plural(files, "file")}
         </span>
