@@ -9,6 +9,7 @@ import type { CompletionOptionsJson } from "./snapshot";
 import {
   type CompletionOptions,
   type Identity,
+  isLineAnchor,
   MERGE_STRATEGIES,
   type MergeStrategy,
   type NewThread,
@@ -131,6 +132,7 @@ export function threadPayload(input: NewThread): Partial<GitPullRequestCommentTh
   };
   if (input.file) {
     const { file, comparison } = input;
+    const lines = isLineAnchor(file) ? file : null;
     if (
       !comparison ||
       comparison.changeTrackingId <= 0 ||
@@ -138,19 +140,19 @@ export function threadPayload(input: NewThread): Partial<GitPullRequestCommentTh
       comparison.compareTo < 0 ||
       comparison.compareTo >= comparison.iteration ||
       !file.path ||
-      file.line < 1 ||
-      file.endLine < file.line
+      (lines && (lines.line < 1 || lines.endLine < lines.line))
     ) {
-      throw new Error("The line comment needs a valid file and update comparison. Reload the diff and try again.");
+      throw new Error("The comment needs a valid file and update comparison. Reload the diff and try again.");
     }
-    const start = { line: file.line, offset: 1 };
-    const end = { line: file.endLine, offset: 1 };
+    // A file-level comment is a file path with no positions.
+    const start = lines && { line: lines.line, offset: 1 };
+    const end = lines && { line: lines.endLine, offset: 1 };
     payload.threadContext = {
       filePath: `/${file.path.replace(/^\/+/, "")}`,
-      leftFileStart: file.side === "left" ? start : null,
-      leftFileEnd: file.side === "left" ? end : null,
-      rightFileStart: file.side === "right" ? start : null,
-      rightFileEnd: file.side === "right" ? end : null,
+      leftFileStart: lines?.side === "left" ? start : null,
+      leftFileEnd: lines?.side === "left" ? end : null,
+      rightFileStart: lines?.side === "right" ? start : null,
+      rightFileEnd: lines?.side === "right" ? end : null,
     } as GitPullRequestCommentThread["threadContext"];
     payload.pullRequestThreadContext = {
       changeTrackingId: comparison.changeTrackingId,

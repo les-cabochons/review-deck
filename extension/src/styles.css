@@ -1750,6 +1750,9 @@ kbd {
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 16px;
 }
+.files-layout.tree-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
 .files-content {
   min-width: 0;
 }
@@ -1877,6 +1880,10 @@ kbd {
   font: 12px/20px var(--mono);
   color: var(--fg2);
   background: rgba(0, 120, 212, 0.06);
+}
+.viewed-control:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .pierre-hunk-header strong {
   color: var(--fg);
@@ -2144,6 +2151,78 @@ kbd {
   cursor: pointer;
   border-radius: 0 var(--radius) 0 0;
 }
+.group-header-row {
+  display: flex;
+  align-items: center;
+  padding-right: 14px;
+  gap: 8px;
+}
+.group-header-row > .group-header {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.viewed-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--fg2);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.viewed-control:hover {
+  background: var(--hover);
+}
+.viewed-control.is-viewed {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.viewed-control input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.viewed-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--fg2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.files-toolbar .stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.viewed-progress circle {
+  fill: none;
+  stroke-width: 2;
+  transform: rotate(-90deg);
+  transform-origin: center;
+}
+.viewed-progress-track {
+  stroke: var(--line);
+}
+.viewed-progress-fill {
+  stroke: var(--accent);
+}
+.nav-viewed {
+  color: var(--accent);
+}
 .group-header:hover {
   background: var(--hover);
 }
@@ -2199,6 +2278,47 @@ kbd {
   border-bottom: 1px solid var(--line-soft);
   font-size: 13px;
 }
+/* A folded file is just its header. */
+.file-header:last-child {
+  border-bottom: 0;
+}
+.file-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.file-collapse:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.file-header .file-comment-button.bolt-button {
+  padding: 4px 6px;
+  min-width: 0;
+  gap: 4px;
+  font-size: 12px;
+}
+.file-header .file-comment-button.bolt-button[aria-pressed="true"] {
+  background: var(--hover);
+}
+.file-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
 .file-path {
   font-family: var(--mono);
   font-size: 12px;
@@ -2213,36 +2333,22 @@ kbd {
 .file-path .name {
   font-weight: 600;
 }
-.change-badge {
-  font-size: 10px;
-  font-weight: 700;
-  width: 16px;
-  height: 16px;
+.file-status-pill {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  color: #fff;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
   flex: none;
 }
-.change-added {
-  background: var(--ok);
+.file-status-added {
+  color: var(--ok);
 }
-.change-modified {
-  background: var(--accent);
-}
-.change-deleted {
-  background: var(--err);
-}
-.change-renamed {
-  background: var(--merged);
-}
-.group-chip {
-  color: #fff;
-  border-radius: 3px;
-  padding: 0 5px;
-  font-size: 10px;
-  font-weight: 700;
+.file-status-deleted {
+  color: var(--err);
 }
 .diff-note {
   padding: 10px 14px;
@@ -2324,7 +2430,8 @@ kbd {
   .files-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  .navigator {
+  .navigator,
+  .tree-toggle {
     display: none;
   }
   /* phones: title on its own line, actions wrap below it */

@@ -6,7 +6,7 @@ async (page) => {
   const f = page.frameLocator("#frame");
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const view = f.locator(".files-toolbar .mode-toggle").first().locator("button").first();
-  if ((await view.textContent()).trim() !== "By concern") await view.click();
+  if ((await view.textContent()).trim() !== "Guided") await view.click();
   const groups = f.locator(".nav-group");
   const first = groups.first();
   const toggle = first.locator(".nav-group-toggle");
@@ -40,6 +40,9 @@ async (page) => {
   await f.locator(".file-card").first().waitFor();
   await view.click();
   assert(await toggle.getAttribute("aria-expanded") === "false", "View switch reset collapse");
+  await f.getByRole("button", { name: "Hide file tree", exact: true }).click();
+  await f.getByRole("button", { name: "Show file tree", exact: true }).click();
+  assert(await toggle.getAttribute("aria-expanded") === "false", "Sidebar visibility reset collapse");
   const search = f.getByRole("searchbox", { name: "Search files" });
   await search.fill("does-not-exist");
   await f.locator(".nav-empty").waitFor();
@@ -69,5 +72,5 @@ async (page) => {
   assert(await diffToggle.getAttribute("aria-expanded") === "true", "File selection did not open its diff group");
   assert(errors.length === 0, errors.join("\n"));
   return { mouseCollapse: true, keyboardCollapse: true, independentGroups: true,
-    retainedAcrossViewsSearchAndFilters: true, groupJump: true, fileSelection: true, errors };
+    retainedAcrossViewsSearchFiltersAndSidebar: true, groupJump: true, fileSelection: true, errors };
 }

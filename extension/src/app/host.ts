@@ -89,6 +89,8 @@ export interface AppHost {
   releases(): Promise<ReleaseCatalog>;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
+  /** The native page for a file at a commit, for "View file" links. */
+  fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string | null;
 }
 
 /** Starred repository ids. `load` resolves to none when they can't be read. */

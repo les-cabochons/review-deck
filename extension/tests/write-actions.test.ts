@@ -82,6 +82,18 @@ test("Given an update-to-update comparison, then the thread retains both selecte
   assert.equal(threadPayload({ content: "General comment" }).threadContext, undefined);
 });
 
+test("Given a file comment, then the payload names the file with no positions and keeps the comparison", async () => {
+  const input: NewThread = { content: "About this file", file: { path: "src/b.ts" }, comparison: { iteration: 2, compareTo: 1, changeTrackingId: 17 } };
+  const payload = threadPayload(input);
+  assert.deepEqual(payload.threadContext, { filePath: "/src/b.ts", leftFileStart: null, leftFileEnd: null, rightFileStart: null, rightFileEnd: null });
+  assert.equal(payload.pullRequestThreadContext?.changeTrackingId, 17);
+  assert.throws(() => threadPayload({ ...input, comparison: undefined }), /valid file/);
+
+  const source = new MockPrSource(snapshot());
+  await source.actions.createThread(input);
+  assert.deepEqual((await source.load()).threads[0].file, { path: "src/b.ts" });
+});
+
 test("Given missing tracking data or an empty comment, then posting fails before any write", () => {
   assert.throws(() => threadPayload({ content: "  " }), /Enter a comment/);
   const request = anchored("right");

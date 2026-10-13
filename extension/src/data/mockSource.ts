@@ -1,5 +1,6 @@
 import {
   asVote,
+  isLineAnchor,
   MERGE_STRATEGIES,
   mergeStatusFromNumber,
   type Comment,
@@ -77,8 +78,10 @@ export class MockPrSource implements PrSource {
           threadContext: input.file
             ? {
                 filePath: `/${input.file.path}`,
-                [input.file.side === "left" ? "leftFileStart" : "rightFileStart"]: { line: input.file.line, offset: 1 },
-                [input.file.side === "left" ? "leftFileEnd" : "rightFileEnd"]: { line: input.file.endLine, offset: 1 },
+                ...(isLineAnchor(input.file) && {
+                  [input.file.side === "left" ? "leftFileStart" : "rightFileStart"]: { line: input.file.line, offset: 1 },
+                  [input.file.side === "left" ? "leftFileEnd" : "rightFileEnd"]: { line: input.file.endLine, offset: 1 },
+                }),
               }
             : undefined,
           pullRequestThreadContext: input.comparison
@@ -327,10 +330,11 @@ export function thread(t: ThreadJson): Thread {
     published: new Date(t.publishedDate),
     updated: new Date(t.lastUpdatedDate),
     comments,
-    file:
-      ctx && pos
+    file: !ctx?.filePath
+      ? undefined
+      : pos
         ? { path: strip(ctx.filePath), side: right ? "right" : "left", line: pos.line, endLine: end?.line ?? pos.line }
-        : undefined,
+        : { path: strip(ctx.filePath) },
     kind: type === "VoteUpdate" ? "vote" : type || comments.every((c) => c.isSystem) ? "system" : "comment",
     vote: type === "VoteUpdate" ? asVote(Number(t.properties.CodeReviewVoteResult?.$value ?? 0)) : undefined,
   };

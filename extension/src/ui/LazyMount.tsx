@@ -56,6 +56,13 @@ export const LazyMount: React.FC<{ estimate: number; className?: string; childre
   const root = React.useContext(LazyRoot);
   const [mounted, setMounted] = React.useState(false);
   const height = React.useRef<number | null>(null);
+  // A new estimate means the content changed size while away (a file folded off-screen), so the
+  // last measurement is stale.
+  const estimated = React.useRef(estimate);
+  if (estimated.current !== estimate) {
+    estimated.current = estimate;
+    height.current = null;
+  }
 
   React.useEffect(() => {
     const el = ref.current;

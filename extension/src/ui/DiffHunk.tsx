@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { FileDiff, Hunk } from "../../../src/core/types";
-import type { Thread } from "../data/model";
+import { isLineAnchor, type Thread } from "../data/model";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { LineCommentContext } from "./LineComments";
@@ -72,9 +72,12 @@ const HunkDiff: React.FC<Props> = ({ file, hunk, mode, threads }) => {
   const pending = usePendingReview();
   const [anchor, setAnchor] = React.useState<LineAnchor | null>(null);
   const metadata = React.useMemo(() => hunk.header ? pierreHunk(file, hunk) : null, [file, hunk]);
-  const drafts = pending.draftsAt(file.path);
+  const drafts = pending.draftsAt(file.path).flatMap(draft => {
+    const at = draft.thread.file;
+    return isLineAnchor(at) ? [{ draft, key: anchorKey({ side: at.side, line: at.endLine }) }] : [];
+  });
   const annotations = React.useMemo(() => lineAnnotations(hunk, [
-    ...threads.keys(), ...drafts.map(draft => anchorKey({ side: draft.thread.file!.side, line: draft.thread.file!.endLine })),
+    ...threads.keys(), ...drafts.map(d => d.key),
     ...(anchor ? [anchorKey(anchor)] : []),
   ]), [hunk, threads, pending.drafts, anchor]);
   const canComment = !!comments?.canComment(file.path) && !disabled;
@@ -84,8 +87,7 @@ const HunkDiff: React.FC<Props> = ({ file, hunk, mode, threads }) => {
     <PierreDiff metadata={metadata} mode={mode} annotations={annotations} onComment={canComment ? setAnchor : undefined}
       renderAnnotation={key => <>
         {(threads.get(key) ?? []).map(thread => <ThreadCard key={`thread-${thread.id}`} thread={thread} compact />)}
-        {drafts.filter(draft => anchorKey({ side: draft.thread.file!.side, line: draft.thread.file!.endLine }) === key)
-          .map(draft => <DraftCard key={draft.id} draft={draft} />)}
+        {drafts.filter(d => d.key === key).map(({ draft }) => <DraftCard key={draft.id} draft={draft} />)}
         {anchor && anchorKey(anchor) === key && <CommentComposer
           label={`Comment on ${file.path}, ${anchor.side} line ${anchor.line}`}
           onCancel={() => setAnchor(null)} onSaved={() => setAnchor(null)}
