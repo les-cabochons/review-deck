@@ -1,8 +1,8 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Semantic-pr
+# Review Deck
 
-Prototype of a "semantic diff review" tool. Instead of listing changed files
+Review Deck is a "semantic diff review" tool. Instead of listing changed files
 alphabetically, it groups diff hunks by how related they are and renders them
 as a static HTML page.
 
@@ -142,7 +142,7 @@ Run `just check` for both typechecks and the write regression tests.
 
 **Local development without installing:**
 - **The dev shell** (`/dev/`) wraps the page in a fake Azure DevOps frame:
-  top bar, left nav with Repos › PR Review, and the page in an iframe, like
+  top bar, left nav with Repos › Deck, and the page in an iframe, like
   the real hub.
 - **Mock data:** the page runs against `extension/dev-data`. This includes a
   63-PR list built from real T3 Code PRs (some reviewer votes are synthetic so
@@ -213,8 +213,8 @@ Run `just check` for both typechecks and the write regression tests.
   - An update picker (compare base/update N → update M), a navigator, and
     change stats.
 - **Commits:** commits grouped by update.
-- **Entry points:** a "PR Review" hub under Repos, and an "Open in semantic
-  review" item in the PR's action menu, which opens the hub with
+- **Entry points:** a "Deck" hub under Repos, and an "Open in Review Deck"
+  item in the PR's action menu, which opens the hub with
   `?pr=<id>&repo=<id>`.
 
 **Not yet:**
@@ -260,7 +260,7 @@ line positions.
 
 The milestone plan and remaining backlog are in [docs/milestone-2.md](docs/milestone-2.md).
 Startup and Firefox regression checks are in [docs/startup-loading.md](docs/startup-loading.md).
-Opening the PR Review hub without a PR shows the inbox. Preferences still
+Opening the Deck hub without a PR shows the inbox. Preferences still
 work for the current session when browser storage is denied. The SDK handshake
 runs before loading the review UI, and parsing/clustering code loads separately.
 
@@ -347,7 +347,7 @@ extension tests and a build on every push and pull request.
 2. Put its ID in `extension/vss-extension.json` and run `npm run ext:package`.
 3. Upload the `.vsix` as a private extension, share it with your
    organization, and install it.
-4. Open a PR, then choose ⋯ → "Open in semantic review".
+4. Open a PR, then choose ⋯ → "Open in Review Deck".
 
 ## Pipeline
 

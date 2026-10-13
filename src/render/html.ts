@@ -40,7 +40,7 @@ export function renderReport(result: ReviewResult, assets: RenderAssets): string
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(result.title)} · semantic review</title>
+<title>${esc(result.title)} · Review Deck</title>
 <style>${assets.diff2htmlCss}</style>
 <style>${CSS}</style>
 </head>

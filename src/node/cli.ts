@@ -81,9 +81,9 @@ for (const id of ids) {
 }
 writeFileSync(
   join(outDir, "index.html"),
-  `<!doctype html><meta charset="utf-8"><title>Semantic PR review</title>
+  `<!doctype html><meta charset="utf-8"><title>Review Deck</title>
 <style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;line-height:1.5}small{color:#666}li ul{color:#444;font-size:14px}</style>
-<h1>Semantic PR review</h1><p>signals: structural, test pairing, lexical, path${config.semantic.enabled ? ", semantic" : ""} · titles: ${titler?.name ?? "heuristic"}</p><ul>${index.join("\n")}</ul>`,
+<h1>Review Deck</h1><p>signals: structural, test pairing, lexical, path${config.semantic.enabled ? ", semantic" : ""} · titles: ${titler?.name ?? "heuristic"}</p><ul>${index.join("\n")}</ul>`,
 );
 
 function escapeHtml(s: string): string {

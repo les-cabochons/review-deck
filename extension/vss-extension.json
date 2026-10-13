@@ -3,9 +3,12 @@
   "id": "semantic-pr-review",
   "publisher": "Cabochonio",
   "version": "0.3.0",
-  "name": "Semantic PR Review",
+  "name": "Review Deck",
   "description": "A pull request review page that groups changes by concern instead of by file.",
   "public": false,
+  "icons": {
+    "default": "images/logo.png"
+  },
   "categories": [
     "Azure Repos"
   ],
@@ -24,25 +27,29 @@
     {
       "id": "review-hub",
       "type": "ms.vss-web.hub",
-      "description": "Full-page pull request review with semantic grouping.",
+      "description": "Review Deck: full-page pull request review with semantic grouping.",
       "targets": [
         "ms.vss-code-web.code-hub-group"
       ],
       "properties": {
-        "name": "PR Review",
+        "name": "Deck",
         "uri": "dist/review.html",
+        "icon": {
+          "light": "images/deck-light.png",
+          "dark": "images/deck-dark.png"
+        },
         "order": 100
       }
     },
     {
       "id": "settings-hub",
       "type": "ms.vss-web.hub",
-      "description": "Project settings for Semantic PR Review: stacked PRs, auto-restack, AI group titles.",
+      "description": "Project settings for Review Deck: stacked PRs, auto-restack, AI group titles.",
       "targets": [
         "ms.vss-web.project-admin-hub-group"
       ],
       "properties": {
-        "name": "Semantic PR Review",
+        "name": "Review Deck",
         "uri": "dist/settings.html",
         "order": 100
       }
@@ -50,13 +57,13 @@
     {
       "id": "open-review-action",
       "type": "ms.vss-web.action",
-      "description": "Opens the current pull request in the semantic review page.",
+      "description": "Opens the current pull request in Review Deck.",
       "targets": [
         "ms.vss-code-web.pull-request-action-menu"
       ],
       "properties": {
-        "text": "Open in semantic review",
-        "title": "Open this pull request in the semantic review page",
+        "text": "Open in Review Deck",
+        "title": "Open this pull request in Review Deck",
         "uri": "dist/action.html",
         "registeredObjectId": "open-review-action"
       }
@@ -65,6 +72,10 @@
   "files": [
     {
       "path": "dist",
+      "addressable": true
+    },
+    {
+      "path": "images",
       "addressable": true
     },
     {
