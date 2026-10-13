@@ -184,6 +184,9 @@ resource "azurerm_windows_function_app" "this" {
     HOOK_KEY     = random_password.hook_key.result
     ADO_PAT      = var.ado_pat
     EXTENSION_ID = var.extension_id
+    # Write function logs to LogFiles/Application/Functions even with no debugger attached: without
+    # Application Insights, that's the only record of why a queued restack job failed.
+    AzureFunctionsJobHost__logging__fileLoggingMode = "always"
   }
 }
 

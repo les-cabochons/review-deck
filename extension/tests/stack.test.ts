@@ -128,7 +128,12 @@ class FakeRepo implements RestackRepo {
     this.branches.delete(branch);
   }
   async retarget(prId: number, branch: string) {
-    this.prs.find((p) => p.id === prId)!.targetBranch = branch;
+    const pr = this.prs.find((p) => p.id === prId)!;
+    // Like Azure DevOps (TF401179): one active PR per source and target.
+    if (this.prs.some((p) => p.id !== prId && p.status === "active" && p.sourceBranch === pr.sourceBranch && p.targetBranch === branch)) {
+      throw new Error("TF401179: An active pull request for the source and target branch already exists.");
+    }
+    pr.targetBranch = branch;
   }
   async report(prId: number, state: "pending" | "succeeded" | "failed", description: string) {
     this.statuses.set(prId, { state, description });
@@ -241,6 +246,73 @@ test("restack: refuses merge commits, trunk sources, and reports missing Force p
   outcomes = await new Restacker(repo3, { trunkPatterns: TRUNKS }).branchMoved("uat", oldUat, tip);
   assert.deepEqual(outcomes, []);
   assert.equal(repo3.branches.get("dev"), devTip);
+});
+
+test("restack: a retarget blocked by a twin PR fails on the PR, naming the twin, and the layers above still follow", async () => {
+  const repo = stackRepo();
+  const aTip = repo.branches.get("a")!;
+  // !4 already merges b straight into main, so !2 can't be retargeted there.
+  repo.prs.push({ id: 4, title: "B again", sourceBranch: "b", targetBranch: "main", status: "active" });
+  repo.push("main", ["squash(a1,a2)"]);
+  repo.branches.delete("a");
+  repo.prs[0].status = "completed";
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).prCompleted(repo.prs[0], aTip);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "failed"], [3, "restacked"]]);
+  assert.equal(repo.prs[1].targetBranch, "a", "!2 keeps its target");
+  assert.ok(repo.isOn("b", "main"), "the branch itself was still moved");
+  assert.equal(repo.statuses.get(2)?.state, "failed");
+  assert.match(repo.statuses.get(2)!.description, /!4 already merges b into main/);
+  assert.ok(repo.isOn("c", "b"));
+});
+
+test("restack: an unexpected error on one layer is reported on that PR and doesn't stop its siblings", async () => {
+  const repo = stackRepo();
+  repo.push("d", ["d1"], "a");
+  repo.prs.push({ id: 5, title: "D", sourceBranch: "d", targetBranch: "a", status: "active" });
+  const realMerge = repo.mergeBase.bind(repo);
+  repo.mergeBase = async (x, y) => {
+    if (x === repo.branches.get("b")) throw new Error("GET mergebases returned 500");
+    return realMerge(x, y);
+  };
+  const old = repo.branches.get("a")!;
+  const tip = repo.push("a", ["a3"]);
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).branchMoved("a", old, tip);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "failed"], [5, "restacked"]]);
+  assert.match(repo.statuses.get(2)!.description, /Couldn't restack onto a: GET mergebases returned 500/);
+});
+
+// ---------- service hook subscriptions (extension/src/app/restackHooks.ts) ----------
+
+import { syncRestackHooks } from "../src/app/restackHooks";
+
+test("hook sync: overlapping calls run one after another, leaving one subscription per event", async () => {
+  const subscriptions: { id: string; eventType: string; publisherInputs: { projectId: string }; consumerInputs: { url: string } }[] = [];
+  let ids = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+    if (url.includes("/api/stacks/hook")) return json({ url: "https://backend/api/hooks/ado?org=org", header: "x-semantic-pr-hook", secret: "s" });
+    // Every Azure DevOps call yields first, so unserialized syncs would interleave.
+    await new Promise((r) => setTimeout(r, 1));
+    if (init?.method === "GET") return json({ value: [...subscriptions] });
+    if (init?.method === "DELETE") {
+      subscriptions.splice(subscriptions.findIndex((s) => url.includes(s.id)), 1);
+      return new Response(null, { status: 204 });
+    }
+    const body = JSON.parse(String(init?.body));
+    subscriptions.push({ id: `sub-${++ids}`, eventType: body.eventType, publisherInputs: body.publisherInputs, consumerInputs: body.consumerInputs });
+    return json({});
+  }) as typeof fetch;
+  try {
+    const context = { hostUrl: "https://dev.azure.com/org/", projectId: "proj-1", token: "t", backend: { url: "https://backend", token: "", scope: { organization: "org", projectId: "proj-1", projectName: "p" } } };
+    await Promise.all([syncRestackHooks(context, true), syncRestackHooks(context, true)]);
+    assert.deepEqual(subscriptions.map((s) => s.eventType).sort(), ["git.pullrequest.updated", "git.push"]);
+    await syncRestackHooks(context, false);
+    assert.deepEqual(subscriptions, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
 
 // ---------- service hooks (backend/src/stacks/hooks.ts) ----------

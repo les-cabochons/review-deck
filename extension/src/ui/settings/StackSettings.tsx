@@ -146,6 +146,8 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
           disabled={!canManage || !hasBackend || status === "saving"}
           onChange={(_, on) => {
             setError(null);
+            // Disabled until done: a second click mid-sync would subscribe the hooks twice.
+            setStatus("saving");
             // Hooks first: saving "on" without them would promise restacks that never happen.
             const work = on
               ? host.syncRestackHooks(true).then(() => save({ autoRestack: true }))
