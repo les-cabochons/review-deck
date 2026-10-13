@@ -47,6 +47,9 @@ the layer below. It uses Azure DevOps' server-side Git operations, with no clone
 - **When it can't** (a conflict, merge commits inside a layer, a missing permission, or someone pushed
   mid-restack): that layer and the ones above stay unchanged. The PR gets a failed **restack** status
   and, for conflicts, a comment with the `git rebase --onto` command to run locally.
+- **When it can't retarget** after a merge (usually because another active PR already merges the same
+  branch into the new target, which Azure DevOps forbids): the branch is still moved, and the PR gets
+  a failed status naming the other PR. Abandon one of them.
 
 Every PR it touches gets a `semantic-pr/restack` status, shown with the PR's checks.
 
@@ -61,7 +64,11 @@ on the project:
 2. The `restack` queue runs jobs one at a time. Each job re-reads the project's settings and the
    repository state, so a replayed or forged event can't restack anything that isn't behind.
 
-Turning it off removes the hooks.
+Turning it off removes the hooks. Each toggle replaces the project's hooks rather than adding to
+them, so toggling off and on also cleans up duplicates.
+
+The function writes its logs to `LogFiles/Application/Functions/Function/restack/` (Kudu, or
+`az webapp log tail`), which is where a job's error ends up when it fails before it can post a status.
 
 ### Setup
 

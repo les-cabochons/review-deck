@@ -43,6 +43,7 @@ export interface RestackRepo {
   /** Moves `branch` from `from` to `to` (a non-fast-forward move: needs Force push). */
   moveBranch(branch: string, from: string, to: string): Promise<"ok" | "stale" | "forbidden">;
   deleteBranch(branch: string, at: string): Promise<void>;
+  /** Changes the PR's target. Throws when it can't, e.g. another active PR already has that source and target. */
   retarget(prId: number, branch: string): Promise<void>;
   /** Posts the PR status shown with the PR's checks (one per PR, updated in place). */
   report(prId: number, state: "pending" | "succeeded" | "failed", description: string): Promise<void>;
@@ -104,17 +105,20 @@ export class Restacker {
       return;
     }
     const children = await this.repo.activePrsInto(branch);
-    for (const child of children) await this.restackOne(child, branch, oldTip, newTip, retargetTo, depth);
+    for (const child of children) {
+      // One layer's surprise (a REST error, a timeout) shows on that PR and doesn't stop its siblings.
+      try {
+        await this.restackOne(child, branch, oldTip, newTip, retargetTo, depth);
+      } catch (e) {
+        await this.fail(child, `Couldn't restack onto ${retargetTo ?? branch}: ${errorMessage(e)}`);
+      }
+    }
   }
 
   private async restackOne(child: RestackPr, parentBranch: string, oldParentTip: string, ontoTip: string, retargetTo: string | null, depth: number): Promise<void> {
     const source = shortBranch(child.sourceBranch);
     const ontoName = retargetTo ?? parentBranch;
-    const fail = async (reason: string) => {
-      this.outcomes.push({ pr: child.id, result: "failed", reason });
-      this.log(`!${child.id}: ${reason}`);
-      await this.repo.report(child.id, "failed", truncate(reason));
-    };
+    const fail = (reason: string) => this.fail(child, reason);
 
     if (isTrunk(source, this.options.trunkPatterns)) {
       // A PR *from* a trunk branch (e.g. dev -> uat) is a promotion, not a stack layer: never rewrite it.
@@ -170,17 +174,47 @@ export class Restacker {
       if (moved === "stale") return fail(`Couldn't restack: ${source} changed while restacking. Push again or restack locally.`);
       if (moved === "forbidden") return fail(`Couldn't restack: the restack service needs the "Force push" permission on ${source}.`);
     }
-    if (retargetTo && shortBranch(child.targetBranch).toLowerCase() !== retargetTo.toLowerCase()) await this.repo.retarget(child.id, retargetTo);
+    const retargetProblem =
+      retargetTo && shortBranch(child.targetBranch).toLowerCase() !== retargetTo.toLowerCase() ? await this.retarget(child, source, retargetTo) : null;
 
-    this.outcomes.push({ pr: child.id, result: "restacked", onto: ontoName, commits: commits.length, newTip });
-    await this.repo.report(child.id, "succeeded", truncate(`Restacked onto ${ontoName} (${plural(commits.length, "commit")})`));
+    if (retargetProblem) {
+      await fail(retargetProblem);
+    } else {
+      this.outcomes.push({ pr: child.id, result: "restacked", onto: ontoName, commits: commits.length, newTip });
+      await this.repo.report(child.id, "succeeded", truncate(`Restacked onto ${ontoName} (${plural(commits.length, "commit")})`));
+    }
     // This layer moved, so the layers above follow.
     if (newTip !== childTip) await this.restackChildren(source, childTip, newTip, null, depth + 1);
+  }
+
+  /** Retargets `child` to `branch`; on failure, says why (most often a twin PR with the same source and target). */
+  private async retarget(child: RestackPr, source: string, branch: string): Promise<string | null> {
+    try {
+      await this.repo.retarget(child.id, branch);
+      return null;
+    } catch (e) {
+      const twin = (await this.repo.activePrsInto(branch).catch(() => [])).find(
+        (p) => p.id !== child.id && shortBranch(p.sourceBranch).toLowerCase() === source.toLowerCase(),
+      );
+      return twin
+        ? `Moved onto ${branch}, but couldn't retarget this PR: !${twin.id} already merges ${source} into ${branch}. Abandon one of them.`
+        : `Moved onto ${branch}, but couldn't retarget this PR: ${errorMessage(e)}`;
+    }
+  }
+
+  private async fail(child: RestackPr, reason: string): Promise<void> {
+    this.outcomes.push({ pr: child.id, result: "failed", reason });
+    this.log(`!${child.id}: ${reason}`);
+    await this.repo.report(child.id, "failed", truncate(reason)).catch((e: unknown) => this.log(`couldn't report on !${child.id}: ${errorMessage(e)}`));
   }
 
   private log(message: string): void {
     this.options.log?.(message);
   }
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 function plural(n: number, word: string): string {
