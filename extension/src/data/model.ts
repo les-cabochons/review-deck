@@ -23,6 +23,22 @@ export interface Reviewer extends Identity {
 
 export type PrStatus = "active" | "abandoned" | "completed";
 
+/** Azure DevOps merge types: merge (no fast-forward), squash, rebase and fast-forward, rebase with merge commit. */
+export type MergeStrategy = "noFastForward" | "squash" | "rebase" | "rebaseMerge";
+export const MERGE_STRATEGIES: MergeStrategy[] = ["noFastForward", "squash", "rebase", "rebaseMerge"];
+
+/** Azure DevOps' merge check for the source and target branches. */
+export type MergeStatus = "notSet" | "queued" | "conflicts" | "succeeded" | "rejectedByPolicy" | "failure";
+
+export interface CompletionOptions {
+  mergeStrategy: MergeStrategy;
+  deleteSourceBranch: boolean;
+  transitionWorkItems: boolean;
+  mergeCommitMessage: string;
+  /** Completes despite unmet required policies; Azure DevOps records the reason. Ignored by auto-complete. */
+  bypassReason?: string;
+}
+
 export interface PullRequest {
   id: number;
   title: string;
@@ -36,6 +52,17 @@ export interface PullRequest {
   repository: { id: string; name: string; projectId: string; projectName: string };
   reviewers: Reviewer[];
   labels: string[];
+  /** The source head as of this load. Completing sends it, so a push since then makes Azure DevOps refuse the merge. */
+  headCommit: string;
+  mergeStatus: MergeStatus;
+  /** Set once completion is requested: Azure DevOps merges in the background and the PR stays active until it's done. */
+  completionQueued?: Date;
+  /** Why the last merge attempt failed, from Azure DevOps. */
+  mergeFailure?: string;
+  /** Set while auto-complete is on: it completes the PR with `completionOptions` once policies pass. */
+  autoCompleteSetBy?: Identity;
+  completionOptions?: CompletionOptions;
+  closedBy?: Identity;
 }
 
 export interface Iteration {
@@ -144,6 +171,15 @@ export interface PrActions {
   addTag(name: string): Promise<void>;
   removeTag(name: string): Promise<void>;
   setDescription(description: string): Promise<void>;
+  /** Queues the merge into the target branch, provided the source head is still `headCommit`. */
+  complete(options: CompletionOptions, headCommit: string): Promise<void>;
+  /** Turns auto-complete on with these options, or off with null. */
+  setAutoComplete(options: CompletionOptions | null): Promise<void>;
+  abandon(): Promise<void>;
+  reactivate(): Promise<void>;
+  setDraft(isDraft: boolean): Promise<void>;
+  /** Merge types the target branch's policies allow; all of them when none limit it or they can't be read. */
+  allowedMergeStrategies(repositoryId: string, targetBranch: string): Promise<MergeStrategy[]>;
 }
 
 /** Both sources implement the same read and write contracts. */
@@ -157,6 +193,9 @@ export interface PrSource {
   getBlob(objectId: string): Promise<string>;
   getThreads(iteration: number, compareTo: number): Promise<Thread[]>;
 }
+
+const MERGE_STATUS: MergeStatus[] = ["notSet", "queued", "conflicts", "succeeded", "rejectedByPolicy", "failure"];
+export const mergeStatusFromNumber = (n: number | undefined): MergeStatus => MERGE_STATUS[n ?? 0] ?? "notSet";
 
 const THREAD_STATUS: ThreadStatus[] = ["unknown", "active", "fixed", "wontFix", "closed", "byDesign", "pending"];
 export const threadStatusFromNumber = (n: number): ThreadStatus => THREAD_STATUS[n] ?? "unknown";

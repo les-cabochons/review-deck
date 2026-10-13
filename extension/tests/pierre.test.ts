@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDiff } from "../../src/diff/parse";
 import { lineAnnotations, pierreHunk, pierreSide, reviewSide } from "../src/ui/pierre/adapter";
-import { highlightLanguage } from "../src/ui/pierre/languages";
+import { highlightedLanguages, highlightLanguage } from "../src/ui/pierre/languages";
+import { bundledLanguages } from "../src/ui/pierre/shiki";
 
 const patch = `diff --git a/src/user.ts b/src/user.ts
 --- a/src/user.ts
@@ -60,4 +61,16 @@ test("Given an unbundled language, then highlighting falls back to text without 
   assert.equal(highlightLanguage("README.md"), "markdown");
   assert.equal(highlightLanguage("view.tsx"), "tsx");
   assert.equal(highlightLanguage("code.unknown"), "text");
+});
+
+test("Given common languages and well-known file names, then each maps to a bundled grammar", () => {
+  assert.equal(highlightLanguage("app/models.py"), "python");
+  assert.equal(highlightLanguage("src/Main.KT"), "kotlin");
+  assert.equal(highlightLanguage("infra/main.tf"), "terraform");
+  assert.equal(highlightLanguage("deploy/Dockerfile"), "dockerfile");
+  assert.equal(highlightLanguage("deploy/Dockerfile.prod"), "dockerfile");
+  assert.equal(highlightLanguage("Makefile"), "makefile");
+  assert.equal(highlightLanguage(".env.local"), "dotenv");
+  assert.equal(highlightLanguage("Gemfile"), "ruby");
+  for (const lang of highlightedLanguages) assert.ok(lang in bundledLanguages, `no grammar loader for ${lang}`);
 });

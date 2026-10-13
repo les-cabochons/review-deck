@@ -10,6 +10,7 @@ import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
 import { DropdownButton, ModeToggle } from "./controls";
 import { GroupingStatus } from "./GroupingStatus";
+import { TitleSourceIcon } from "./TitleSource";
 import { cx, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
@@ -37,6 +38,10 @@ interface Props {
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
   holdPreview: boolean;
   onShowGrouped: () => void;
+  /** Groups the changes again (the title or description may have been edited since). */
+  onRegroup: () => void;
+  /** The title or description changed since the grouping was made. */
+  groupingStale: boolean;
 }
 
 export const FilesTab: React.FC<Props> = (props) => {
@@ -48,6 +53,13 @@ export const FilesTab: React.FC<Props> = (props) => {
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : 0;
   const [hidden, setHidden] = useHiddenKinds();
   const [search, setSearch] = React.useState("");
+  const [collapsedNavGroups, setCollapsedNavGroups] = React.useState(new Set<string>());
+  const toggleNavGroup = (id: string) => setCollapsedNavGroups(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
   const kinds = React.useMemo(() => (review ? fileKinds(review) : new Map<string, Set<FileKind>>()), [review]);
   const shown = React.useCallback((path: string) => ![...(kinds.get(path) ?? [])].some((k) => hidden.has(k)), [kinds, hidden]);
   const commentCounts = React.useMemo(() => new Map([...fileThreads].map(([path, ts]) => [path, ts.length])), [fileThreads]);
@@ -83,7 +95,7 @@ export const FilesTab: React.FC<Props> = (props) => {
               <div className="analyzing-text">
                 <span className="spinner" aria-hidden="true" />
                 <span>
-                  <strong>Grouping {plural(review.result.files.length, "file")} by concern…</strong> {props.progress.label}. Showing files A–Z
+                  <strong>Building the guided view of {plural(review.result.files.length, "file")}…</strong> {props.progress.label}. Showing files A–Z
                   until it's done.
                 </span>
                 <span className="analyzing-percent">{Math.round(props.progress.fraction * 100)}%</span>
@@ -101,7 +113,7 @@ export const FilesTab: React.FC<Props> = (props) => {
                   <strong>Grouping is done:</strong> {plural(groups, "concern")}. You're still on the A–Z list so you don't lose your place.
                 </span>
                 <button className="link-button" onClick={props.onShowGrouped}>
-                  Show grouped
+                  Show guided
                 </button>
               </div>
             </div>
@@ -117,6 +129,8 @@ export const FilesTab: React.FC<Props> = (props) => {
               onHidden={setHidden}
               kinds={kinds}
               comments={commentCounts}
+              collapsedGroups={collapsedNavGroups}
+              onToggleGroup={toggleNavGroup}
             />
             <div className="files-content">
               {shownView === "grouped" ? (
@@ -133,7 +147,21 @@ export const FilesTab: React.FC<Props> = (props) => {
 };
 
 /** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
-const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iterations, selection, onSelection, view, onView, mode, onMode, progress, ready, onShowGrouped }) => {
+const Toolbar: React.FC<Props & { ready: number | null }> = ({
+  review,
+  iterations,
+  selection,
+  onSelection,
+  view,
+  onView,
+  mode,
+  onMode,
+  progress,
+  ready,
+  onShowGrouped,
+  onRegroup,
+  groupingStale,
+}) => {
   const { disabled } = useReviewActions();
   const stats = review ? diffStats(review) : null;
   const grouping = !!review && !review.analyzed;
@@ -143,7 +171,7 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iteration
     <div className="files-toolbar">
       <ModeToggle
         options={[
-          { value: "grouped", text: "By concern", icon: "ViewListGroup" },
+          { value: "grouped", text: "Guided", icon: "ViewListGroup" },
           { value: "alpha", text: "Files A–Z", icon: "SortLines" },
         ]}
         value={view}
@@ -193,7 +221,15 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iteration
         <span className="grouping-status ready" role="status">
           <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}
           <button className="link-button" onClick={onShowGrouped}>
-            Show grouped
+            Show guided
+          </button>
+        </span>
+      )}
+      {review?.analyzed && !progress && (
+        <span className={cx("regroup", groupingStale && "stale")} role={groupingStale ? "status" : undefined}>
+          {groupingStale && <span className="regroup-hint">Description changed ·</span>}
+          <button className="link-button" onClick={onRegroup} title="Group the changes again, using the current title and description">
+            <Icon iconName="Refresh" /> Regroup
           </button>
         </span>
       )}
@@ -225,10 +261,12 @@ interface NavigatorProps {
   onHidden: (kinds: Set<FileKind>) => void;
   kinds: Map<string, Set<FileKind>>;
   comments: Map<string, number>;
+  collapsedGroups: Set<string>;
+  onToggleGroup: (id: string) => void;
 }
 
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
-const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments }) => {
+const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup }) => {
   const { result } = review;
   const go = scrollToId;
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
@@ -268,14 +306,23 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
         <LazyRoot.Provider value={nav}>
           {sections.map(({ g, i, files }) => (
             <div key={g.id} className="nav-group">
-              <button className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
-                <span className="badge" style={{ background: groupColor(result.groups, g) }}>
-                  {i + 1}
-                </span>
-                <span className="text">{g.title}</span>
-                <span className="count">{g.hunkIds.length}</span>
-              </button>
-              <GroupTree review={review} group={g} files={files} comments={comments} />
+              <div className="nav-group-header">
+                <button type="button" className="nav-group-toggle" onClick={() => onToggleGroup(g.id)}
+                  aria-expanded={!collapsedGroups.has(g.id)} aria-controls={`nav-group-tree-${g.id}`}
+                  aria-label={`${collapsedGroups.has(g.id) ? "Expand" : "Collapse"} file tree for ${g.title}`}>
+                  <Icon iconName={collapsedGroups.has(g.id) ? "ChevronRight" : "ChevronDown"} />
+                </button>
+                <button type="button" className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
+                  <span className="badge" style={{ background: groupColor(result.groups, g) }}>
+                    {i + 1}
+                  </span>
+                  <span className="text">{g.title}</span>
+                  <span className="count">{g.hunkIds.length}</span>
+                </button>
+              </div>
+              <div id={`nav-group-tree-${g.id}`} hidden={collapsedGroups.has(g.id)}>
+                {!collapsedGroups.has(g.id) && <GroupTree review={review} group={g} files={files} comments={comments} />}
+              </div>
             </div>
           ))}
         </LazyRoot.Provider>
@@ -472,6 +519,7 @@ const GroupSection: React.FC<{ group: Group; index: number } & ViewProps> = ({ g
           {index + 1}
         </span>
         <span className="gtitle">{group.title}</span>
+        <TitleSourceIcon group={group} />
         <span className="count">
           {plural(hunks.length, "change")} · {plural(files, "file")}
         </span>

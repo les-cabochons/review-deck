@@ -4,11 +4,7 @@ import { SyntaxParsers } from "../parse/treesitter.js";
 
 const require = createRequire(import.meta.url);
 
-/** Loads the TypeScript/TSX grammars shipped as .wasm in the tree-sitter-typescript package. */
+/** Loads grammars from the .wasm files shipped in their tree-sitter-* npm packages. */
 export function createNodeParsers(): Promise<SyntaxParsers> {
-  const dir = dirname(require.resolve("tree-sitter-typescript/package.json"));
-  return SyntaxParsers.create({
-    typescript: join(dir, "tree-sitter-typescript.wasm"),
-    tsx: join(dir, "tree-sitter-tsx.wasm"),
-  });
+  return SyntaxParsers.create((grammar) => join(dirname(require.resolve(`${grammar.package}/package.json`)), grammar.file));
 }

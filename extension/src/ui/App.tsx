@@ -7,7 +7,7 @@ import { hubPatch, rememberPr } from "../data/hubCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { CommitsTab } from "./CommitsTab";
-import { MoreMenu, SplitActionButton } from "./controls";
+import { MoreMenu } from "./controls";
 import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
@@ -18,6 +18,7 @@ import { useStack } from "./stack/useStack";
 import { readPreference, writePreference } from "./preferences";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
+import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
 import { ReviewButton, VoteButton } from "./review/ReviewControls";
 import { Avatar, cx, IdentityNames, plural, Time } from "./util";
 
@@ -68,6 +69,11 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [view, setView] = usePref<FileView>("fileView", "grouped");
   const [mode, setMode] = usePref<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
+  /** Bumped by "Regroup"; `freshNext` makes that run skip the saved grouping. */
+  const [regroup, setRegroup] = React.useState(0);
+  const freshNext = React.useRef(false);
+  /** The title and description the grouping was made with; they differ from `data` after an edit on this page. */
+  const [groupedWith, setGroupedWith] = React.useState<{ title: string; description: string } | null>(null);
   const stack = useStack(host, route.pr);
   const openLayer = (pr: { id: number; repository: { id: string } }) => host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
   /** Grouping finished while the reader was deep in the A–Z preview: keep it until they ask. */
@@ -101,6 +107,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     let cancelled = false;
     const abort = new AbortController();
     let previewAt: number | null = null;
+    const meta = { title: data.pr.title, description: data.pr.description };
+    const fresh = freshNext.current;
+    freshNext.current = false;
+    setGroupedWith(meta);
     setReviewLoading(true);
     setReview(null);
     setReviewError(null);
@@ -110,8 +120,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       .then(([{ buildReview }, backend, settings]) => {
         if (cancelled) return null;
         // The preview (diff only) shows at once; grouping replaces it when the worker finishes.
-        return buildReview(source, { title: data.pr.title, description: data.pr.description }, selection.iteration, selection.compareTo, {
+        return buildReview(source, meta, selection.iteration, selection.compareTo, {
           signal: abort.signal,
+          fresh,
           backend,
           aiTitles: settings.aiTitles,
           saved: { store: host.savedReviews(), key: { repo: route.repo, pr: route.pr, iteration: selection.iteration, compareTo: selection.compareTo } },
@@ -136,7 +147,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       cancelled = true;
       abort.abort();
     };
-  }, [source, data?.pr.id, selection.iteration, selection.compareTo]);
+  }, [source, data?.pr.id, selection.iteration, selection.compareTo, regroup]);
+
+  /** Groups the changes again with the current title and description, ignoring the saved grouping. */
+  const regroupNow = () => {
+    freshNext.current = true;
+    setRegroup((n) => n + 1);
+  };
+  const groupingStale = !!data && !!groupedWith && (groupedWith.title !== data.pr.title || groupedWith.description !== data.pr.description);
 
   React.useEffect(() => {
     if (!data || !selection.iteration) return;
@@ -169,7 +187,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     if (tab !== "files") setToast({ message, callToAction: "View files", onCallToAction: () => selectTab("files") });
     else if (view === "grouped" && window.scrollY > KEEP_PREVIEW_SCROLL) {
       setHoldPreview(true);
-      setToast({ message, callToAction: "Show grouped", onCallToAction: showGrouped });
+      setToast({ message, callToAction: "Show guided", onCallToAction: showGrouped });
     } else setToast({ message });
   }
 
@@ -254,6 +272,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       progress={progress}
                       holdPreview={holdPreview}
                       onShowGrouped={showGrouped}
+                      onRegroup={regroupNow}
+                      groupingStale={groupingStale}
                     />
                     </React.Suspense>
                   )}
@@ -337,11 +357,11 @@ const TimedToast: React.FC<{ spec: ToastSpec; onDone: () => void }> = ({ spec, o
   );
 };
 
-const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data: { pr }, review, progress }) => {
+const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data, review, progress }) => {
+  const { pr } = data;
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
   const status = STATUS[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
-  const todo = "Completion arrives in milestone 3";
   const stats = review ? diffStats(review) : null;
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : undefined;
   return (
@@ -353,25 +373,12 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
         <div className="pr-actions">
           <ReviewButton vote={vote} />
           <VoteButton vote={vote} />
-          <SplitActionButton
-            text="Complete"
-            icon="BranchPullRequest"
-            primary
-            disabled
-            onClick={() => {}}
-            menuLabel="Completion options"
-            options={[
-              { id: "auto", text: "Set auto-complete", icon: "TriggerAuto", disabled: true },
-              { id: "draft", text: "Mark as draft", icon: "BranchRequestDraft", disabled: true },
-              { id: "abandon", text: "Abandon", icon: "BranchRequestClosed", disabled: true },
-            ]}
-          />
+          <CompletionButton data={data} />
           <MoreMenu
             label="More actions"
             subtle={false}
             options={[
               { id: "copy", text: "Copy pull request link", icon: "Link", onSelect: () => void navigator.clipboard?.writeText(location.href) },
-              { id: "todo", text: todo, disabled: true },
             ]}
           />
         </div>
@@ -402,6 +409,7 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
           </span>
         )}
       </div>
+      <CompletionNotice pr={pr} />
     </header>
   );
 };

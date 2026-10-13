@@ -1060,6 +1060,51 @@ kbd {
   margin-top: 14px;
 }
 
+/* completion: header notice and the complete / auto-complete dialog */
+.completion-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.completion-notice .link-button {
+  margin-left: 8px;
+}
+.complete-dialog > p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.complete-warning {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--hover);
+}
+.complete-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.complete-field {
+  display: block;
+  margin-top: 12px;
+}
+.complete-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.complete-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---------- overview ---------- */
 .overview {
   display: grid;
@@ -1231,7 +1276,7 @@ kbd {
   cursor: pointer;
 }
 .summary-group:hover,
-.nav-group-title:hover,
+.nav-group-header:hover,
 .nav-file:hover {
   background: var(--hover);
 }
@@ -1787,6 +1832,26 @@ kbd {
 .files-toolbar .grouping-status + .stats {
   margin-left: 16px;
 }
+/* Sits on the right, before the stats; stale = the description was edited after grouping. */
+.files-toolbar .regroup {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.files-toolbar .regroup .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.files-toolbar .regroup.stale .regroup-hint {
+  color: var(--warn);
+}
+.files-toolbar .regroup + .stats,
+.files-toolbar .grouping-status + .regroup {
+  margin-left: 16px;
+}
 .grouping-status {
   display: inline-flex;
   align-items: center;
@@ -1855,9 +1920,14 @@ kbd {
   display: block;
   width: 100%;
   height: 100%;
-  --trees-bg-override: var(--surface);
+  /* Match the navigator card; Pierre's sticky folder rows still need an opaque fill. */
+  --trees-bg-override: var(--card-bg);
   --trees-fg-override: var(--fg);
   --trees-fg-muted-override: var(--fg2);
+  /* Modified files read as plain text, a shade off the folders; added/deleted keep a muted hue. */
+  --trees-status-modified-override: color-mix(in srgb, var(--fg) 75%, var(--fg2));
+  --trees-status-added-override: color-mix(in srgb, var(--ok) 65%, var(--fg2));
+  --trees-status-deleted-override: color-mix(in srgb, var(--err) 65%, var(--fg2));
   --trees-font-family: "Segoe UI", sans-serif;
   --trees-font-size: 12px;
 }
@@ -1875,6 +1945,34 @@ kbd {
 }
 .nav-group {
   margin-bottom: 4px;
+}
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+}
+.nav-group-header > .nav-group-title {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  align-self: stretch;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  background: none;
+  color: var(--fg2);
+  cursor: pointer;
+}
+.nav-group-toggle:focus-visible,
+.nav-group-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 /* Graphite-style search + "Show" filter pinned above the file tree. */
 .nav-filter-bar {
@@ -2061,6 +2159,17 @@ kbd {
 .kind-mechanical .gtitle,
 .kind-misc .gtitle {
   color: var(--fg2);
+}
+/* Who wrote the group's title: AI, the PR description, or rules over the code (TitleSource.tsx). */
+.title-source {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  font-size: 13px;
+  color: var(--fg2);
+}
+.title-source.source-llm {
+  color: var(--link);
 }
 .rationale {
   margin: 0;

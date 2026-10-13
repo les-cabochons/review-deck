@@ -56,7 +56,9 @@ export function buildPrompt(groups: PromptGroup[], context: PromptContext): stri
     "- title: what this step accomplishes for the PR, in imperative mood, max 8 words, like a good commit subject.",
     '  Name the behavior or concept, not the files or symbols touched. Good: "Cache titles per organization".',
     '  Bad: "Update titles.ts", "Change buildPrompt and parseTitles", "Misc fixes". Titles should read as a sequence.',
-    "- rationale: one sentence on what the step changes and how it fits the story, e.g. what it builds on or enables.",
+    "- rationale: one or two sentences on the intent: what this step fixes or makes possible, what behavior changes,",
+    "  and how it fits the story (what it builds on or enables). The reader sees the diff right below, so don't list",
+    "  files, symbols, hunk counts or how the hunks are linked, and don't repeat the title.",
     "",
     "Do not use tools; answer from the text below.",
     "",
@@ -94,6 +96,6 @@ export function matchTitles(inputs: TitleInput[], titles: LlmTitle[]): GroupTitl
   return inputs.map((i) => {
     const match = byId.get(i.group.id);
     if (!match) return describeGroup(i);
-    return { ...(match.title ? { title: match.title, rationale: match.rationale } : describeGroup(i)), position: match.position };
+    return { ...(match.title ? { title: match.title, rationale: match.rationale, source: "llm" as const } : describeGroup(i)), position: match.position };
   });
 }
