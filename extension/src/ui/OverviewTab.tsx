@@ -198,9 +198,9 @@ const Side: React.FC<{ title: string; action?: string }> = ({ title, action, chi
 );
 
 const SemanticSummary: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: string) => void }> = ({ review, onOpenGroup }) => (
-  <Side title="Changes by concern">
+  <Side title="Guided review">
     {!review?.analyzed ? (
-      <p className="muted">Grouping by concern…</p>
+      <p className="muted">Building guided view…</p>
     ) : (
       <ul className="summary-groups">
         {review.result.groups.map((g, i) => (

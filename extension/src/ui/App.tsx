@@ -68,6 +68,11 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [view, setView] = usePref<FileView>("fileView", "grouped");
   const [mode, setMode] = usePref<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
+  /** Bumped by "Regroup"; `freshNext` makes that run skip the saved grouping. */
+  const [regroup, setRegroup] = React.useState(0);
+  const freshNext = React.useRef(false);
+  /** The title and description the grouping was made with; they differ from `data` after an edit on this page. */
+  const [groupedWith, setGroupedWith] = React.useState<{ title: string; description: string } | null>(null);
   const stack = useStack(host, route.pr);
   const openLayer = (pr: { id: number; repository: { id: string } }) => host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
   /** Grouping finished while the reader was deep in the A–Z preview: keep it until they ask. */
@@ -101,6 +106,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     let cancelled = false;
     const abort = new AbortController();
     let previewAt: number | null = null;
+    const meta = { title: data.pr.title, description: data.pr.description };
+    const fresh = freshNext.current;
+    freshNext.current = false;
+    setGroupedWith(meta);
     setReviewLoading(true);
     setReview(null);
     setReviewError(null);
@@ -110,8 +119,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       .then(([{ buildReview }, backend, settings]) => {
         if (cancelled) return null;
         // The preview (diff only) shows at once; grouping replaces it when the worker finishes.
-        return buildReview(source, { title: data.pr.title, description: data.pr.description }, selection.iteration, selection.compareTo, {
+        return buildReview(source, meta, selection.iteration, selection.compareTo, {
           signal: abort.signal,
+          fresh,
           backend,
           aiTitles: settings.aiTitles,
           saved: { store: host.savedReviews(), key: { repo: route.repo, pr: route.pr, iteration: selection.iteration, compareTo: selection.compareTo } },
@@ -136,7 +146,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       cancelled = true;
       abort.abort();
     };
-  }, [source, data?.pr.id, selection.iteration, selection.compareTo]);
+  }, [source, data?.pr.id, selection.iteration, selection.compareTo, regroup]);
+
+  /** Groups the changes again with the current title and description, ignoring the saved grouping. */
+  const regroupNow = () => {
+    freshNext.current = true;
+    setRegroup((n) => n + 1);
+  };
+  const groupingStale = !!data && !!groupedWith && (groupedWith.title !== data.pr.title || groupedWith.description !== data.pr.description);
 
   React.useEffect(() => {
     if (!data || !selection.iteration) return;
@@ -169,7 +186,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     if (tab !== "files") setToast({ message, callToAction: "View files", onCallToAction: () => selectTab("files") });
     else if (view === "grouped" && window.scrollY > KEEP_PREVIEW_SCROLL) {
       setHoldPreview(true);
-      setToast({ message, callToAction: "Show grouped", onCallToAction: showGrouped });
+      setToast({ message, callToAction: "Show guided", onCallToAction: showGrouped });
     } else setToast({ message });
   }
 
@@ -254,6 +271,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       progress={progress}
                       holdPreview={holdPreview}
                       onShowGrouped={showGrouped}
+                      onRegroup={regroupNow}
+                      groupingStale={groupingStale}
                     />
                     </React.Suspense>
                   )}

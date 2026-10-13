@@ -14,6 +14,14 @@ export interface PipelineConfig {
     /** Score when the test file imports the code file but shares no changed symbol with the hunk. */
     importOnly: number;
   };
+  description: {
+    /** Link hunks the PR description puts in the same step (score/description.ts). */
+    enabled: boolean;
+    /** Weight kept by a pair whose hunks the description confidently puts in different steps. */
+    crossStepFactor: number;
+    /** A hunk's strongest step affinity must reach this to count as confidently placed. */
+    confident: number;
+  };
   semantic: {
     enabled: boolean;
     model: string;
@@ -41,10 +49,12 @@ export const DEFAULT_CONFIG: PipelineConfig = {
     lexical: 0.45,
     semantic: 0.5,
     path: 0.25,
+    description: 1.0,
   },
   minEdgeWeight: 0.22,
   structural: { impactFactor: 0.6 },
   testPairing: { importOnly: 0.15 },
+  description: { enabled: true, crossStepFactor: 0.5, confident: 0.75 },
   semantic: {
     enabled: false,
     model: "Xenova/all-MiniLM-L6-v2",
