@@ -7,7 +7,7 @@ const ZERO = "0000000000000000000000000000000000000000";
 const MAX_LAYER_COMMITS = 200;
 const CHERRY_PICK_TIMEOUT_MS = 90_000;
 /** PR status context: one "restack" check per PR, updated in place. */
-export const STATUS_CONTEXT = { genre: "semantic-pr", name: "restack" };
+export const STATUS_CONTEXT = { genre: "review-deck", name: "restack" };
 
 interface AdoPr {
   pullRequestId: number;

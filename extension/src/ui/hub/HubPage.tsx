@@ -176,7 +176,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
       .favoriteRepos()
       .save(next)
       .catch((e) => {
-        console.warn("[semantic-pr] could not save favorite repositories:", e);
+        console.warn("[review-deck] could not save favorite repositories:", e);
         setFavorites(before);
       });
   };

@@ -81,8 +81,8 @@ export async function buildReview(
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
-  for (const warning of result.warnings) console.warn("[semantic-pr]", warning);
-  console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  for (const warning of result.warnings) console.warn("[review-deck]", warning);
+  console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
   const packed = !restored && options.saved ? packReview(result, reviewMode(backend, aiTitles)) : null;
   if (packed) void options.saved!.store.save(options.saved!.key, packed);
   return { result, changes, contents, comparison, analyzed: true };
@@ -142,7 +142,7 @@ function runAnalysis(
     worker.onerror = (e) => {
       e.preventDefault();
       stop();
-      console.warn("[semantic-pr] analysis worker unavailable, running on the page:", e.message);
+      console.warn("[review-deck] analysis worker unavailable, running on the page:", e.message);
       onPage();
     };
     worker.postMessage(job);

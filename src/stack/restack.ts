@@ -148,7 +148,7 @@ export class Restacker {
       if (commits.length === 0) {
         newTip = ontoTip; // everything in this layer is already below it (e.g. merged with its parent)
       } else {
-        const scratch = `${this.options.scratchPrefix ?? "semantic-pr/restack"}/${child.id}-${ontoTip.slice(0, 8)}`;
+        const scratch = `${this.options.scratchPrefix ?? "review-deck/restack"}/${child.id}-${ontoTip.slice(0, 8)}`;
         const picked = await this.repo.cherryPick(
           commits.map((c) => c.id),
           ontoName,

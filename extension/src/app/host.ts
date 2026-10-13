@@ -6,7 +6,10 @@ import type { TagStore } from "../data/tags";
 import type { BackendService } from "../review/backend";
 import type { SavedReviews } from "../review/saved";
 
-/** Backend (Azure Function) base URL, set at build time from SEMANTIC_PR_BACKEND_URL (extension/build.mjs). */
+/**
+ * Backend (Azure Function) base URL baked in at build time from REVIEW_DECK_BACKEND_URL (extension/build.mjs), for
+ * private builds. The published extension has none: each organization points it at its own backend (BackendSettings).
+ */
 declare const __BACKEND_URL__: string;
 // typeof: unbundled runs (tsx tests) have no define.
 export const BACKEND_URL = typeof __BACKEND_URL__ === "string" ? __BACKEND_URL__.replace(/\/+$/, "") : "";
@@ -40,6 +43,35 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
 }
 
 /**
+ * The organization's own backend, saved in Project settings → Review Deck by an organization administrator.
+ * It overrides the build's BACKEND_URL. `key` is the backend's API_KEY (Terraform output api_key).
+ */
+export interface BackendSettings {
+  url: string;
+  key: string;
+}
+
+/** A backend URL as saved: https (or http on localhost, for a local `func start`), without a trailing slash or /api. */
+export function normalizeBackendUrl(input: string): string {
+  const url = new URL(input.trim());
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(local && url.protocol === "http:")) throw new Error("The backend URL must start with https://");
+  if (url.search || url.hash) throw new Error("The backend URL can't have a query or fragment");
+  return `${url.origin}${url.pathname.replace(/\/+$/, "").replace(/\/api$/, "")}`;
+}
+
+/** Saved backend settings, or null when there are none or they're malformed. */
+export function readBackendSettings(saved: unknown): BackendSettings | null {
+  const s = saved as Partial<Record<keyof BackendSettings, unknown>> | null | undefined;
+  if (typeof s?.url !== "string" || !s.url || typeof s.key !== "string") return null;
+  try {
+    return { url: normalizeBackendUrl(s.url), key: s.key };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The two pages of the hub: the PR inbox, or one pull request. `project` (a name) is set when the hub
  * opens a PR from another project; that PR's page lives in its own project's hub.
  */
@@ -65,6 +97,12 @@ export interface AppHost {
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
   backendService(): Promise<BackendService | null>;
+  /** The organization's own backend, or null when it uses the build's (or none). Never rejects. */
+  backendSettings(): Promise<BackendSettings | null>;
+  /** Saves (or, with null, clears) the organization's backend; the UI offers it to organization administrators only. */
+  saveBackendSettings(settings: BackendSettings | null): Promise<void>;
+  /** Whether the user may change organization-wide settings (Azure DevOps: "Edit instance-level information"). False if unknown. */
+  canManageOrganization(): Promise<boolean>;
   /** This project's settings. Resolves to the defaults (all off) when they can't be read, so a failure never turns AI on. */
   projectSettings(): Promise<ProjectSettings>;
   /**

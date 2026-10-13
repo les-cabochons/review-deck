@@ -36,7 +36,7 @@ export function useStack(host: AppHost, prId: number): StackView | null {
           if (!cancelled) setView((v) => v && { ...v, details: new Map(v.details).set(layer.id, extra) });
         }),
       );
-    })().catch((e: unknown) => console.warn("[semantic-pr] stack unavailable:", e));
+    })().catch((e: unknown) => console.warn("[review-deck] stack unavailable:", e));
     return () => {
       cancelled = true;
     };

@@ -43,7 +43,7 @@ export class SyntaxParsers {
           parser.setLanguage(language);
           this.parsers.set(id, parser);
         },
-        (e) => console.warn(`semantic-pr: could not load the ${id} grammar; its files are grouped by path and names only`, e),
+        (e) => console.warn(`review-deck: could not load the ${id} grammar; its files are grouped by path and names only`, e),
       );
       this.loading.set(id, pending);
     }

@@ -8,7 +8,7 @@ import type { Identity, PrSource } from "../data/model";
 import type { ReleaseCatalog } from "../data/releases";
 import type { BackendService } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -23,6 +23,11 @@ const FAVORITES_KEY = "favorite-repos";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
 const EDIT_PROJECT = 2;
+/** Organization-wide (Default scope) extension data value holding the organization's own backend. */
+const BACKEND_KEY = "backend";
+/** The "Collection" security namespace and its GENERIC_WRITE bit ("Edit instance-level information"), held by Project Collection Administrators. */
+const COLLECTION_NAMESPACE = "3e65f728-f8bc-4ecd-8764-7e378b19bfa7";
+const EDIT_COLLECTION = 2;
 
 /**
  * Runs inside the Azure DevOps hub iframe. The route lives in the host page's query string
@@ -38,6 +43,7 @@ export class AdoHost implements AppHost {
   private readonly hostUrl: string;
   private dataManager: Promise<IExtensionDataManager> | null = null;
   private tagStore: AdoTagStore | null = null;
+  private backend: Promise<BackendService | null> | null = null;
   private releaseCatalog: Promise<ReleaseCatalog> | null = null;
 
   private constructor(
@@ -87,7 +93,7 @@ export class AdoHost implements AppHost {
       const repo = await service.getCurrentGitRepository();
       return repo && { id: repo.id, name: repo.name };
     } catch (e) {
-      console.warn("[semantic-pr] no current repository:", e);
+      console.warn("[review-deck] no current repository:", e);
       return null;
     }
   }
@@ -100,16 +106,42 @@ export class AdoHost implements AppHost {
     this.nav.setDocumentTitle(title);
   }
 
-  async backendService(): Promise<BackendService | null> {
+  backendService(): Promise<BackendService | null> {
+    this.backend ??= this.resolveBackend();
+    return this.backend;
+  }
+
+  /** The organization's own backend with its API key, else the build's with an app token, else none. */
+  private async resolveBackend(): Promise<BackendService | null> {
+    const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
+    const own = await this.backendSettings();
+    if (own) return { url: own.url, token: own.key, scope };
     if (!BACKEND_URL) return null;
     try {
       // Signed with the extension's secret; the function checks it (backend/src/auth.ts).
-      const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
       return { url: BACKEND_URL, token: await SDK.getAppToken(), scope };
     } catch (e) {
-      console.warn("[semantic-pr] no app token, grouping without the backend:", e);
+      console.warn("[review-deck] no app token, grouping without the backend:", e);
       return null;
     }
+  }
+
+  async backendSettings(): Promise<BackendSettings | null> {
+    try {
+      return readBackendSettings(await (await this.data()).getValue<unknown>(BACKEND_KEY, { defaultValue: null }));
+    } catch (e) {
+      console.warn("[review-deck] backend settings unavailable:", e);
+      return null;
+    }
+  }
+
+  async saveBackendSettings(settings: BackendSettings | null): Promise<void> {
+    await (await this.data()).setValue(BACKEND_KEY, settings);
+    this.backend = null;
+  }
+
+  async canManageOrganization(): Promise<boolean> {
+    return this.hasPermission(COLLECTION_NAMESPACE, "NAMESPACE:", EDIT_COLLECTION, "organization");
   }
 
   async projectSettings(): Promise<ProjectSettings> {
@@ -117,7 +149,7 @@ export class AdoHost implements AppHost {
       return readProjectSettings(await (await this.data()).getDocument(SETTINGS_COLLECTION, this.project.id));
     } catch (e) {
       // A project that never saved settings has no document (404): that's the defaults too.
-      if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] project settings unavailable, using defaults:", e);
+      if ((e as { status?: number }).status !== 404) console.warn("[review-deck] project settings unavailable, using defaults:", e);
       return DEFAULT_PROJECT_SETTINGS;
     }
   }
@@ -139,25 +171,26 @@ export class AdoHost implements AppHost {
 
   async syncRestackHooks(on: boolean): Promise<void> {
     const backend = await this.backendService();
-    if (!backend) throw new Error("This extension was built without a backend, so it can't restack automatically.");
+    if (!backend) throw new Error("No backend is set up for this organization, so it can't restack automatically.");
     await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken() }, on);
   }
 
   async canManageProject(): Promise<boolean> {
+    return this.hasPermission(PROJECT_NAMESPACE, `$PROJECT:vstfs:///Classification/TeamProject/${this.project.id}`, EDIT_PROJECT, "project");
+  }
+
+  private async hasPermission(securityNamespaceId: string, token: string, permissions: number, what: string): Promise<boolean> {
     try {
       const response = await fetch(`${this.hostUrl}_apis/security/permissionevaluationbatch?api-version=7.1`, {
         method: "POST",
         headers: { authorization: `Bearer ${await SDK.getAccessToken()}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          alwaysAllowAdministrators: true,
-          evaluations: [{ securityNamespaceId: PROJECT_NAMESPACE, token: `$PROJECT:vstfs:///Classification/TeamProject/${this.project.id}`, permissions: EDIT_PROJECT }],
-        }),
+        body: JSON.stringify({ alwaysAllowAdministrators: true, evaluations: [{ securityNamespaceId, token, permissions }] }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const { evaluations } = (await response.json()) as { evaluations?: { value?: boolean }[] };
       return evaluations?.[0]?.value === true;
     } catch (e) {
-      console.warn("[semantic-pr] could not check project permissions:", e);
+      console.warn(`[review-deck] could not check ${what} permissions:`, e);
       return false;
     }
   }
@@ -187,7 +220,7 @@ export class AdoHost implements AppHost {
           return fits ? (doc.review ?? null) : null;
         } catch (e) {
           // Never saved: 404.
-          if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] saved grouping unavailable:", e);
+          if ((e as { status?: number }).status !== 404) console.warn("[review-deck] saved grouping unavailable:", e);
           return null;
         }
       },
@@ -196,7 +229,7 @@ export class AdoHost implements AppHost {
           await (await this.data()).setDocument(REVIEWS_COLLECTION, { id: id(key), __etag: -1, version, iteration: key.iteration, compareTo: key.compareTo, review });
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
-          console.warn("[semantic-pr] could not save the grouping:", e);
+          console.warn("[review-deck] could not save the grouping:", e);
         }
       },
     };
@@ -231,7 +264,7 @@ export class AdoHost implements AppHost {
           const ids = await (await this.data()).getValue<unknown>(FAVORITES_KEY, { scopeType: "User", defaultValue: [] });
           return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
         } catch (e) {
-          console.warn("[semantic-pr] favorite repositories unavailable:", e);
+          console.warn("[review-deck] favorite repositories unavailable:", e);
           return [];
         }
       },

@@ -32,7 +32,7 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     host
       .tags()
       .list()
-      .then(setTags, (e) => console.warn("[semantic-pr] tags unavailable:", e));
+      .then(setTags, (e) => console.warn("[review-deck] tags unavailable:", e));
   }, [host]);
   React.useEffect(reload, [reload]);
   const [revision, setRevision] = React.useState(0);

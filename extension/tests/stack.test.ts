@@ -177,7 +177,7 @@ test("restack: a push to the bottom layer cascades to every layer above", async 
   assert.deepEqual(repo.files("b", "a"), ["b1"], "only the layer's own commits move");
   assert.deepEqual(repo.files("c", "b"), ["c1", "c2"]);
   assert.equal(repo.statuses.get(3)?.state, "succeeded");
-  assert.ok(![...repo.branches.keys()].some((b) => b.startsWith("semantic-pr/")), "scratch branches are cleaned up");
+  assert.ok(![...repo.branches.keys()].some((b) => b.startsWith("review-deck/")), "scratch branches are cleaned up");
   // Replaying the same event finds everything up to date.
   const again = await new Restacker(repo, { trunkPatterns: TRUNKS }).branchMoved("a", old, tip);
   assert.deepEqual(again.map((o) => o.result), ["up-to-date"]);
@@ -292,7 +292,7 @@ test("hook sync: overlapping calls run one after another, leaving one subscripti
   globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
-    if (url.includes("/api/stacks/hook")) return json({ url: "https://backend/api/hooks/ado?org=org", header: "x-semantic-pr-hook", secret: "s" });
+    if (url.includes("/api/stacks/hook")) return json({ url: "https://backend/api/hooks/ado?org=org", header: "x-review-deck-hook", secret: "s" });
     // Every Azure DevOps call yields first, so unserialized syncs would interleave.
     await new Promise((r) => setTimeout(r, 1));
     if (init?.method === "GET") return json({ value: [...subscriptions] });

@@ -64,7 +64,7 @@ for (const file of MODEL_FILES) {
   cpSync(join(cache, MODEL, file), target);
 }
 
-writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "semantic-pr-embed", type: "module", main: "dist/index.mjs" }, null, 2)}\n`);
+writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "review-deck-embed", type: "module", main: "dist/index.mjs" }, null, 2)}\n`);
 cpSync(join(here, "host.json"), join(out, "host.json"));
 
 // Content hash, so Terraform redeploys exactly when the package changes.

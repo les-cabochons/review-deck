@@ -92,7 +92,7 @@ class AdoReleaseSource implements ReleaseSource {
           const a = await this.git.getAnnotatedTag(this.context.projectId, this.repository.id, tag.tagObjectId!);
           details.set(tag.name, { date: a.taggedBy?.date ? new Date(a.taggedBy.date) : null, author: a.taggedBy?.name ?? null, message: a.message?.trim() || null });
         } catch (e) {
-          console.warn(`[semantic-pr] annotated tag ${tag.name} unavailable:`, e);
+          console.warn(`[review-deck] annotated tag ${tag.name} unavailable:`, e);
         }
       }
     });
@@ -146,7 +146,7 @@ class AdoReleaseSource implements ReleaseSource {
         size: Number.isFinite(size) && size > 0 ? size : null,
         zipUrl: a.resource?.downloadUrl ?? "",
         files: () => this.files(run.id, a.name, a.resource?.type ?? "", a.resource?.data ?? "").catch((e) => {
-          console.warn(`[semantic-pr] could not list the files of ${a.name}:`, e);
+          console.warn(`[review-deck] could not list the files of ${a.name}:`, e);
           return null;
         }),
       };
@@ -214,7 +214,7 @@ class AdoReleaseSource implements ReleaseSource {
       return doc.tag === tag && typeof doc.text === "string" ? doc.text : null;
     } catch (e) {
       // Never written: 404.
-      if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] release description unavailable:", e);
+      if ((e as { status?: number }).status !== 404) console.warn("[review-deck] release description unavailable:", e);
       return null;
     }
   }

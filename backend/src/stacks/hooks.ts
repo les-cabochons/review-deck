@@ -2,12 +2,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * Azure DevOps service hooks -> restack jobs. The extension (a project admin turning auto-restack on)
- * subscribes two events to POST /api/hooks/ado?org=<organization> with an `X-Semantic-PR-Hook` header:
+ * subscribes two events to POST /api/hooks/ado?org=<organization> with an `X-Review-Deck-Hook` header:
  *   git.push                  a branch moved: restack the PRs that target it
  *   git.pullrequest.updated   a PR completed: restack the PRs on top of it onto where it merged
  * Hooks only say *that* something happened; the job re-reads everything from Azure DevOps.
  */
-export const HOOK_HEADER = "x-semantic-pr-hook";
+export const HOOK_HEADER = "x-review-deck-hook";
 
 export type RestackJob =
   | { kind: "push"; organization: string; projectId: string; repositoryId: string; branch: string; oldTip: string; newTip: string }

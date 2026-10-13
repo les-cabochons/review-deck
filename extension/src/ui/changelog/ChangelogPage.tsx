@@ -209,10 +209,10 @@ const TagList: React.FC<{ source: ReleaseSource; convention: string; pipelineId:
         if (prefix.length >= candidates.length || prefix.filter(shows).length >= target) break;
         const chunk = candidates.slice(prefix.length).filter((t) => !cache.current.has(t.name)).slice(0, CHUNK);
         const [details, runs] = await Promise.all([
-          source.tagDetails(chunk).catch((e) => (console.warn("[semantic-pr] tag details unavailable:", e), new Map<string, GitTagDetails>())),
+          source.tagDetails(chunk).catch((e) => (console.warn("[review-deck] tag details unavailable:", e), new Map<string, GitTagDetails>())),
           Promise.all(
             chunk.map(async (tag) => {
-              const run = await source.latestRun(tag, pipelineId).catch((e) => (console.warn(`[semantic-pr] runs for ${tag.name} unavailable:`, e), null));
+              const run = await source.latestRun(tag, pipelineId).catch((e) => (console.warn(`[review-deck] runs for ${tag.name} unavailable:`, e), null));
               const artifacts = runSucceeded(run) ? await source.artifacts(run).catch(() => [] as Artifact[]) : [];
               return { run, artifacts };
             }),

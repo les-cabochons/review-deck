@@ -324,7 +324,7 @@ export async function readChecksums(files: ArtifactFile[]): Promise<Map<string, 
         try {
           for (const [name, digest] of parseChecksums(f.path, await f.read())) digests.set(name, digest);
         } catch (e) {
-          console.warn(`[semantic-pr] could not read ${f.path}:`, e);
+          console.warn(`[review-deck] could not read ${f.path}:`, e);
         }
       }),
   );

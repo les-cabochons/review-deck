@@ -49,7 +49,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function buildPatch(spec: PrSpec, prDir: string): string {
-  const work = mkdtempSync(join(tmpdir(), `semantic-pr-${spec.id}-`));
+  const work = mkdtempSync(join(tmpdir(), `review-deck-${spec.id}-`));
   try {
     cpSync(BASE, work, { recursive: true });
     git(work, "init", "-q", "-b", "main");

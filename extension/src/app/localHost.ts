@@ -5,11 +5,12 @@ import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 
-const SETTINGS_KEY = "semantic-pr.local.projectSettings";
-const TAGS_KEY = "semantic-pr.local.tagStyles";
-const FAVORITES_KEY = "semantic-pr.local.favoriteRepos";
+const SETTINGS_KEY = "review-deck.local.projectSettings";
+const TAGS_KEY = "review-deck.local.tagStyles";
+const FAVORITES_KEY = "review-deck.local.favoriteRepos";
+const BACKEND_KEY = "review-deck.local.backend";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -91,10 +92,34 @@ export class LocalHost implements AppHost {
     document.title = title;
   }
 
-  /** `?backend=http://localhost:7071` points at a local `func start` (which skips the token check). */
+  /**
+   * `?backend=http://localhost:7071` points at a local `func start` (which skips the token check without
+   * API_KEY); otherwise the backend saved in the dev shell's Project settings → Review Deck, then the build's.
+   */
   async backendService(): Promise<BackendService | null> {
-    const url = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "") || BACKEND_URL;
-    return url ? { url, token: "", scope: { organization: "local", projectId: "t3code", projectName: "t3code" } } : null;
+    const scope = { organization: "local", projectId: "t3code", projectName: "t3code" };
+    const query = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "");
+    if (query) return { url: query, token: "", scope };
+    const own = await this.backendSettings();
+    if (own) return { url: own.url, token: own.key, scope };
+    return BACKEND_URL ? { url: BACKEND_URL, token: "", scope } : null;
+  }
+
+  async backendSettings(): Promise<BackendSettings | null> {
+    try {
+      return readBackendSettings(JSON.parse(localStorage.getItem(BACKEND_KEY) ?? "null"));
+    } catch {
+      return null;
+    }
+  }
+
+  async saveBackendSettings(settings: BackendSettings | null): Promise<void> {
+    if (settings) localStorage.setItem(BACKEND_KEY, JSON.stringify(settings));
+    else localStorage.removeItem(BACKEND_KEY);
+  }
+
+  async canManageOrganization(): Promise<boolean> {
+    return true;
   }
 
   /** In memory, so a reload analyzes again with the code being worked on. */
