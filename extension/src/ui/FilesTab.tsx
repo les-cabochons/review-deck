@@ -53,6 +53,13 @@ export const FilesTab: React.FC<Props> = (props) => {
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : 0;
   const [hidden, setHidden] = useHiddenKinds();
   const [search, setSearch] = React.useState("");
+  const [collapsedNavGroups, setCollapsedNavGroups] = React.useState(new Set<string>());
+  const toggleNavGroup = (id: string) => setCollapsedNavGroups(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
   const kinds = React.useMemo(() => (review ? fileKinds(review) : new Map<string, Set<FileKind>>()), [review]);
   const shown = React.useCallback((path: string) => ![...(kinds.get(path) ?? [])].some((k) => hidden.has(k)), [kinds, hidden]);
   const commentCounts = React.useMemo(() => new Map([...fileThreads].map(([path, ts]) => [path, ts.length])), [fileThreads]);
@@ -122,6 +129,8 @@ export const FilesTab: React.FC<Props> = (props) => {
               onHidden={setHidden}
               kinds={kinds}
               comments={commentCounts}
+              collapsedGroups={collapsedNavGroups}
+              onToggleGroup={toggleNavGroup}
             />
             <div className="files-content">
               {shownView === "grouped" ? (
@@ -252,10 +261,12 @@ interface NavigatorProps {
   onHidden: (kinds: Set<FileKind>) => void;
   kinds: Map<string, Set<FileKind>>;
   comments: Map<string, number>;
+  collapsedGroups: Set<string>;
+  onToggleGroup: (id: string) => void;
 }
 
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
-const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments }) => {
+const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup }) => {
   const { result } = review;
   const go = scrollToId;
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
@@ -295,14 +306,23 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
         <LazyRoot.Provider value={nav}>
           {sections.map(({ g, i, files }) => (
             <div key={g.id} className="nav-group">
-              <button className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
-                <span className="badge" style={{ background: groupColor(result.groups, g) }}>
-                  {i + 1}
-                </span>
-                <span className="text">{g.title}</span>
-                <span className="count">{g.hunkIds.length}</span>
-              </button>
-              <GroupTree review={review} group={g} files={files} comments={comments} />
+              <div className="nav-group-header">
+                <button type="button" className="nav-group-toggle" onClick={() => onToggleGroup(g.id)}
+                  aria-expanded={!collapsedGroups.has(g.id)} aria-controls={`nav-group-tree-${g.id}`}
+                  aria-label={`${collapsedGroups.has(g.id) ? "Expand" : "Collapse"} file tree for ${g.title}`}>
+                  <Icon iconName={collapsedGroups.has(g.id) ? "ChevronRight" : "ChevronDown"} />
+                </button>
+                <button type="button" className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
+                  <span className="badge" style={{ background: groupColor(result.groups, g) }}>
+                    {i + 1}
+                  </span>
+                  <span className="text">{g.title}</span>
+                  <span className="count">{g.hunkIds.length}</span>
+                </button>
+              </div>
+              <div id={`nav-group-tree-${g.id}`} hidden={collapsedGroups.has(g.id)}>
+                {!collapsedGroups.has(g.id) && <GroupTree review={review} group={g} files={files} comments={comments} />}
+              </div>
             </div>
           ))}
         </LazyRoot.Provider>
