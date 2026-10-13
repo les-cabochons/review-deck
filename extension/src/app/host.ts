@@ -34,8 +34,11 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
   };
 }
 
-/** The two pages of the hub: the PR inbox, or one pull request. */
-export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number };
+/**
+ * The two pages of the hub: the PR inbox, or one pull request. `project` (a name) is set when the hub
+ * opens a PR from another project; that PR's page lives in its own project's hub.
+ */
+export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number; project?: string };
 
 /**
  * Everything environment-specific the UI needs. `AdoHost` runs inside the Azure DevOps hub iframe;
@@ -49,6 +52,8 @@ export interface AppHost {
   navigate(route: Route): void;
   subscribe(listener: (route: Route) => void): () => void;
   listSource(): Promise<PrListSource>;
+  /** The repository picked in the Repos breadcrumb, or null if none is (or the host has no such notion). */
+  currentRepository(): Promise<{ id: string; name: string } | null>;
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource>;
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */

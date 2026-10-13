@@ -5,7 +5,7 @@ import type { PrListSnapshot } from "./listSnapshot";
 export interface PrSummary {
   id: number;
   title: string;
-  repository: { id: string; name: string; projectName: string };
+  repository: { id: string; name: string; projectId: string; projectName: string };
   createdBy: Identity;
   creationDate: Date;
   updatedDate?: Date;
@@ -37,10 +37,13 @@ export interface MyGroup {
   name: string;
 }
 
+/** Where the hub looks for pull requests: the current project, or every project you can see. */
+export type ListScope = "project" | "organization";
+
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;
-  list(): Promise<PrSummary[]>;
+  list(scope?: ListScope): Promise<PrSummary[]>;
   /** Teams the current user belongs to. */
   myGroups(): Promise<MyGroup[]>;
   /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
@@ -68,7 +71,7 @@ export class MockPrListSource implements PrListSource {
       return {
         id: p.pullRequestId,
         title: p.title,
-        repository: { id: p.repository.id, name: p.repository.name, projectName: p.repository.project.name },
+        repository: { id: p.repository.id, name: p.repository.name, projectId: p.repository.project.id, projectName: p.repository.project.name },
         createdBy: p.createdBy,
         creationDate: new Date(p.creationDate),
         updatedDate: new Date(p.updatedDate),
