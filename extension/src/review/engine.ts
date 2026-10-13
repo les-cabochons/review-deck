@@ -3,6 +3,7 @@ import { parseDiff } from "../../../src/diff/parse";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 import { type BackendService, warmBackend } from "./backend";
+import { packReview, type ReviewKey, reviewMode, type SavedReviews } from "./saved";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
 
@@ -31,6 +32,8 @@ export interface BuildOptions {
   backend?: BackendService | null;
   /** The project allows sending changed lines to the LLM (ProjectSettings.aiTitles). */
   aiTitles?: boolean;
+  /** Reuses the grouping saved for this comparison, and saves a fresh one. */
+  saved?: { store: SavedReviews; key: ReviewKey };
 }
 
 /**
@@ -49,6 +52,8 @@ export async function buildReview(
   const started = performance.now();
   const backend = options.backend ?? null;
   if (backend) warmBackend(backend);
+  // Read while the files download; restoreReview (in the worker) checks it still fits.
+  const saved = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
   const changes = await source.getChanges(iteration, compareTo);
   const contents = new Map<string, FileContents>();
   await forEachLimited(
@@ -68,13 +73,16 @@ export async function buildReview(
   const fetchMs = Math.round(performance.now() - started);
   const comparison = { iteration, compareTo };
 
-  const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles: options.aiTitles === true, assetBase: new URL("../assets/", document.baseURI).toString() };
-  const result = await runAnalysis(job, options.signal, (message) => {
+  const aiTitles = options.aiTitles === true;
+  const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles, saved: await saved, assetBase: new URL("../assets/", document.baseURI).toString() };
+  const { result, restored } = await runAnalysis(job, options.signal, (message) => {
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
   for (const warning of result.warnings) console.warn("[semantic-pr]", warning);
-  console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  const packed = !restored && options.saved ? packReview(result, reviewMode(backend, aiTitles)) : null;
+  if (packed) void options.saved!.store.save(options.saved!.key, packed);
   return { result, changes, contents, comparison, analyzed: true };
 }
 
@@ -98,11 +106,11 @@ function runAnalysis(
   job: AnalysisJob,
   signal: AbortSignal | undefined,
   onUpdate: (message: Extract<AnalysisMessage, { type: "diff" | "progress" }>) => void,
-): Promise<ReviewResult> {
-  return new Promise<ReviewResult>((resolve, reject) => {
+): Promise<{ result: ReviewResult; restored: boolean }> {
+  return new Promise((resolve, reject) => {
     const receive = (message: AnalysisMessage) => {
       if (message.type === "diff" || message.type === "progress") onUpdate(message);
-      else if (message.type === "result") resolve(message.result);
+      else if (message.type === "result") resolve(message);
       else reject(new Error(message.error));
     };
     const onPage = () => {

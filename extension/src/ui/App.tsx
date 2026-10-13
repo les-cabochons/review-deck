@@ -107,6 +107,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
           signal: abort.signal,
           backend,
           aiTitles: settings.aiTitles,
+          saved: { store: host.savedReviews(), key: { repo: route.repo, pr: route.pr, iteration: selection.iteration, compareTo: selection.compareTo } },
           onPreview: (preview) => {
             if (cancelled) return;
             previewAt = Date.now();

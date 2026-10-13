@@ -3,6 +3,7 @@ import type { PrListSource } from "../data/list";
 import type { Identity, PrSource } from "../data/model";
 import type { TagStore } from "../data/tags";
 import type { BackendService } from "../review/backend";
+import type { SavedReviews } from "../review/saved";
 
 /** Backend (Azure Function) base URL, set at build time from SEMANTIC_PR_BACKEND_URL (extension/build.mjs). */
 declare const __BACKEND_URL__: string;
@@ -34,8 +35,11 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
   };
 }
 
-/** The two pages of the hub: the PR inbox, or one pull request. */
-export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number };
+/**
+ * The two pages of the hub: the PR inbox, or one pull request. `project` (a name) is set when the hub
+ * opens a PR from another project; that PR's page lives in its own project's hub.
+ */
+export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number; project?: string };
 
 /**
  * Everything environment-specific the UI needs. `AdoHost` runs inside the Azure DevOps hub iframe;
@@ -49,6 +53,8 @@ export interface AppHost {
   navigate(route: Route): void;
   subscribe(listener: (route: Route) => void): () => void;
   listSource(): Promise<PrListSource>;
+  /** The repository picked in the Repos breadcrumb, or null if none is (or the host has no such notion). */
+  currentRepository(): Promise<{ id: string; name: string } | null>;
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource>;
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
@@ -64,10 +70,20 @@ export interface AppHost {
    * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
    */
   syncRestackHooks(on: boolean): Promise<void>;
+  /** Finished groupings, so reopening a pull request shows them without re-running the analysis. */
+  savedReviews(): SavedReviews;
   /** This project's tags, with their colors and descriptions. */
   tags(): TagStore;
+  /** Your starred repositories, kept per user across projects. */
+  favoriteRepos(): FavoriteRepos;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
+}
+
+/** Starred repository ids. `load` resolves to none when they can't be read. */
+export interface FavoriteRepos {
+  load(): Promise<string[]>;
+  save(ids: string[]): Promise<void>;
 }
 
 export function parseRoute(params: Record<string, string | undefined>): Route {

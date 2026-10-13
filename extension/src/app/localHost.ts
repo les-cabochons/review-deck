@@ -3,10 +3,12 @@ import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService } from "../review/backend";
-import { type AppHost, BACKEND_URL, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import type { SavedReview, SavedReviews } from "../review/saved";
+import { type AppHost, BACKEND_URL, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "semantic-pr.local.projectSettings";
 const TAGS_KEY = "semantic-pr.local.tagStyles";
+const FAVORITES_KEY = "semantic-pr.local.favoriteRepos";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -16,6 +18,7 @@ export class LocalHost implements AppHost {
   readonly kind = "local";
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
+  private readonly reviews = new Map<string, SavedReview>();
 
   private constructor(private readonly list: MockPrListSource) {
     window.addEventListener("popstate", () => this.listeners.emit(this.route()));
@@ -54,6 +57,13 @@ export class LocalHost implements AppHost {
     return this.list;
   }
 
+  /** The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. */
+  async currentRepository(): Promise<{ id: string; name: string } | null> {
+    const id = new URLSearchParams(location.search).get("currentRepo");
+    const pr = id && (await this.list.list()).find((p) => p.repository.id === id);
+    return pr ? { id, name: pr.repository.name } : null;
+  }
+
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
     let source = this.prSources.get(route.pr);
     if (!source) {
@@ -75,6 +85,15 @@ export class LocalHost implements AppHost {
   async backendService(): Promise<BackendService | null> {
     const url = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "") || BACKEND_URL;
     return url ? { url, token: "", scope: { organization: "local", projectId: "t3code", projectName: "t3code" } } : null;
+  }
+
+  /** In memory, so a reload analyzes again with the code being worked on. */
+  savedReviews(): SavedReviews {
+    const id = (key: Parameters<SavedReviews["load"]>[0]) => JSON.stringify(key);
+    return {
+      load: async (key) => this.reviews.get(id(key)) ?? null,
+      save: async (key, review) => void this.reviews.set(id(key), review),
+    };
   }
 
   /** Kept in localStorage; the local user may change them. */
@@ -117,6 +136,19 @@ export class LocalHost implements AppHost {
         this.list.replaceLabel(name, null);
         write(withoutTag(read(), name));
       },
+    };
+  }
+
+  favoriteRepos(): FavoriteRepos {
+    return {
+      load: async () => {
+        try {
+          return JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]") as string[];
+        } catch {
+          return [];
+        }
+      },
+      save: async (ids) => localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids)),
     };
   }
 
