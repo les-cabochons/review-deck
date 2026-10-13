@@ -2,9 +2,9 @@
   "manifestVersion": 1,
   "id": "semantic-pr-review",
   "publisher": "Cabochonio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "name": "Review Deck",
-  "description": "A pull request review page that groups changes by concern instead of by file.",
+  "description": "A pull request review page that groups changes by concern instead of by file, and a changelog of your tags and releases with their pipeline artifacts.",
   "public": false,
   "icons": {
     "default": "images/logo.png"
@@ -44,7 +44,10 @@
     "Code Review",
     "Diff",
     "Stacked PRs",
-    "Git"
+    "Git",
+    "Changelog",
+    "Releases",
+    "Conventional Commits"
   ],
   "categories": [
     "Azure Repos"
