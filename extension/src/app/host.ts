@@ -48,6 +48,8 @@ export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number; pr
 export interface AppHost {
   readonly kind: "ado" | "local";
   readonly currentUser: Identity;
+  /** Separates cached hub data between organizations, projects and users that share a browser tab's storage. */
+  readonly cacheScope: string;
   route(): Route;
   /** Updates the URL (shareable) and notifies subscribers. */
   navigate(route: Route): void;

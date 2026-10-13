@@ -30,6 +30,7 @@ const EDIT_PROJECT = 2;
 export class AdoHost implements AppHost {
   readonly kind = "ado";
   readonly currentUser: Identity;
+  readonly cacheScope: string;
   private current: Route;
   private readonly listeners = new Listeners<Route>();
   private readonly project = SDK.getWebContext().project;
@@ -45,6 +46,7 @@ export class AdoHost implements AppHost {
     this.currentUser = { id: user.id, displayName: user.displayName, uniqueName: user.name, imageUrl: user.imageUrl };
     this.current = parseRoute(query);
     this.hostUrl = `https://dev.azure.com/${encodeURIComponent(SDK.getHost().name)}/`;
+    this.cacheScope = `${SDK.getHost().id}/${this.project.id}/${user.id}`;
   }
 
   static async create(): Promise<AdoHost> {

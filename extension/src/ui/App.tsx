@@ -3,6 +3,7 @@ import { Tab, TabBar, TabSize } from "azure-devops-ui/Tabs";
 import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
+import { hubPatch, rememberPr } from "../data/hubCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { CommitsTab } from "./CommitsTab";
@@ -84,6 +85,12 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       })
       .catch((e: Error) => setError(e.message));
   }, [source]);
+
+  // After opening the PR and after every change made here (votes, reviewers, tags), so the hub shows it in its new
+  // section straight away when you go back.
+  React.useEffect(() => {
+    if (data) rememberPr(host.cacheScope, hubPatch(data));
+  }, [host, data]);
 
   React.useEffect(() => {
     if (data) host.setTitle(`!${data.pr.id} ${data.pr.title}`);

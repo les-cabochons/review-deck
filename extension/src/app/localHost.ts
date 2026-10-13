@@ -16,6 +16,7 @@ const FAVORITES_KEY = "semantic-pr.local.favoriteRepos";
  */
 export class LocalHost implements AppHost {
   readonly kind = "local";
+  readonly cacheScope = "local";
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
   private readonly reviews = new Map<string, SavedReview>();
