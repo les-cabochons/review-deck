@@ -86,3 +86,16 @@ variable "alert_email" {
   type        = string
   default     = ""
 }
+
+variable "ado_pat" {
+  description = "Optional Azure DevOps PAT for auto-restack (Code: Read, write & manage; Pull requests). Leave empty to use the Function App's managed identity instead, which you add to the organization."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "extension_id" {
+  description = "publisher.extension of the installed extension, whose per-project settings auto-restack reads."
+  type        = string
+  default     = "Cabochonio.semantic-pr-review"
+}

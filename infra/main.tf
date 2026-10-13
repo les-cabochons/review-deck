@@ -44,6 +44,13 @@ resource "random_string" "suffix" {
   upper   = false
 }
 
+# Derives each organization's service hook secret (backend/src/stacks/hooks.ts). Rotating it breaks
+# existing hook subscriptions until a project admin turns auto-restack off and on again.
+resource "random_password" "hook_key" {
+  length  = 48
+  special = false
+}
+
 locals {
   name = "${var.name}-${random_string.suffix.result}"
   # backend/build.mjs writes the package's content hash; naming the zip after it redeploys on change.
@@ -157,6 +164,11 @@ resource "azurerm_windows_function_app" "this" {
     TITLES_CAPS               = jsonencode(var.titles_caps)
     TITLES_PRICE_INPUT_PER_M  = tostring(var.titles_price_per_million.input)
     TITLES_PRICE_OUTPUT_PER_M = tostring(var.titles_price_per_million.output)
+    # backend/src/stacks: auto-restack. Without ADO_PAT, the managed identity calls Azure DevOps and
+    # must be added to the organization (see docs/stacks.md).
+    HOOK_KEY     = random_password.hook_key.result
+    ADO_PAT      = var.ado_pat
+    EXTENSION_ID = var.extension_id
   }
 }
 

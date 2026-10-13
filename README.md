@@ -325,6 +325,13 @@ count submissions and diff analyses. The test page lives outside the packaged
 - **Theme:** colors come from the host's theme variables (`SDK.init({
   applyTheme: true })`), so dark mode follows Azure DevOps.
 
+**Stacked PRs:** PRs that target another PR's branch form a stack. The PR page shows
+it (a stack bar under the header, plus a Graphite-style panel in the Overview sidebar), and hub rows
+show their position (`2/4`). Trunk branches (`main`, `dev`, `uat`, `*/00-*` …) are set per
+project. With the backend, **auto-restack** rebases the layers above a changed or merged PR on the
+server and retargets them. Setup and limits are in [docs/stacks.md](docs/stacks.md). Locally,
+`npx tsx scripts/build-stack-mock.ts` turns demo PRs into stacks.
+
 **CI publishing:** `.github/workflows/extension.yml` runs both typechecks, the
 extension tests and a build on every push and pull request.
 - On `main`, it also publishes the extension privately and shares it with the

@@ -21,10 +21,14 @@ export interface PrSummaryJson {
   comments: number;
   /** dev-data snapshot id when the PR can be opened locally. */
   snapshot: string | null;
+  /** Synthetic auto-restack status (scripts/build-stack-mock.ts). */
+  restack?: { state: "pending" | "succeeded" | "failed"; description: string; date: string };
 }
 
 export interface PrListSnapshot {
   source: { github: string; note: string };
+  /** Default trunk patterns for the local demo's stacks (scripts/build-stack-mock.ts). */
+  trunkBranches?: string[];
   currentUser: IdentityJson;
   /** Teams the local user belongs to (synthetic). */
   currentUserGroups?: { id: string; name: string }[];

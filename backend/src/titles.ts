@@ -1,6 +1,7 @@
 // Group titles from a small hosted model (gpt-5-nano on Azure OpenAI), with two cost guards: identical
 // prompts are answered from a Table storage cache, and spending caps (budget.ts) stop calls.
 import { createHash } from "node:crypto";
+import { identityToken } from "./identity.js";
 import { buildPrompt, type LlmTitle, parseTitles, type PromptContext, type PromptGroup } from "../../src/title/prompt.js";
 import { checkLimits, limitsFor, recordSpend, type Scope } from "./budget.js";
 import { table } from "./storage.js";
@@ -88,7 +89,7 @@ export function parseScope(value: unknown): Scope {
 
 async function complete(prompt: string): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   if (!settings.endpoint) throw new Error("OPENAI_ENDPOINT is not set");
-  const auth: Record<string, string> = settings.apiKey ? { "api-key": settings.apiKey } : { authorization: `Bearer ${await identityToken()}` };
+  const auth: Record<string, string> = settings.apiKey ? { "api-key": settings.apiKey } : { authorization: `Bearer ${await identityToken("https://cognitiveservices.azure.com")}` };
   const response = await fetch(new URL("openai/v1/chat/completions", settings.endpoint), {
     method: "POST",
     headers: { ...auth, "content-type": "application/json" },
@@ -113,17 +114,3 @@ async function complete(prompt: string): Promise<{ text: string; inputTokens: nu
   };
 }
 
-let token: { value: string; expiresAt: number } | null = null;
-
-/** A token for Azure OpenAI from the Function App's managed identity (App Service identity endpoint). */
-async function identityToken(): Promise<string> {
-  if (token && token.expiresAt > Date.now() + 5 * 60_000) return token.value;
-  const { IDENTITY_ENDPOINT: endpoint, IDENTITY_HEADER: header } = process.env;
-  if (!endpoint || !header) throw new Error("no managed identity; set OPENAI_API_KEY for local runs");
-  const url = `${endpoint}?resource=${encodeURIComponent("https://cognitiveservices.azure.com")}&api-version=2019-08-01`;
-  const response = await fetch(url, { headers: { "X-IDENTITY-HEADER": header } });
-  if (!response.ok) throw new Error(`managed identity returned ${response.status}`);
-  const data = (await response.json()) as { access_token: string; expires_on: string };
-  token = { value: data.access_token, expiresAt: Number(data.expires_on) * 1000 };
-  return token.value;
-}

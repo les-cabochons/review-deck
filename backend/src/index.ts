@@ -3,11 +3,16 @@
 //   POST /api/titles  {"scope", "context", "groups"} -> {"titles": [{id, title, rationale}]}  (group titles, gpt-5-nano)
 //   GET  /api/usage?organization=&projectId=&projectName=  ->  this month's title spend and caps
 //   GET  /api/warm    loads the embedding model; the page calls it first so the cold start overlaps blob fetching.
-import { app, type HttpRequest, type HttpResponseInit } from "@azure/functions";
+//   GET  /api/stacks/hook?organization=  ->  {url, header, secret} for the auto-restack service hooks
+//   POST /api/hooks/ado?org=  Azure DevOps service hook (git.push, git.pullrequest.updated) -> restack queue
+//   queue "restack"   runs restack jobs one at a time (src/stack/restack.ts)
+import { app, type HttpRequest, type HttpResponseInit, output } from "@azure/functions";
 import { verifyAppToken } from "./auth.js";
 import { embed, MODEL, warm } from "./embed.js";
 import { BudgetExceeded, usage } from "./budget.js";
 import { BadRequest, parseScope, titleGroups } from "./titles.js";
+import { HOOK_HEADER, hookSecret, jobsFromHook, type RestackJob, verifyHookSecret } from "./stacks/hooks.js";
+import { runRestackJob } from "./stacks/run.js";
 
 /** Bounds per request, so one call can't run for minutes. Bigger PRs fall back to structural grouping. */
 const MAX_TEXTS = 2000;
@@ -93,6 +98,67 @@ app.http("usage", {
       if (e instanceof BadRequest) return error(400, e.message);
       context.error(e);
       return error(502, "usage unavailable");
+    }
+  },
+});
+
+// ---------- auto-restack ----------
+
+const hookKey = process.env.HOOK_KEY ?? "";
+const restackQueue = output.storageQueue({ queueName: "restack", connection: "AzureWebJobsStorage" });
+const ORGANIZATION = /^[A-Za-z0-9][A-Za-z0-9-]{0,49}$/;
+
+/** Where and how the extension subscribes the service hooks; called when a project admin turns auto-restack on. */
+app.http("stackHook", {
+  route: "stacks/hook",
+  methods: ["GET"],
+  authLevel: "anonymous",
+  handler: async (request) => {
+    if (!authorized(request)) return error(401, "invalid token");
+    if (!hookKey) return error(503, "auto-restack isn't configured on this backend (HOOK_KEY)");
+    const organization = request.query.get("organization") ?? "";
+    if (!ORGANIZATION.test(organization)) return error(400, "expected ?organization=");
+    const url = new URL(`/api/hooks/ado?org=${encodeURIComponent(organization)}`, request.url).toString();
+    return { jsonBody: { url, header: HOOK_HEADER, secret: hookSecret(hookKey, organization) } };
+  },
+});
+
+app.http("adoHook", {
+  route: "hooks/ado",
+  methods: ["POST"],
+  authLevel: "anonymous",
+  extraOutputs: [restackQueue],
+  handler: async (request, context) => {
+    const organization = request.query.get("org") ?? "";
+    if (!hookKey || !ORGANIZATION.test(organization) || !verifyHookSecret(hookKey, organization, request.headers.get(HOOK_HEADER) ?? "")) {
+      return error(401, "invalid hook secret");
+    }
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return error(413, "body too large");
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return error(400, "expected JSON");
+    }
+    const jobs = jobsFromHook(organization, payload);
+    if (jobs.length) context.extraOutputs.set(restackQueue, jobs);
+    context.log(`hook from ${organization}: ${jobs.length} restack job(s)`);
+    // Reply fast: Azure DevOps retries slow hooks, and restacking can take a while.
+    return { status: 202 };
+  },
+});
+
+app.storageQueue("restack", {
+  queueName: "restack",
+  connection: "AzureWebJobsStorage",
+  handler: async (message, context) => {
+    const job = message as RestackJob;
+    try {
+      const outcomes = await runRestackJob(job, (m) => context.log(m));
+      context.log(`restack ${job.kind} in ${job.organization}: ${JSON.stringify(outcomes)}`);
+    } catch (e) {
+      // No retry storm: the next push or completion triggers a fresh job anyway.
+      context.error(`restack ${job.kind} in ${job.organization} failed`, e);
     }
   },
 });

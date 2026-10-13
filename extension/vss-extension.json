@@ -17,7 +17,8 @@
   "scopes": [
     "vso.code_write",
     "vso.work",
-    "vso.project"
+    "vso.project",
+    "vso.hooks_write"
   ],
   "contributions": [
     {

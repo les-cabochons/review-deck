@@ -6,3 +6,11 @@ output "backend_url" {
 output "resource_group" {
   value = azurerm_resource_group.this.name
 }
+
+output "restack_identity" {
+  description = "The managed identity auto-restack acts as. Add it to your Azure DevOps organization (Organization settings > Users, as a service principal) unless you set ado_pat."
+  value = {
+    principal_id = azurerm_windows_function_app.this.identity[0].principal_id
+    name         = azurerm_windows_function_app.this.name
+  }
+}

@@ -12,6 +12,8 @@ import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
 import { GroupingStatus } from "./GroupingStatus";
 import { OverviewTab } from "./OverviewTab";
+import { StackBar, StackPanel } from "./stack/StackPanel";
+import { useStack } from "./stack/useStack";
 import { readPreference, writePreference } from "./preferences";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
@@ -65,6 +67,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [view, setView] = usePref<FileView>("fileView", "grouped");
   const [mode, setMode] = usePref<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
+  const stack = useStack(host, route.pr);
+  const openLayer = (pr: { id: number; repository: { id: string } }) => host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
   /** Grouping finished while the reader was deep in the A–Z preview: keep it until they ask. */
   const [holdPreview, setHoldPreview] = React.useState(false);
   const [toast, setToast] = React.useState<ToastSpec | null>(null);
@@ -204,6 +208,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
               <div className="review-page">
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
                 <PrHeader data={data} review={review} progress={progress} />
+                {stack && <StackBar view={stack} onOpen={openLayer} />}
                 <TabBar className="pr-tabs" selectedTabId={tab} onSelectedTabChanged={(id) => selectTab(id as TabId)} tabSize={TabSize.Tall}>
                   <Tab id="overview" name="Overview" />
                   <Tab id="files" name="Files" badgeCount={review?.result.files.length} />
@@ -214,6 +219,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                     <OverviewTab
                       data={data}
                       review={review}
+                      sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} />}
                       onOpenFiles={() => selectTab("files")}
                       onOpenGroup={(id) => {
                         setView("grouped");
