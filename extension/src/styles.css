@@ -1855,7 +1855,8 @@ kbd {
   display: block;
   width: 100%;
   height: 100%;
-  --trees-bg-override: var(--surface);
+  /* Match the navigator card; Pierre's sticky folder rows still need an opaque fill. */
+  --trees-bg-override: var(--card-bg);
   --trees-fg-override: var(--fg);
   --trees-fg-muted-override: var(--fg2);
   --trees-font-family: "Segoe UI", sans-serif;
