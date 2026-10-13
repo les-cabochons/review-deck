@@ -48,8 +48,12 @@ function usePref<T extends string>(key: string, initial: T): [T, (v: T) => void]
 }
 
 /** Links that depend on where the page runs (native ADO page, comment permalinks). */
-export const HostLinks = React.createContext<{ commentUrl: (threadId: number, commentId: number) => string }>({
+export const HostLinks = React.createContext<{
+  commentUrl: (threadId: number, commentId: number) => string;
+  fileUrl: (path: string, commit: string) => string | null;
+}>({
   commentUrl: (threadId, commentId) => `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
+  fileUrl: () => null,
 });
 
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
@@ -198,8 +202,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     () => ({
       commentUrl: (threadId: number, commentId: number) =>
         native && host.kind === "ado" ? `${native}?discussionId=${threadId}` : `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
+      fileUrl: (path: string, commit: string) => host.fileUrl(route, path, commit),
     }),
-    [native, host.kind],
+    [native, host, route],
   );
 
   const selectTab = (id: TabId) => {
@@ -257,6 +262,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                   {tab === "files" && (
                     <React.Suspense fallback={<div className="loading">Loading diff renderer…</div>}>
                     <FilesTab
+                      storageKey={JSON.stringify([host.cacheScope, data.pr.repository.projectId, route.repo, route.pr, source.currentUser.id])}
                       review={review}
                       loading={reviewLoading}
                       error={reviewError ?? threadError}

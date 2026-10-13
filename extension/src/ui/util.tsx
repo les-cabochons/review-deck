@@ -98,6 +98,9 @@ export function plural(n: number, word: string, many = `${word}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? word : many}`;
 }
 
+export const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1);
+export const dirname = (p: string) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+
 export function cx(...names: (string | false | null | undefined)[]): string {
   return names.filter(Boolean).join(" ");
 }

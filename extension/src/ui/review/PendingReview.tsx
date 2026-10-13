@@ -1,5 +1,5 @@
 import * as React from "react";
-import type { FileAnchor, NewThread, PrActions, Vote } from "../../data/model";
+import type { FileRef, NewThread, PrActions, Vote } from "../../data/model";
 import { readLocal, writeLocal } from "../preferences";
 
 /**
@@ -20,7 +20,7 @@ export interface PendingReview {
   discard(): void;
   /** Posts drafts, then the summary, then the vote. Posted drafts are removed even if a later step fails. */
   submit(actions: PrActions, options: { vote: Vote | null; summary: string }): Promise<void>;
-  draftsAt(file: FileAnchor["path"]): Extract<Draft, { kind: "thread" }>[];
+  draftsAt(file: FileRef["path"]): Extract<Draft, { kind: "thread" }>[];
   repliesTo(threadId: number): Extract<Draft, { kind: "reply" }>[];
 }
 

@@ -99,13 +99,21 @@ export interface Comment {
 
 export type ThreadStatus = "active" | "fixed" | "wontFix" | "closed" | "byDesign" | "pending" | "unknown";
 
-export interface FileAnchor {
+/** A whole file, for file-level comments. */
+export interface FileRef {
   /** Repo path without the leading slash. */
   path: string;
+}
+
+/** A line range in one side of a file, for line comments. */
+export interface FileAnchor extends FileRef {
   side: "left" | "right";
   line: number;
   endLine: number;
 }
+
+export type ThreadFile = FileRef | FileAnchor;
+export const isLineAnchor = (file: ThreadFile | undefined): file is FileAnchor => !!file && "line" in file;
 
 export interface Thread {
   iterationContext?: { firstComparingIteration: number; secondComparingIteration: number };
@@ -114,7 +122,7 @@ export interface Thread {
   published: Date;
   updated: Date;
   comments: Comment[];
-  file?: FileAnchor;
+  file?: ThreadFile;
   /** "comment" = human discussion; "vote"/"system" = events rendered in the timeline only. */
   kind: "comment" | "vote" | "system";
   vote?: Vote;
@@ -155,7 +163,7 @@ export interface PrOverview {
 
 export interface NewThread {
   content: string;
-  file?: FileAnchor;
+  file?: ThreadFile;
   comparison?: { iteration: number; compareTo: number; changeTrackingId: number };
 }
 

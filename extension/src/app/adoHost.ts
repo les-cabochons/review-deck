@@ -224,6 +224,11 @@ export class AdoHost implements AppHost {
     return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequest/${route.pr}`;
   }
 
+  fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string {
+    const query = new URLSearchParams({ path: `/${path}`, version: `GC${commit}`, _a: "contents" });
+    return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}?${query}`;
+  }
+
   private projectUrl(): string {
     return `${this.hostUrl}${encodeURIComponent(this.project.name)}`;
   }
