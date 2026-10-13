@@ -7,7 +7,7 @@ import { type DiffMode, DiffHunk, estimateHunkHeight, type ThreadIndex } from ".
 import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
-import { DropdownButton, ToggleButton } from "./controls";
+import { DropdownButton, ModeToggle } from "./controls";
 import { GroupingStatus } from "./GroupingStatus";
 import { cx, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
@@ -124,19 +124,24 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({ review, iteration
   const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
   return (
     <div className="files-toolbar">
-      <ToggleButton
-        text="Group by concern"
-        icon="ViewListGroup"
-        pressed={view === "grouped"}
-        onToggle={(on) => onView(on ? "grouped" : "alpha")}
-        tooltip={view === "grouped" ? (grouping ? "Grouping is still running. Click for files A–Z" : "Click for files A–Z") : "Group changes by concern"}
+      <ModeToggle
+        options={[
+          { value: "grouped", text: "By concern", icon: "ViewListGroup" },
+          { value: "alpha", text: "Files A–Z", icon: "SortLines" },
+        ]}
+        value={view}
+        onChange={onView}
+        menuLabel="File view"
+        tooltip={view === "grouped" && grouping ? "Grouping is still running. Click to toggle to 'Files A–Z' mode." : undefined}
       />
-      <ToggleButton
-        text="Side by side"
-        icon="DiffSideBySide"
-        pressed={mode === "split"}
-        onToggle={(on) => onMode(on ? "split" : "inline")}
-        tooltip={mode === "split" ? "Click for an inline diff" : "Show old and new side by side"}
+      <ModeToggle
+        options={[
+          { value: "inline", text: "Inline", icon: "DiffInline" },
+          { value: "split", text: "Side-by-side", icon: "DiffSideBySide" },
+        ]}
+        value={mode}
+        onChange={onMode}
+        menuLabel="Diff view"
       />
       <span className="compare">
         <DropdownButton
