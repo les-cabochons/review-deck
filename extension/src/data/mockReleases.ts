@@ -4,7 +4,7 @@ import type { Artifact, ArtifactFile, Commit, GitTag, GitTagDetails, PipelineRun
  * Local dev: a made-up repository's tags, commits and pipeline runs, so the Changelog hub can be worked on
  * without Azure DevOps. Descriptions are kept in localStorage.
  */
-const DESCRIPTIONS_KEY = "semantic-pr.local.releaseDescriptions";
+const DESCRIPTIONS_KEY = "review-deck.local.releaseDescriptions";
 const DAY = 86_400_000;
 const NOW = Date.now();
 

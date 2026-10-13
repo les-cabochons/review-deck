@@ -1,6 +1,6 @@
 {
   "manifestVersion": 1,
-  "id": "semantic-pr-review",
+  "id": "review-deck",
   "publisher": "Cabochonio",
   "version": "0.4.0",
   "name": "Review Deck",
@@ -16,20 +16,20 @@
   },
   "repository": {
     "type": "git",
-    "uri": "https://github.com/alextrepa/semantic-pr"
+    "uri": "https://github.com/les-cabochons/review-deck"
   },
   "links": {
     "getstarted": {
-      "uri": "https://github.com/alextrepa/semantic-pr#azure-devops-services-extension"
+      "uri": "https://github.com/les-cabochons/review-deck#azure-devops-services-extension"
     },
     "repository": {
-      "uri": "https://github.com/alextrepa/semantic-pr"
+      "uri": "https://github.com/les-cabochons/review-deck"
     },
     "issues": {
-      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+      "uri": "https://github.com/les-cabochons/review-deck/issues"
     },
     "support": {
-      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+      "uri": "https://github.com/les-cabochons/review-deck/issues"
     }
   },
   "CustomerQnASupport": {

@@ -26,7 +26,7 @@ export class AdoTagStore implements TagStore {
       this.definitions().then(
         (d) => d.map((t) => t.name),
         (e) => {
-          console.warn("[semantic-pr] could not list project tags:", e);
+          console.warn("[review-deck] could not list project tags:", e);
           return [];
         },
       ),
@@ -78,7 +78,7 @@ export class AdoTagStore implements TagStore {
       // A project that never styled a tag has no document (404).
       if ((e as { status?: number }).status === 404) return {};
       if (forWrite) throw e;
-      console.warn("[semantic-pr] tag colors unavailable:", e);
+      console.warn("[review-deck] tag colors unavailable:", e);
       return {};
     }
   }

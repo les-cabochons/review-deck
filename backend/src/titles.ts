@@ -16,7 +16,7 @@ const MAX_PROMPT_CHARS = 32_000;
 const MAX_OUTPUT_TOKENS = 2000;
 
 const settings = {
-  /** Azure OpenAI resource endpoint, e.g. https://oai-semantic-pr-abc123.openai.azure.com/ */
+  /** Azure OpenAI resource endpoint, e.g. https://oai-review-deck-abc123.openai.azure.com/ */
   endpoint: process.env.OPENAI_ENDPOINT ?? "",
   deployment: process.env.OPENAI_DEPLOYMENT ?? "gpt-5-nano",
   reasoningEffort: process.env.TITLES_REASONING_EFFORT ?? "minimal",

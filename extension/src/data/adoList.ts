@@ -136,9 +136,9 @@ export class AdoPrListSource implements PrListSource {
   }
 }
 
-/** GitStatusState: 1 pending, 2 succeeded, 3 failed, 4 error. The backend posts genre "semantic-pr", name "restack". */
+/** GitStatusState: 1 pending, 2 succeeded, 3 failed, 4 error. The backend posts genre "review-deck", name "restack". */
 function latestRestack(statuses: { context?: { genre?: string; name?: string }; state?: number; description?: string; creationDate?: Date }[]): PrSummary["restack"] {
-  const ours = statuses.filter((s) => s.context?.genre === "semantic-pr" && s.context?.name === "restack");
+  const ours = statuses.filter((s) => s.context?.genre === "review-deck" && s.context?.name === "restack");
   const latest = ours.sort((a, b) => new Date(b.creationDate ?? 0).getTime() - new Date(a.creationDate ?? 0).getTime())[0];
   if (!latest) return undefined;
   const state = latest.state === 1 ? "pending" : latest.state === 2 ? "succeeded" : "failed";

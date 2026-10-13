@@ -2,7 +2,7 @@ import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches.js";
 import { AdoError, type AdoClient } from "./ado.js";
 
 /** Where the extension stores per-project settings (extension/src/app/adoHost.ts, collection "project-settings"). */
-const EXTENSION = process.env.EXTENSION_ID ?? "Cabochonio.semantic-pr-review";
+const EXTENSION = process.env.EXTENSION_ID ?? "Cabochonio.review-deck";
 const COLLECTION = "project-settings";
 
 export interface StackSettings {

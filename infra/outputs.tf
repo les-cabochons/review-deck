@@ -1,6 +1,12 @@
 output "backend_url" {
-  description = "Base URL of the backend: build the extension with SEMANTIC_PR_BACKEND_URL set to this."
+  description = "Base URL of the backend: enter it in Project settings > Review Deck > Backend."
   value       = "https://${azurerm_windows_function_app.this.default_hostname}"
+}
+
+output "api_key" {
+  description = "The key to enter with backend_url (terraform output -raw api_key)."
+  value       = random_password.api_key.result
+  sensitive   = true
 }
 
 output "resource_group" {

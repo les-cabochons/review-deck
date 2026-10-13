@@ -79,10 +79,10 @@ Project administrators set the tag convention (`v*` by default) and choose each 
 ## FAQ
 
 **Does my code leave Azure DevOps?**
-Grouping runs in your browser. Review Deck reads files through the Azure DevOps REST API with your own session and parses them on the page. Optional server features (see below) are the only exception.
+Grouping runs in your browser. Review Deck reads files through the Azure DevOps REST API with your own session and parses them on the page. The optional backend (see below), which runs in your own Azure subscription, is the only exception.
 
 **What are the optional server features?**
-A build with the Review Deck backend adds two things. Sentence embeddings make the grouping more accurate; they run on the backend's own CPU, not an external AI service. **AI group titles** are written by a small language model from the PR description and the changed lines. AI titles are **off by default** in every project, and only a project administrator can turn them on. Without them, groups get rule-based titles.
+A backend you deploy in your own Azure subscription adds them; there is no shared, hosted one. An organization administrator connects it in **Project settings › Review Deck**, and the [README](https://github.com/les-cabochons/review-deck#optional-run-your-own-backend) explains how to deploy it. It adds two things. Sentence embeddings make the grouping more accurate; they run on the backend's own CPU, not an external AI service. **AI group titles** are written by a small language model from the PR description and the changed lines. AI titles are **off by default** in every project, and only a project administrator can turn them on. Without them, groups get rule-based titles.
 
 **Why does it need these permissions?**
 - *Code (read and write):* to read diffs, tags and commits, to post comments, votes, reviewers, tags and description edits that you make, and to complete or abandon a PR when you choose to.
@@ -112,8 +112,8 @@ No. Azure DevOps has no server-side pending review, so drafts stay in your brows
 It's built and tested on Azure DevOps Services (dev.azure.com).
 
 **Where do I report a problem or ask a question?**
-Use the **Q & A** tab on this page, or open an issue in the [GitHub repository](https://github.com/alextrepa/semantic-pr/issues).
+Use the **Q & A** tab on this page, or open an issue in the [GitHub repository](https://github.com/les-cabochons/review-deck/issues).
 
 ## Source
 
-Review Deck is developed at [github.com/alextrepa/semantic-pr](https://github.com/alextrepa/semantic-pr).
+Review Deck is developed at [github.com/les-cabochons/review-deck](https://github.com/les-cabochons/review-deck).

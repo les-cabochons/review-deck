@@ -7,7 +7,7 @@
 //   POST /api/hooks/ado?org=  Azure DevOps service hook (git.push, git.pullrequest.updated) -> restack queue
 //   queue "restack"   runs restack jobs one at a time (src/stack/restack.ts)
 import { app, type HttpRequest, type HttpResponseInit, output } from "@azure/functions";
-import { verifyAppToken } from "./auth.js";
+import { verifyApiKey, verifyAppToken } from "./auth.js";
 import { embed, MODEL, warm } from "./embed.js";
 import { BudgetExceeded, usage } from "./budget.js";
 import { BadRequest, parseScope, titleGroups, titlesConfigured, titlesModel } from "./titles.js";
@@ -20,14 +20,19 @@ const MAX_TEXTS = 2000;
 const MAX_CHARS = 1500;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
+/** The publisher's certificate secret, for builds that bake in this backend's URL (they send an app token). */
 const secret = process.env.EXTENSION_SECRET ?? "";
+/** The key organizations save with this backend's URL in Project settings → Review Deck. */
+const apiKey = process.env.API_KEY ?? "";
 const development = process.env.AZURE_FUNCTIONS_ENVIRONMENT === "Development";
 
 function authorized(request: HttpRequest): boolean {
-  // Local `func start` without a secret accepts anything; a deployed app without one accepts nothing.
-  if (!secret) return development;
+  // Local `func start` with neither accepts anything; a deployed app with neither accepts nothing.
+  if (!secret && !apiKey) return development;
   const header = request.headers.get("authorization") ?? "";
-  return header.startsWith("Bearer ") && verifyAppToken(header.slice(7), secret);
+  if (!header.startsWith("Bearer ")) return false;
+  const token = header.slice(7);
+  return (apiKey !== "" && verifyApiKey(token, apiKey)) || (secret !== "" && verifyAppToken(token, secret));
 }
 
 const error = (status: number, message: string): HttpResponseInit => ({ status, jsonBody: { error: message } });

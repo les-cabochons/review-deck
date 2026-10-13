@@ -1,7 +1,8 @@
 # Copy to terraform.tfvars (git-ignored) and fill in.
 subscription_id  = "00000000-0000-0000-0000-000000000000"
-extension_secret = "<extension certificate secret>"
 alert_email      = "you@example.com"
+# Only for a private build of the extension with REVIEW_DECK_BACKEND_URL baked in:
+# extension_secret = "<extension certificate secret>"
 # location                = "canadacentral"
 # daily_gb_seconds_quota  = 2000
 # openai_location         = "eastus2"

@@ -13,7 +13,7 @@ The review page groups hunks in its browser worker. With this backend it gets tw
 
 Some projects have policies against sending code to AI services, so LLM titles are **off by default** in
 every project. A project administrator turns them on with the **AI group titles** toggle in **Project settings →
-Review Deck**. The toggle is disabled when the extension was built without a backend URL.
+Review Deck**. The toggle is disabled while the organization has no backend connected.
 
 - The page calls `/api/titles` only when its project's setting is on. If the setting can't be read, the page treats it as off.
 - Embeddings are not covered by the switch. They stay on wherever the backend is configured, because the
@@ -31,12 +31,16 @@ Pieces:
     The function builds the prompt itself from the hunks' changed lines, with at most 40 groups and 200 hunks.
   - `POST /api/embed {"texts": [...]}` returns `{"vectors": [[...384 floats]]}` for at most 2,000 texts.
   - `GET /api/warm` loads the embedding model. The page calls it first, so the cold start overlaps fetching files.
-  - Every call needs `Authorization: Bearer <SDK.getAppToken()>`, an HS256 token signed with the
-    extension's certificate secret. Only users of organizations with the extension installed can call it.
+  - Every call needs `Authorization: Bearer <token>`, where the token is either:
+    - **The backend's API key** (`API_KEY`, Terraform output `api_key`). An organization administrator saves it with
+      the URL in **Project settings → Review Deck → Backend**. This is how a self-hosted backend works with the
+      published extension.
+    - **An app token** (`SDK.getAppToken()`), an HS256 token signed with the publisher's certificate secret
+      (`EXTENSION_SECRET`). Only for a private build of the extension with `REVIEW_DECK_BACKEND_URL` baked in.
 - `infra/`: Terraform for the resource group, storage account, Windows Consumption plan, Function App,
   an AI Services resource with the titles model deployment (or none), and a $1 budget alert.
 
-If anything fails, the page falls back and logs `[semantic-pr] …` to the console. That covers a missing
+If anything fails, the page falls back and logs `[review-deck] …` to the console. That covers a missing
 backend, a timeout, a spent budget (429), or a PR too large for the limits. Failed titles fall back to
 heuristic titles. Failed embeddings fall back to structural grouping.
 
@@ -64,8 +68,8 @@ titles_caps = {
 - The settings toggle names the backend's model and shows this month's spend against the project and organization caps, and says when a cap is used up.
 - Cache hits cost nothing and don't count against any cap.
 - Cached answers are kept per organization, so one organization never gets another's.
-- **Limit:** the organization and project come from the page. The token proves the caller uses the
-  extension, but not which project they're in. Someone who forges requests could charge another project's
+- **Limit:** the organization and project come from the page. The token proves the caller may use the
+  backend, but not which project they're in. Someone who forges requests could charge another project's
   budget. They still can't go past the daily cap for the whole backend, which is the real ceiling.
 
 ## Cost
@@ -104,15 +108,13 @@ Consumption has no spending cap, and Linux Consumption is being retired.
 
 ## Deploy
 
-Prerequisites:
-- Terraform ≥ 1.6 and the Azure CLI (`az login` as someone who can assign roles, e.g. subscription Owner).
-- The extension secret: go to [Marketplace › Manage publishers](https://marketplace.visualstudio.com/manage/publishers/cabochonio),
-  open the ⋯ menu on *Review Deck*, and choose **Certificate**.
+Prerequisites: Terraform ≥ 1.6 and the Azure CLI (`az login` as someone who can assign roles, e.g. subscription Owner).
 
 ```sh
-cp infra/terraform.tfvars.example infra/terraform.tfvars   # fill in subscription, secret, email
+cp infra/terraform.tfvars.example infra/terraform.tfvars   # fill in subscription and email
 just deploy-backend        # npm run backend:build, then terraform init + apply
 terraform -chdir=infra output backend_url
+terraform -chdir=infra output -raw api_key
 ```
 
 `openai_location` (default `eastus2`) must offer `titles_model` as a Global Standard deployment, and the
@@ -135,12 +137,25 @@ package (~92 MB unzipped) contains the bundled code, the embedding model, and on
 binaries. Terraform names the zip after its content hash, so `apply` redeploys only on change. State is
 local (`infra/terraform.tfstate`, git-ignored).
 
-Then build the extension with the URL:
+Then connect it. An organization administrator (Project Collection Administrators) opens **Project settings →
+Review Deck → Backend** in any project, enters `backend_url` and `api_key`, and chooses **Connect**. The page
+checks that the backend answers and accepts the key before saving. The setting applies to every project in the
+organization, and **Disconnect** turns the backend off again.
 
-- CI: set the repository variable `SEMANTIC_PR_BACKEND_URL`. The publish job passes it to `ext:build`.
-- Locally: `SEMANTIC_PR_BACKEND_URL=https://func-….azurewebsites.net npm run ext:package`.
-- Dev server: add `?backend=http://localhost:7071` to use a local `func start` in `backend/.build/app`,
-  with Azurite for storage. Without `EXTENSION_SECRET`, a local run skips the token check (a deployed app rejects
-  every request). Set `OPENAI_ENDPOINT` and `OPENAI_API_KEY` to try titles locally.
-
-If the extension's publisher changes, update `allowed_origins` (CORS) in `infra/variables.tf`.
+- **Where it's stored:** organization-wide extension data. Every member's browser reads it to call the backend,
+  so every member can read the key. It keeps out people outside your organization, not your own users.
+- **Limit:** like the per-project switches, extension data has no access control of its own. The UI lets only
+  organization administrators change the backend, but a member calling the REST API directly could point it
+  elsewhere, and other members' pages would then send hunk text there. Treat it as configuration, not a
+  security boundary.
+- **CORS:** the function only answers browsers on `allowed_origins`. The default covers the published extension
+  (`https://cabochonio.gallerycdn.vsassets.io`) and the local dev server. If you publish your own copy under
+  another publisher, add `https://<publisher>.gallerycdn.vsassets.io`.
+- **Private builds:** a build made with `REVIEW_DECK_BACKEND_URL` set (locally, or from the CI repository
+  variable) uses that backend wherever no organization backend is saved. It authenticates with an app token, so
+  the backend then needs `extension_secret`: in [Marketplace › Manage publishers](https://marketplace.visualstudio.com/manage/publishers/),
+  open the ⋯ menu on your extension and choose **Certificate**.
+- **Local backend:** add `?backend=http://localhost:7071` to the dev server URL to use a local `func start` in
+  `backend/.build/app`, with Azurite for storage. With neither `API_KEY` nor `EXTENSION_SECRET`, a local run skips
+  the token check (a deployed app rejects every request). Set `OPENAI_ENDPOINT` and `OPENAI_API_KEY` to try titles
+  locally.

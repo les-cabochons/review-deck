@@ -15,7 +15,7 @@ interface State {
 
 /**
  * The project's opt-in for LLM group titles, at the bottom of the hub sidebar. Shown only when the
- * extension was built with a backend; only project administrators can switch it.
+ * organization has a backend; only project administrators can switch it.
  */
 export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even without a backend, as on the settings page. */ alwaysShow?: boolean }> = ({ host, alwaysShow }) => {
   const [state, setState] = React.useState<State | null>(null);
@@ -31,7 +31,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
       fetchUsage(backend).then(
         (usage) => !cancelled && setState((s) => s && { ...s, usage }),
         (e) => {
-          console.warn("[semantic-pr] AI title usage unavailable:", e);
+          console.warn("[review-deck] AI title usage unavailable:", e);
           if (!cancelled) setState((s) => s && { ...s, usageFailed: true });
         },
       );
@@ -75,7 +75,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 };
 
 function describe(state: State, on: boolean, model: string | null): string {
-  if (!state.hasBackend) return "Needs the backend, and this build has none: groups get rule-based titles.";
+  if (!state.hasBackend) return "Needs a backend, and this organization has none connected: groups get rule-based titles.";
   if (state.usageFailed) return "Couldn't reach the backend to check its AI model, so titles can't be turned on right now.";
   if (!state.usage) return "Checking the backend's AI model…";
   if (model === null) return "The backend has no AI model set up: groups get rule-based titles and no code is sent to an LLM.";

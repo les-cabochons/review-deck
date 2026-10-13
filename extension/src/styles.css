@@ -3827,3 +3827,8 @@ span.artifact-toggle {
   gap: 8px 16px;
   font-size: 13px;
 }
+.backend-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

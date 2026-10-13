@@ -51,7 +51,7 @@ the layer below. It uses Azure DevOps' server-side Git operations, with no clone
   branch into the new target, which Azure DevOps forbids): the branch is still moved, and the PR gets
   a failed status naming the other PR. Abandon one of them.
 
-Every PR it touches gets a `semantic-pr/restack` status, shown with the PR's checks.
+Every PR it touches gets a `review-deck/restack` status, shown with the PR's checks.
 
 ### How events reach the backend
 
@@ -59,7 +59,7 @@ Turning the toggle on registers two service hooks for the project (`git.push` an
 `git.pullrequest.updated`), signed in as the admin who flips it, so they need "Edit subscriptions"
 on the project:
 
-1. The hooks POST to `/api/hooks/ado?org=<org>` with an `X-Semantic-PR-Hook` secret
+1. The hooks POST to `/api/hooks/ado?org=<org>` with an `X-Review-Deck-Hook` secret
    (HMAC of `HOOK_KEY` and the organization). The function only queues the job and answers at once.
 2. The `restack` queue runs jobs one at a time. Each job re-reads the project's settings and the
    repository state, so a replayed or forged event can't restack anything that isn't behind.
@@ -72,8 +72,8 @@ The function writes its logs to `LogFiles/Application/Functions/Function/restack
 
 ### Setup
 
-1. **Deploy the backend** with Terraform (`infra/`). That generates `HOOK_KEY`. Build the extension
-   with `SEMANTIC_PR_BACKEND_URL` pointing at it (see `docs/azure-backend.md`).
+1. **Deploy the backend** with Terraform (`infra/`). That generates `HOOK_KEY`. An organization
+   administrator connects it in **Project settings → Review Deck → Backend** (see `docs/azure-backend.md`).
 2. **Give the backend an Azure DevOps identity.** Choose one:
    - **Managed identity:** your organization must be connected to Microsoft Entra ID. Add the Function
      App's identity (`terraform output restack_identity`) as a user in **Organization settings →

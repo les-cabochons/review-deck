@@ -47,7 +47,7 @@ export const ChangelogSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     catalog.pipelines(repoId).then(
       (list) => !cancelled && setPipelines(list),
       (e) => {
-        console.warn("[semantic-pr] pipelines unavailable:", e);
+        console.warn("[review-deck] pipelines unavailable:", e);
         if (!cancelled) setPipelines([]);
       },
     );
