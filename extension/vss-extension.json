@@ -101,6 +101,10 @@
       "properties": {
         "text": "Open in Review Deck",
         "title": "Open this pull request in Review Deck",
+        "icon": {
+          "light": "images/deck-light.png",
+          "dark": "images/deck-dark.png"
+        },
         "uri": "dist/action.html",
         "registeredObjectId": "open-review-action"
       }
