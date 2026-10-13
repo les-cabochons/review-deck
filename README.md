@@ -1,6 +1,6 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Review Deck
+
+# <img src="assets/icon.svg" height="30" alt=""> Review Deck
 
 Review Deck is a "semantic diff review" tool. Instead of listing changed files
 alphabetically, it groups diff hunks by how related they are and renders them
