@@ -11,7 +11,7 @@ import { syncRestackHooks } from "./restackHooks";
 
 /** Extension data collection holding one settings document per project, keyed by project ID. */
 const SETTINGS_COLLECTION = "project-settings";
-/** Extension data collection holding one finished grouping per pull request comparison (review/saved.ts). */
+/** Extension data collection holding each pull request's latest finished grouping (review/saved.ts). */
 const REVIEWS_COLLECTION = "saved-reviews";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
@@ -125,17 +125,19 @@ export class AdoHost implements AppHost {
   }
 
   /**
-   * In extension data, shared by everyone in the organization who opens the PR. A grouping saved by another
-   * extension version is ignored, since the grouping code may have changed.
+   * In extension data, shared by everyone in the organization who opens the PR. One document per PR holds its
+   * latest grouping, so the collection grows only with the PRs reviewed. A grouping for another comparison, or
+   * saved by another extension version (the grouping code may have changed), is ignored and then replaced.
    */
   savedReviews(): SavedReviews {
     const version = SDK.getExtensionContext().version;
-    const id = (key: ReviewKey) => [this.project.id, key.repo, key.pr, key.iteration, key.compareTo].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
+    const id = (key: ReviewKey) => [this.project.id, key.repo, key.pr].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
     return {
       load: async (key) => {
         try {
-          const doc = (await (await this.data()).getDocument(REVIEWS_COLLECTION, id(key))) as { version?: string; review?: unknown };
-          return doc.version === version ? (doc.review ?? null) : null;
+          const doc = (await (await this.data()).getDocument(REVIEWS_COLLECTION, id(key))) as { version?: string; iteration?: number; compareTo?: number; review?: unknown };
+          const fits = doc.version === version && doc.iteration === key.iteration && doc.compareTo === key.compareTo;
+          return fits ? (doc.review ?? null) : null;
         } catch (e) {
           // Never saved: 404.
           if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] saved grouping unavailable:", e);
@@ -144,7 +146,7 @@ export class AdoHost implements AppHost {
       },
       save: async (key, review: SavedReview) => {
         try {
-          await (await this.data()).setDocument(REVIEWS_COLLECTION, { id: id(key), __etag: -1, version, review });
+          await (await this.data()).setDocument(REVIEWS_COLLECTION, { id: id(key), __etag: -1, version, iteration: key.iteration, compareTo: key.compareTo, review });
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
           console.warn("[semantic-pr] could not save the grouping:", e);

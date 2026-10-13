@@ -1,6 +1,6 @@
-// Finished groupings, saved per pull request comparison so reopening a PR skips the analysis (parsing, embeddings,
-// LLM titles). Azure DevOps iterations never change, so a comparison's diff, and so its grouping, is fixed;
-// AppHost.savedReviews() stores them, and drops ones saved by another extension version.
+// Finished groupings, saved so reopening a PR skips the analysis (parsing, embeddings, LLM titles). Azure DevOps
+// iterations never change, so a comparison's diff, and so its grouping, is fixed; AppHost.savedReviews() keeps
+// each PR's latest one, and ignores ones for another comparison or saved by another extension version.
 import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewResult } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 
