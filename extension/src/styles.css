@@ -1882,32 +1882,74 @@ kbd {
   }
 }
 
-/* hub rows: titles truncate, tag pills never wrap */
-.pr-title a {
-  flex: 0 1 auto;
+/* hub rows, like GitHub's PR list: the title wraps and its tags flow after it, whole */
+.pr-row .pr-title {
+  display: block;
+  line-height: 22px;
 }
-.pr-sub .label-pill {
-  flex: none;
+.pr-row .pr-title a {
+  display: inline;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-right: 2px;
+}
+.pr-title .label-pill,
+.m-title .label-pill {
+  margin-left: 4px;
+  vertical-align: 1px;
   white-space: nowrap;
-  max-width: 140px;
+  line-height: 16px;
+}
+/* Narrow rows drop "via team" rather than clip it to a letter or two. */
+.pr-row .pr-main {
+  container-type: inline-size;
+}
+@container (max-width: 480px) {
+  .pr-sub > .via-team {
+    display: none;
+  }
+}
+/* The stack chip (first) and "requested !N into" stay whole. Long branch names give way first
+   (ellipsized), then the team, then the author's name and the repo. The request's parts are flex items of .pr-sub
+   themselves (display: contents). */
+.pr-row .pr-sub {
+  align-items: center;
+}
+.pr-sub > .pr-request {
+  display: contents;
+}
+/* a tiny factor: the name only shrinks once the branch and team can't (none of a fractional pixel) */
+.pr-request > .who {
+  flex: 0 0.001 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pr-sub > span:nth-child(1),
-.pr-sub > span:nth-child(2) {
+.pr-request > .requested,
+.pr-request > .branch-icon {
   flex: none;
 }
-.pr-sub > .branch-inline,
-.pr-sub > span:nth-child(4) {
-  flex: 0 1 auto;
+.pr-request > .requested,
+.pr-request > .branch-icon,
+.pr-request > .branch-inline {
+  margin-left: -4px;
+}
+.pr-request > .branch-inline {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pr-sub > .pr-repo {
+  flex: 0 0.001 auto;
   min-width: 0;
 }
-.pr-sub > .label-pill {
-  flex: 0 3 auto;
-  min-width: 24px;
+.pr-sub > .stack-chip {
+  flex: none;
 }
 .via-team {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--link);
 }
 
@@ -2133,10 +2175,68 @@ kbd {
   align-items: center;
   gap: 3px;
   padding: 0 6px;
+  border: 0;
   border-radius: 8px;
   background: var(--selected);
   color: var(--link);
+  font: inherit;
   white-space: nowrap;
+  cursor: pointer;
+}
+.stack-chip:hover {
+  text-decoration: underline;
+}
+/* ---------- modal (hub stack dialog) ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.modal {
+  width: 520px;
+  max-width: 100%;
+  max-height: 76vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 16px 20px 20px;
+  background: var(--callout-background-color, var(--surface));
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-callout);
+  outline: none;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.modal-header .spacer {
+  flex: 1;
+}
+.modal-header > .fabric-icon {
+  color: var(--accent);
+}
+.modal-close {
+  border: 0;
+  background: none;
+  color: var(--fg2);
+  padding: 4px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.modal-close:hover {
+  background: var(--hover);
 }
 .stack-chip.warn {
   background: rgba(214, 127, 60, 0.12);
@@ -2478,9 +2578,6 @@ kbd {
   color: var(--fg2);
   vertical-align: -1px;
 }
-.pr-request .branch-inline {
-  margin-left: 2px;
-}
 @media (min-width: 701px) {
   .pr-row {
     grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 36px 96px 116px;
@@ -2508,13 +2605,6 @@ kbd {
   .pr-sub {
     margin-top: 3px;
     gap: 8px;
-  }
-  .pr-sub > .pr-request {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-  .pr-sub > .pr-repo {
-    flex: none;
   }
   .pr-sub > .pr-repo::before {
     content: "· ";

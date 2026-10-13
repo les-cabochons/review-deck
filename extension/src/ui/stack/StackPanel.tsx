@@ -3,6 +3,7 @@ import * as React from "react";
 import type { PrSummary } from "../../data/list";
 import { CHECKS, reviewState, STATE_ICON, stateKey } from "../prState";
 import { cx, Time } from "../util";
+import type { StackPosition } from "../../../../src/stack/stacks";
 import { type StackView, withDetails } from "./useStack";
 
 const RESTACK: Record<string, { icon: string; tone: string; label: string }> = {
@@ -17,8 +18,6 @@ const RESTACK: Record<string, { icon: string; tone: string; label: string }> = {
  */
 export const StackPanel: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => void }> = ({ view, onOpen }) => {
   const { position } = view;
-  const top = [...position.layers].reverse();
-  const forks = position.children.filter((c) => !position.layers.includes(c));
   const current = withDetails(view, position.pr);
   return (
     <section className="side-section stack-panel" aria-label="Stack">
@@ -30,33 +29,50 @@ export const StackPanel: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => 
           <Icon iconName="BranchRebase" /> Auto-restack {view.autoRestack ? "on" : "off"}
         </span>
       </h3>
-      <ol className="stack-layers">
-        {top.map((layer) => (
-          <React.Fragment key={layer.id}>
-            {layer.id === position.pr.id &&
-              forks.map((fork) => <StackRow key={fork.id} pr={withDetails(view, fork)} fork onOpen={onOpen} />)}
-            <StackRow pr={withDetails(view, layer)} current={layer.id === position.pr.id} onOpen={onOpen} />
-          </React.Fragment>
-        ))}
-        <li className={cx("stack-base", !position.base.trunk && "orphan")}>
-          <span className="node" aria-hidden="true">
-            <Icon iconName={position.base.trunk ? "BranchCommit" : "Warning"} />
-          </span>
-          <span className="branch">{position.base.branch}</span>
-          {!position.base.trunk && (
-            <span className="muted">
-              {" "}
-              · no open PR. Its parent merged or was abandoned; auto-restack moves this layer when that PR completes, or retarget it.
-            </span>
-          )}
-        </li>
-      </ol>
+      <StackLayers position={position} details={view.details} onOpen={onOpen} />
       {current.restack && <RestackNote restack={current.restack} />}
     </section>
   );
 };
 
-const StackRow: React.FC<{ pr: PrSummary; current?: boolean; fork?: boolean; onOpen: (pr: PrSummary) => void }> = ({ pr, current, fork, onOpen }) => {
+/**
+ * A stack's layers, newest on top, with the base branch underneath and `position.pr` highlighted.
+ * `openCurrent` keeps the highlighted layer clickable (in the hub, where it isn't the open page).
+ */
+export const StackLayers: React.FC<{
+  position: StackPosition<PrSummary>;
+  details: Map<number, Partial<PrSummary>>;
+  onOpen: (pr: PrSummary) => void;
+  openCurrent?: boolean;
+}> = ({ position, details, onOpen, openCurrent }) => {
+  const top = [...position.layers].reverse();
+  const forks = position.children.filter((c) => !position.layers.includes(c));
+  const withExtra = (pr: PrSummary) => ({ ...pr, ...details.get(pr.id) });
+  return (
+    <ol className="stack-layers">
+      {top.map((layer) => (
+        <React.Fragment key={layer.id}>
+          {layer.id === position.pr.id && forks.map((fork) => <StackRow key={fork.id} pr={withExtra(fork)} fork onOpen={onOpen} />)}
+          <StackRow pr={withExtra(layer)} current={layer.id === position.pr.id} openCurrent={openCurrent} onOpen={onOpen} />
+        </React.Fragment>
+      ))}
+      <li className={cx("stack-base", !position.base.trunk && "orphan")}>
+        <span className="node" aria-hidden="true">
+          <Icon iconName={position.base.trunk ? "BranchCommit" : "Warning"} />
+        </span>
+        <span className="branch">{position.base.branch}</span>
+        {!position.base.trunk && (
+          <span className="muted">
+            {" "}
+            · no open PR. Its parent merged or was abandoned; auto-restack moves this layer when that PR completes, or retarget it.
+          </span>
+        )}
+      </li>
+    </ol>
+  );
+};
+
+const StackRow: React.FC<{ pr: PrSummary; current?: boolean; openCurrent?: boolean; fork?: boolean; onOpen: (pr: PrSummary) => void }> = ({ pr, current, openCurrent, fork, onOpen }) => {
   const state = STATE_ICON[stateKey(pr)];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
@@ -66,8 +82,8 @@ const StackRow: React.FC<{ pr: PrSummary; current?: boolean; fork?: boolean; onO
       <span className="node" aria-hidden="true" />
       <button
         className="stack-layer-link"
-        disabled={current || !pr.openable}
-        aria-current={current ? "page" : undefined}
+        disabled={(current && !openCurrent) || !pr.openable}
+        aria-current={current ? (openCurrent ? "true" : "page") : undefined}
         title={`${pr.sourceBranch} → ${pr.targetBranch}${fork ? " (also stacked on this PR)" : ""}`}
         onClick={() => onOpen(pr)}
       >
