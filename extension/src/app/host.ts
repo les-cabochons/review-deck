@@ -74,8 +74,16 @@ export interface AppHost {
   savedReviews(): SavedReviews;
   /** This project's tags, with their colors and descriptions. */
   tags(): TagStore;
+  /** Your starred repositories, kept per user across projects. */
+  favoriteRepos(): FavoriteRepos;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
+}
+
+/** Starred repository ids. `load` resolves to none when they can't be read. */
+export interface FavoriteRepos {
+  load(): Promise<string[]>;
+  save(ids: string[]): Promise<void>;
 }
 
 export function parseRoute(params: Record<string, string | undefined>): Route {

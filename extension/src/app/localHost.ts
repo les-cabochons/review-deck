@@ -4,10 +4,11 @@ import type { Identity, PrSource } from "../data/model";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "semantic-pr.local.projectSettings";
 const TAGS_KEY = "semantic-pr.local.tagStyles";
+const FAVORITES_KEY = "semantic-pr.local.favoriteRepos";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -135,6 +136,19 @@ export class LocalHost implements AppHost {
         this.list.replaceLabel(name, null);
         write(withoutTag(read(), name));
       },
+    };
+  }
+
+  favoriteRepos(): FavoriteRepos {
+    return {
+      load: async () => {
+        try {
+          return JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? "[]") as string[];
+        } catch {
+          return [];
+        }
+      },
+      save: async (ids) => localStorage.setItem(FAVORITES_KEY, JSON.stringify(ids)),
     };
   }
 

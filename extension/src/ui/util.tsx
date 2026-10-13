@@ -94,8 +94,8 @@ export const THREAD_STATUS_LABEL: Record<ThreadStatus, string> = {
 
 export const isOpen = (s: ThreadStatus) => s === "active" || s === "pending";
 
-export function plural(n: number, word: string): string {
-  return `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
+export function plural(n: number, word: string, many = `${word}s`): string {
+  return `${n.toLocaleString()} ${n === 1 ? word : many}`;
 }
 
 export function cx(...names: (string | false | null | undefined)[]): string {

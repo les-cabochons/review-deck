@@ -1,5 +1,6 @@
 import { asVote, type Identity, type PrStatus, type Reviewer } from "./model";
 import type { PrListSnapshot } from "./listSnapshot";
+import type { CatalogProject, ListScope, RepoCatalog } from "./repoSelection";
 
 /** One row in the PR hub. Optional fields are filled lazily (`details`) where the host API needs extra calls. */
 export interface PrSummary {
@@ -37,13 +38,15 @@ export interface MyGroup {
   name: string;
 }
 
-/** Where the hub looks for pull requests: the current project, or every project you can see. */
-export type ListScope = "project" | "organization";
-
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;
+  /** The project the hub was opened in. */
+  readonly currentProjectId: string;
+  /** Pull requests in `scope`; the current project when omitted. */
   list(scope?: ListScope): Promise<PrSummary[]>;
+  /** Every project you can see, with its repositories, for the project picker. */
+  catalog(): Promise<RepoCatalog>;
   /** Teams the current user belongs to. */
   myGroups(): Promise<MyGroup[]>;
   /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
@@ -97,8 +100,27 @@ export class MockPrListSource implements PrListSource {
     return new MockPrListSource((await res.json()) as PrListSnapshot);
   }
 
-  async list(): Promise<PrSummary[]> {
-    return this.rows.map((r) => ({ ...r, reviewers: r.reviewers.map((x) => ({ ...x })) }));
+  get currentProjectId(): string {
+    return this.rows[0]?.repository.projectId ?? "";
+  }
+
+  async list(scope: ListScope = { projects: [this.currentProjectId], repos: [] }): Promise<PrSummary[]> {
+    const rows =
+      scope === "organization"
+        ? this.rows
+        : this.rows.filter((r) => scope.projects.includes(r.repository.projectId) || scope.repos.includes(r.repository.id));
+    return rows.map((r) => ({ ...r, reviewers: r.reviewers.map((x) => ({ ...x })) }));
+  }
+
+  /** The demo's real repositories, plus made-up projects so the picker has a large organization to search. */
+  async catalog(): Promise<RepoCatalog> {
+    const real = new Map<string, CatalogProject>();
+    for (const { repository: r } of this.rows) {
+      const project = real.get(r.projectId) ?? { id: r.projectId, name: r.projectName, repos: [] };
+      if (!project.repos.some((x) => x.id === r.id)) project.repos.push({ id: r.id, name: r.name, projectId: r.projectId });
+      real.set(r.projectId, project);
+    }
+    return [...real.values(), ...syntheticProjects()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async myGroups(): Promise<MyGroup[]> {
@@ -118,6 +140,18 @@ export class MockPrListSource implements PrListSource {
   get labels(): string[] {
     return this.rows.flatMap((r) => r.labels);
   }
+}
+
+const SYNTHETIC_PROJECTS = ["Billing", "Client Portal", "Contoso Web", "Data Platform", "Design System", "Identity", "Infrastructure", "Internal Tools", "Mobile", "Payments", "Reporting", "Search", "Security", "Support"];
+const SYNTHETIC_REPOS = ["api", "web", "worker", "infra", "docs", "sdk", "mobile", "e2e-tests", "pipelines", "shared", "migrations", "gateway"];
+
+function syntheticProjects(): CatalogProject[] {
+  return SYNTHETIC_PROJECTS.map((name, i) => {
+    const id = `demo-${name.toLowerCase().replace(/\W+/g, "-")}`;
+    const slug = name.toLowerCase().replace(/\W+/g, "-");
+    const repos = SYNTHETIC_REPOS.slice(0, 2 + ((i * 5) % SYNTHETIC_REPOS.length)).map((r) => ({ id: `${id}.${r}`, name: `${slug}-${r}`, projectId: id }));
+    return { id, name, repos };
+  });
 }
 
 // ---------- inbox sections (Graphite-style) ----------
