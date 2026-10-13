@@ -46,7 +46,7 @@ beforeEach(() => resetHubCache());
 test("Given a saved hub, then a reload reads it back with dates and details intact", () => {
   const storage = memoryStorage();
   const restack = { state: "failed" as const, description: "conflict", date: new Date("2026-10-02T00:00:00Z") };
-  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now() }, storage);
+  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}" }, storage);
   resetHubCache(); // a new page: only sessionStorage survives
   const snap = readHubSnapshot("s", storage)!;
   assert.equal(snap.prs[0].creationDate.toISOString(), "2026-10-01T00:00:00.000Z");
@@ -57,14 +57,14 @@ test("Given a saved hub, then a reload reads it back with dates and details inta
 
 test("Given a snapshot from many hours ago, then the hub starts from a skeleton instead", () => {
   const storage = memoryStorage();
-  writeHubSnapshot("s", { prs: [row(1)], details: new Map(), groups: [], listedAt: 0 }, storage);
+  writeHubSnapshot("s", { prs: [row(1)], details: new Map(), groups: [], listedAt: 0, selection: "{}" }, storage);
   assert.equal(readHubSnapshot("s", storage, 13 * 3_600_000), null);
 });
 
 test("Given I vote on a PR page, then the cached hub already shows it under You reviewed", () => {
   const storage = memoryStorage();
   const pr = row(7);
-  writeHubSnapshot("s", { prs: [pr], details: new Map(), groups: [], listedAt: Date.now() }, storage);
+  writeHubSnapshot("s", { prs: [pr], details: new Map(), groups: [], listedAt: Date.now(), selection: "{}" }, storage);
   assert.equal(sectionOf(pr, me), "needs-review");
   const seen: number[] = [];
   onHubPatch("s", (p) => seen.push(p.id));

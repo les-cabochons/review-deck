@@ -1,5 +1,6 @@
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { FileDiff, Group, HunkInfo } from "../../../src/core/types";
 import type { Iteration, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
@@ -13,6 +14,7 @@ import { cx, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
+import { readPreference, writePreference } from "./preferences";
 
 export type FileView = "grouped" | "alpha";
 
@@ -44,6 +46,11 @@ export const FilesTab: React.FC<Props> = (props) => {
   // Groups exist only once analysis finishes; until then the diff is shown A–Z.
   const shownView: FileView = review?.analyzed && !props.holdPreview ? view : "alpha";
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : 0;
+  const [hidden, setHidden] = useHiddenKinds();
+  const [search, setSearch] = React.useState("");
+  const kinds = React.useMemo(() => (review ? fileKinds(review) : new Map<string, Set<FileKind>>()), [review]);
+  const shown = React.useCallback((path: string) => ![...(kinds.get(path) ?? [])].some((k) => hidden.has(k)), [kinds, hidden]);
+  const commentCounts = React.useMemo(() => new Map([...fileThreads].map(([path, ts]) => [path, ts.length])), [fileThreads]);
 
   React.useEffect(() => {
     if (props.focusGroup && review) scrollToId(`group-${props.focusGroup}`);
@@ -100,12 +107,22 @@ export const FilesTab: React.FC<Props> = (props) => {
             </div>
           )}
           <div className="files-layout">
-            <Navigator review={review} view={shownView} />
+            <Navigator
+              review={review}
+              view={shownView}
+              shown={shown}
+              search={search}
+              onSearch={setSearch}
+              hidden={hidden}
+              onHidden={setHidden}
+              kinds={kinds}
+              comments={commentCounts}
+            />
             <div className="files-content">
               {shownView === "grouped" ? (
-                <GroupedView review={review} mode={mode} fileThreads={fileThreads} />
+                <GroupedView review={review} mode={mode} fileThreads={fileThreads} shown={shown} />
               ) : (
-                <AlphaView review={review} mode={mode} fileThreads={fileThreads} />
+                <AlphaView review={review} mode={mode} fileThreads={fileThreads} shown={shown} />
               )}
             </div>
           </div>
@@ -198,50 +215,201 @@ function scrollToId(id: string) {
   setTimeout(go, 300);
 }
 
-const Navigator: React.FC<{ review: ReviewModel; view: FileView }> = ({ review, view }) => {
+interface NavigatorProps {
+  review: ReviewModel;
+  view: FileView;
+  shown: (path: string) => boolean;
+  search: string;
+  onSearch: (value: string) => void;
+  hidden: Set<FileKind>;
+  onHidden: (kinds: Set<FileKind>) => void;
+  kinds: Map<string, Set<FileKind>>;
+  comments: Map<string, number>;
+}
+
+/** Graphite-style file list: a search box and a "Show" filter above the tree. */
+const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments }) => {
   const { result } = review;
   const go = scrollToId;
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
+  const query = search.trim().toLowerCase();
+  const visible = (file: FileDiff) => shown(file.path) && (!query || file.path.toLowerCase().includes(query));
+  const filtered = result.files.filter((f) => !shown(f.path)).length;
+  const empty = query ? `No files match “${search.trim()}”` : "Every file is hidden by filters";
+  const header = (
+    <div className="nav-filter-bar">
+      <label className="nav-search">
+        <Icon iconName="Search" />
+        <input
+          type="search"
+          placeholder="Search files"
+          aria-label="Search files"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && onSearch("")}
+        />
+      </label>
+      <FileFilter hidden={hidden} onHidden={onHidden} kinds={kinds} />
+    </div>
+  );
+  const footer = filtered > 0 && (
+    <div className="nav-hidden-note">
+      {plural(filtered, "file")} hidden by filters ·{" "}
+      <button className="link-button" onClick={() => onHidden(new Set())}>
+        Show all
+      </button>
+    </div>
+  );
   if (view === "grouped") {
+    const sections = result.groups.map((g, i) => ({ g, i, files: groupFiles(review, g).filter(visible) })).filter(({ files }) => files.length > 0);
     return (
       <nav className="navigator" ref={setNav}>
+        {header}
         <LazyRoot.Provider value={nav}>
-        {result.groups.map((g, i) => (
-          <div key={g.id} className="nav-group">
-            <button className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
-              <span className="badge" style={{ background: groupColor(result.groups, g) }}>
-                {i + 1}
-              </span>
-              <span className="text">{g.title}</span>
-              <span className="count">{g.hunkIds.length}</span>
-            </button>
-            <GroupTree review={review} group={g} />
-          </div>
-        ))}
+          {sections.map(({ g, i, files }) => (
+            <div key={g.id} className="nav-group">
+              <button className="nav-group-title" onClick={() => go(`group-${g.id}`)}>
+                <span className="badge" style={{ background: groupColor(result.groups, g) }}>
+                  {i + 1}
+                </span>
+                <span className="text">{g.title}</span>
+                <span className="count">{g.hunkIds.length}</span>
+              </button>
+              <GroupTree review={review} group={g} files={files} comments={comments} />
+            </div>
+          ))}
         </LazyRoot.Provider>
+        {sections.length === 0 && <div className="nav-empty">{empty}</div>}
+        {footer}
       </nav>
     );
   }
-  const files = [...result.files].sort((a, b) => a.path.localeCompare(b.path));
+  const files = result.files.filter(visible).sort((a, b) => a.path.localeCompare(b.path));
   return (
     <nav className="navigator">
-      <PierreTree files={files} maxHeight={Infinity} onSelect={path => go(`file-${path}`)} />
+      {header}
+      {files.length ? (
+        <PierreTree files={files} comments={comments} maxHeight={Infinity} onSelect={(path) => go(`file-${path}`)} />
+      ) : (
+        <div className="nav-empty">{empty}</div>
+      )}
+      {footer}
     </nav>
   );
 };
 
-const GroupTree: React.FC<{ review: ReviewModel; group: Group }> = ({ review, group }) => {
+/** Kinds of file the "Show" filter can hide, in menu order. */
+type FileKind = "deleted" | "test" | "generated";
+const FILE_KINDS: { kind: FileKind; label: string }[] = [
+  { kind: "deleted", label: "Deleted files" },
+  { kind: "test", label: "Test files" },
+  { kind: "generated", label: "Autogenerated files" },
+];
+
+function useHiddenKinds(): [Set<FileKind>, (kinds: Set<FileKind>) => void] {
+  const [hidden, setHidden] = React.useState(() => new Set(readPreference("hiddenFiles", "").split(",").filter(Boolean) as FileKind[]));
+  const update = React.useCallback((kinds: Set<FileKind>) => {
+    setHidden(kinds);
+    writePreference("hiddenFiles", [...kinds].join(","));
+  }, []);
+  return [hidden, update];
+}
+
+/** What each file is, for the filter: deleted, a test, or lockfile/generated output. */
+function fileKinds(review: ReviewModel): Map<string, Set<FileKind>> {
+  const out = new Map<string, Set<FileKind>>();
+  for (const f of review.result.files) out.set(f.path, new Set<FileKind>(f.status === "deleted" ? ["deleted"] : []));
+  for (const info of review.result.hunks.values()) {
+    const kinds = out.get(info.file.path);
+    if (!kinds) continue;
+    if (info.isTest) kinds.add("test");
+    if (info.mechanical?.kind === "generated" || info.mechanical?.kind === "lockfile") kinds.add("generated");
+  }
+  return out;
+}
+
+/** Funnel button with a "Show:" checklist that stays open while toggling, like Graphite's. */
+const FileFilter: React.FC<{ hidden: Set<FileKind>; onHidden: (kinds: Set<FileKind>) => void; kinds: Map<string, Set<FileKind>> }> = ({
+  hidden,
+  onHidden,
+  kinds,
+}) => {
+  // Portalled to <body> at a fixed position so the sidebar (sticky, scrolling) neither clips nor covers it.
+  const [open, setOpen] = React.useState<{ top: number; left: number } | null>(null);
+  const root = React.useRef<HTMLDivElement>(null);
+  const menu = React.useRef<HTMLDivElement>(null);
+  const place = () => {
+    const rect = root.current!.getBoundingClientRect();
+    return { top: rect.bottom + 4, left: rect.left };
+  };
+  const isOpen = !!open;
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !root.current?.contains(e.target as Node) && !menu.current?.contains(e.target as Node)) setOpen(null);
+    };
+    // Toggling a filter reflows the page, so follow the button rather than closing on scroll.
+    const follow = () => setOpen(place());
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    window.addEventListener("scroll", follow, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+      window.removeEventListener("scroll", follow, true);
+    };
+  }, [isOpen]);
+  const count = (kind: FileKind) => [...kinds.values()].filter((k) => k.has(kind)).length;
+  const toggle = (kind: FileKind) => {
+    const next = new Set(hidden);
+    if (next.has(kind)) next.delete(kind);
+    else next.add(kind);
+    onHidden(next);
+  };
+  return (
+    <div className="file-filter" ref={root}>
+      <button
+        className={cx("file-filter-button", hidden.size > 0 && "active")}
+        aria-label="Filter files"
+        aria-haspopup="true"
+        aria-expanded={!!open}
+        title={hidden.size ? `Hiding ${FILE_KINDS.filter((k) => hidden.has(k.kind)).map((k) => k.label.toLowerCase()).join(", ")}` : "Filter files"}
+        onClick={() => setOpen(open ? null : place())}
+      >
+        <Icon iconName={hidden.size ? "FilterSolid" : "Filter"} />
+      </button>
+      {open &&
+        createPortal(
+          <div className="file-filter-menu" role="menu" style={open} ref={menu}>
+            <div className="file-filter-heading">Show:</div>
+            {FILE_KINDS.map(({ kind, label }) => (
+              <button key={kind} role="menuitemcheckbox" aria-checked={!hidden.has(kind)} className="file-filter-item" onClick={() => toggle(kind)}>
+                <span className="label">{label}</span>
+                <span className="count">{count(kind)}</span>
+                <span className="check">{!hidden.has(kind) && <Icon iconName="CheckMark" />}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+};
+
+function groupFiles(review: ReviewModel, group: Group): FileDiff[] {
+  const paths = new Set(group.hunkIds.map((id) => review.result.hunks.get(id)!.file.path));
+  return review.result.files.filter((file) => paths.has(file.path));
+}
+
+const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]; comments: Map<string, number> }> = ({ review, group, files, comments }) => {
   const { result } = review;
-  const files = React.useMemo(() => {
-    const paths = new Set(group.hunkIds.map((id) => result.hunks.get(id)!.file.path));
-    return result.files.filter((file) => paths.has(file.path));
-  }, [result, group]);
   // Rough tree height before it renders: a row per file and per folder, capped like the tree itself.
   const rows = files.length + new Set(files.map((f) => dirname(f.path))).size;
   return (
     <LazyMount estimate={Math.min(360, rows * 24 + 8)}>
       <PierreTree
         files={files}
+        comments={comments}
         onSelect={(path) => {
           const section = document.getElementById(`group-${group.id}`);
           section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
@@ -258,17 +426,21 @@ interface ViewProps {
   review: ReviewModel;
   mode: DiffMode;
   fileThreads: Map<string, Thread[]>;
+  /** False for files the "Show" filter hides. */
+  shown: (path: string) => boolean;
 }
 
-const GroupedView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
+const GroupedView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown }) => {
   const { result } = review;
   const visible = visibleLines(result.files);
   const orphans = [...fileThreads].flatMap(([path, ts]) => ts.filter((t) => !isVisible(t, visible.get(path))).map((t) => ({ path, t })));
   return (
     <>
-      {result.groups.map((g, i) => (
-        <GroupSection key={g.id} group={g} index={i} review={review} mode={mode} fileThreads={fileThreads} />
-      ))}
+      {result.groups.map((g, i) =>
+        g.hunkIds.some((id) => shown(result.hunks.get(id)!.file.path)) ? (
+          <GroupSection key={g.id} group={g} index={i} review={review} mode={mode} fileThreads={fileThreads} shown={shown} />
+        ) : null,
+      )}
       {orphans.length > 0 && (
         <section className="group-section">
           <div className="group-header static">
@@ -284,9 +456,9 @@ const GroupedView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
   );
 };
 
-const GroupSection: React.FC<{ group: Group; index: number } & ViewProps> = ({ group, index, review, mode, fileThreads }) => {
+const GroupSection: React.FC<{ group: Group; index: number } & ViewProps> = ({ group, index, review, mode, fileThreads, shown }) => {
   const [open, setOpen] = React.useState(group.kind !== "mechanical");
-  const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!);
+  const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
   const files = new Set(hunks.map((h) => h.file.path)).size;
   return (
     <section
@@ -337,8 +509,8 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: ThreadIndex 
   );
 };
 
-const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads }) => {
-  const files = [...review.result.files].sort((a, b) => a.path.localeCompare(b.path));
+const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown }) => {
+  const files = review.result.files.filter((f) => shown(f.path)).sort((a, b) => a.path.localeCompare(b.path));
   const groupOf = new Map<string, Group>();
   review.result.groups.forEach((g) => g.hunkIds.forEach((id) => groupOf.set(id, g)));
   const visible = visibleLines(review.result.files);

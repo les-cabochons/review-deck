@@ -1,6 +1,7 @@
 // Bundles the review page for Azure DevOps (and for local dev with mock data).
 //   node extension/build.mjs            -> extension/dist + extension/assets (production, minified)
 //   node extension/build.mjs --serve    -> watch + serve on http://127.0.0.1:5173/dist/review.html
+//                                          (PORT=5180 for another port, e.g. a second worktree)
 import { cpSync, mkdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -63,7 +64,7 @@ if (serve) {
   const ctx = await esbuild.context(options);
   await ctx.watch();
   // Serve the extension root so dist/, assets/ and dev-data/ keep the same relative layout as the .vsix.
-  const { port } = await ctx.serve({ servedir: here, host: "127.0.0.1", port: 5173 });
+  const { port } = await ctx.serve({ servedir: here, host: "127.0.0.1", port: Number(process.env.PORT) || 5173 });
   console.log(`\n  Azure DevOps-like shell: http://127.0.0.1:${port}/dev/\n  Page only:              http://127.0.0.1:${port}/dist/review.html\n`);
 } else {
   await esbuild.build(options);

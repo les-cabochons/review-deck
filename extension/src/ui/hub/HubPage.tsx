@@ -13,13 +13,14 @@ import {
   type SectionId,
 } from "../../data/list";
 import { applyPatches, onHubPatch, readHubSnapshot, withRecentPatches, writeHubSnapshot } from "../../data/hubCache";
-import { DropdownButton } from "../controls";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
+import { ALL_PROJECTS, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, selectionScope } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
+import { RepoPicker } from "./RepoPicker";
 import { useRowDetails } from "./rowDetails";
 import { useSectionFlash } from "./sectionFlash";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
@@ -31,15 +32,26 @@ type Filter = "inbox" | SectionId;
  * list it saw (hubCache) at once and refreshes behind it; `active` is false while a PR page covers it.
  */
 export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, active }) => {
-  const scope = host.cacheScope;
-  const [cached] = React.useState(() => readHubSnapshot(scope));
+  const cacheScope = host.cacheScope;
+  // The last list shown paints at once if it was for the saved repository choice. Without a saved choice, the
+  // default (the breadcrumb's repository) is only known later; if it turns out different, the rows are dropped then.
+  const [cached] = React.useState(() => {
+    const snap = readHubSnapshot(cacheScope);
+    const saved = parseSelection(readPreference("hub.selection", ""));
+    return snap && (!saved || snap.selection === JSON.stringify(saved)) ? snap : null;
+  });
   const [source, setSource] = React.useState<PrListSource | null>(null);
   const [prs, setPrs] = React.useState<PrSummary[] | null>(cached?.prs ?? null);
-  const [listedAt, setListedAt] = React.useState(cached?.listedAt ?? 0);
+  // The repository choice `prs` was listed for, and when.
+  const [listed, setListed] = React.useState(cached && { selection: cached.selection, at: cached.listedAt });
   const [listLoading, setListLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  const [repo, setRepo] = React.useState<string | null>(null);
+  // Null until the saved choice, or on a first visit the Repos breadcrumb's repository, is known.
+  const [selection, setSelection] = React.useState<RepoSelection | null>(null);
+  const [catalog, setCatalog] = React.useState<RepoCatalog | null>(null);
+  const [catalogError, setCatalogError] = React.useState<string | null>(null);
+  const [favorites, setFavorites] = React.useState<string[] | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
@@ -61,6 +73,26 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const showStack = (pr: PrSummary) => prs && trunks && setStackOpen(stackFor(pr, prs, trunks));
   const closeStack = React.useCallback(() => setStackOpen(null), []);
 
+  React.useEffect(() => {
+    host.listSource().then(setSource, (e: Error) => setError(e.message));
+    host.favoriteRepos().load().then(setFavorites);
+  }, [host]);
+  React.useEffect(() => {
+    if (!source) return;
+    source.catalog().then(setCatalog, (e: Error) => setCatalogError(e.message));
+    const saved = parseSelection(readPreference("hub.selection", ""));
+    if (saved) setSelection(saved);
+    else
+      host
+        .currentRepository()
+        .catch(() => null)
+        .then((r) => setSelection(r ? { ...ALL_PROJECTS, repos: [r.id] } : { ...ALL_PROJECTS, projects: [source.currentProjectId] }));
+  }, [host, source]);
+  const scope = selection && favorites ? selectionScope(selection, favorites) : null;
+  // A string, so effects rerun only when the queries change.
+  const scopeKey = scope && JSON.stringify(scope);
+  const selectionKey = selection && JSON.stringify(selection);
+
   const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
   // Drop the tag filter when that tag is renamed or deleted.
   React.useEffect(() => {
@@ -68,37 +100,42 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   }, [tag, tagsByKey]);
   const latestLoad = React.useRef(0);
   const loadPrs = React.useCallback(() => {
+    if (!source || !scopeKey || !selectionKey) return;
     const load = ++latestLoad.current;
     const requestedAt = Date.now();
     setError(null);
     setListLoading(true);
-    host
-      .listSource()
-      .then(async (s) => {
-        setSource(s);
-        // Teams only widen "Needs your review", so the list doesn't wait for them.
-        s.myGroups().then(
-          (g) => {
-            if (load !== latestLoad.current) return;
-            setGroups(g);
-            setGroupError(null);
-          },
-          (e: Error) => load === latestLoad.current && setGroupError(e.message),
-        );
-        const list = await s.list();
+    // Teams only widen "Needs your review", so the list doesn't wait for them.
+    source.myGroups().then(
+      (g) => {
+        if (load !== latestLoad.current) return;
+        setGroups(g);
+        setGroupError(null);
+      },
+      (e: Error) => load === latestLoad.current && setGroupError(e.message),
+    );
+    source
+      .list(JSON.parse(scopeKey) as ListScope)
+      .then((list) => {
+        // A slower answer for an earlier selection must not replace the current one.
         if (load !== latestLoad.current) return;
         // First: React 16 renders (and may start fetching details) inside setPrs, and those belong to this list.
         listLoaded(new Set(list.map((p) => p.id)));
-        setPrs(withRecentPatches(scope, list, requestedAt));
-        setListedAt(requestedAt);
+        setPrs(withRecentPatches(cacheScope, list, requestedAt));
+        setListed({ selection: selectionKey, at: requestedAt });
       })
       .catch((e: Error) => load === latestLoad.current && setError(e.message))
       .finally(() => load === latestLoad.current && setListLoading(false));
-  }, [host, scope, listLoaded]);
+  }, [source, scopeKey, selectionKey, cacheScope, listLoaded]);
   const load = () => {
     reloadTags();
     loadPrs();
   };
+  // Another repository choice: don't show the previous one's pull requests meanwhile. Changed favorites keep the
+  // rows until the refresh lands.
+  React.useEffect(() => {
+    if (selectionKey && listed?.selection !== selectionKey) setPrs(null);
+  }, [selectionKey]);
   // On first show, after a tag is renamed or deleted (so rows show the new names), and on coming back from a PR.
   React.useEffect(() => {
     if (active) loadPrs();
@@ -110,24 +147,40 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   // Changes made on a PR page (votes, reviewers, tags) apply here at once, even while the hub is hidden.
   React.useEffect(
     () =>
-      onHubPatch(scope, (patch) => {
+      onHubPatch(cacheScope, (patch) => {
         setPrs((list) => list && applyPatches(list, [patch]));
         merge(patch.id, patch.details);
       }),
-    [scope, merge],
+    [cacheScope, merge],
   );
 
   // Save what's shown for the next visit, once things settle.
   React.useEffect(() => {
-    if (!prs) return;
-    const timer = setTimeout(() => writeHubSnapshot(scope, { prs, details, groups, listedAt }), 500);
+    if (!prs || !listed) return;
+    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection }), 500);
     return () => clearTimeout(timer);
-  }, [scope, prs, details, groups, listedAt]);
+  }, [cacheScope, prs, details, groups, listed]);
+
+  const pick = (next: RepoSelection) => {
+    setSelection(next);
+    writePreference("hub.selection", JSON.stringify(next));
+  };
+  const toggleFavorite = (repoId: string) => {
+    const before = favorites ?? [];
+    const next = before.includes(repoId) ? before.filter((f) => f !== repoId) : [...before, repoId];
+    setFavorites(next);
+    host
+      .favoriteRepos()
+      .save(next)
+      .catch((e) => {
+        console.warn("[semantic-pr] could not save favorite repositories:", e);
+        setFavorites(before);
+      });
+  };
 
   const me = host.currentUser;
-  const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
   const visible = (prs ?? [])
-    .filter((p) => (!repo || p.repository.id === repo) && (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
+    .filter((p) => (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
     .map((p) => ({ ...p, ...details.get(p.id) }));
   const tagCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -155,8 +208,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const dataRevision = React.useMemo(() => ++revisions.current, [prs, details, groups]);
   useSectionFlash(main, dataRevision, settled);
 
-  const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
-
+  const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -183,7 +235,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   });
   React.useEffect(() => {
     setSelected(0);
-  }, [filter, query, repo, tag]);
+  }, [filter, query, scopeKey, tag]);
   React.useEffect(() => {
     document.querySelector(".pr-row.selected")?.scrollIntoView({ block: "nearest" });
   }, [selected]);
@@ -250,14 +302,16 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             />
             {!query && <kbd>/</kbd>}
           </div>
-          <DropdownButton
-            text={repo ? (repos.find(([id]) => id === repo)?.[1] ?? "Repository") : "All repositories"}
-            icon="Repo"
-            options={[
-              { id: "all", text: "All repositories", checked: !repo, onSelect: () => setRepo(null) },
-              ...repos.map(([id, name]) => ({ id, text: name, checked: repo === id, onSelect: () => setRepo(id) })),
-            ]}
-          />
+          {selection && (
+            <RepoPicker
+              catalog={catalog}
+              catalogError={catalogError}
+              selection={selection}
+              onChange={pick}
+              favorites={favorites ?? []}
+              onToggleFavorite={toggleFavorite}
+            />
+          )}
           <Button
             iconProps={{ iconName: "Refresh" }}
             className={cx("hub-refresh", refreshing && "busy")}
@@ -277,7 +331,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             {prs ? `Could not refresh pull requests, so these may be out of date: ${error}` : `Could not load pull requests: ${error}`}
           </div>
         )}
-        {!prs && !error && <SkeletonSection />}
+        {!prs && !error && <SkeletonSection label={scope === "organization" ? "Loading pull requests from every project…" : "Loading pull requests…"} />}
 
         {prs &&
           shown.map((s) => {
@@ -500,11 +554,9 @@ const PrRow: React.FC<{
 };
 
 /** Placeholder rows for the very first load, before anything is cached. */
-const SkeletonSection: React.FC = () => (
-  <section className="inbox-section skeleton" aria-busy="true" aria-label="Loading pull requests">
-    <div className="inbox-section-header">
-      <span className="skeleton-bar" style={{ width: 140 }} />
-    </div>
+const SkeletonSection: React.FC<{ label: string }> = ({ label }) => (
+  <section className="inbox-section skeleton" aria-busy="true" aria-label={label}>
+    <div className="inbox-section-header muted">{label}</div>
     <div className="pr-rows">
       {[62, 48, 71, 55, 40, 66].map((w, i) => (
         <div key={i} className="skeleton-row">

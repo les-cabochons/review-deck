@@ -4,17 +4,17 @@ import { AiTitlesSetting } from "../hub/AiTitlesSetting";
 import { StackSettings } from "./StackSettings";
 
 /**
- * Project settings → Semantic PR Review (contribution "settings-hub", dist/settings.html).
+ * Project settings → Review Deck (contribution "settings-hub", dist/settings.html).
  * Project administrators change the settings here; everyone else sees them read-only.
  */
 export const SettingsPage: React.FC<{ host: AppHost }> = ({ host }) => {
   React.useEffect(() => {
-    host.setTitle("Semantic PR Review settings");
+    host.setTitle("Review Deck settings");
   }, [host]);
   return (
     <div className="settings-page">
       <header className="settings-header">
-        <h1>Semantic PR Review</h1>
+        <h1>Review Deck</h1>
         <p className="muted">Settings for this project's pull request hub and review page.</p>
       </header>
       <section className="settings-section" aria-labelledby="settings-stacks">

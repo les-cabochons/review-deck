@@ -6,7 +6,7 @@ import { SettingsPage } from "./ui/settings/SettingsPage";
 
 const root = document.getElementById("root")!;
 
-/** settings.html (Project settings → Semantic PR Review) and review.html share this bundle. */
+/** settings.html (Project settings → Review Deck) and review.html share this bundle. */
 const isSettings = document.body.dataset.page === "settings";
 
 export function renderHost(host: AppHost) {

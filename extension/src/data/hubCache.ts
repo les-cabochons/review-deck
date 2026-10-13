@@ -11,6 +11,8 @@ export interface HubSnapshot {
   groups: MyGroup[];
   /** When the list was fetched (not when it was saved), so old data ages out even while refreshes fail. */
   listedAt: number;
+  /** The hub's repository choice (JSON of a RepoSelection) the list was fetched for. */
+  selection: string;
 }
 
 /** The fields the PR page knows fresher than the hub: one row, and the facts `details` would fetch. */
@@ -117,8 +119,9 @@ export function applyPatches(prs: PrSummary[], list: HubPatch[]): PrSummary[] {
 }
 
 function parse(raw: string): HubSnapshot | null {
-  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown };
-  if (!Array.isArray(json.prs) || !Array.isArray(json.details) || !Array.isArray(json.groups) || typeof json.listedAt !== "number") return null;
+  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown; selection?: unknown };
+  if (!Array.isArray(json.prs) || !Array.isArray(json.details) || !Array.isArray(json.groups) || typeof json.listedAt !== "number" || typeof json.selection !== "string")
+    return null;
   return {
     prs: (json.prs as PrSummary[]).map((p) => ({
       ...withDates(p),
@@ -129,6 +132,7 @@ function parse(raw: string): HubSnapshot | null {
     details: new Map((json.details as [number, Partial<PrSummary>][]).map(([id, d]) => [id, withDates(d)])),
     groups: json.groups as MyGroup[],
     listedAt: json.listedAt,
+    selection: json.selection,
   };
 }
 

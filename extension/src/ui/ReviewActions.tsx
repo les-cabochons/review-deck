@@ -67,9 +67,6 @@ export const ReviewActionsProvider: React.FC<{
 
   return (
     <Context.Provider value={{ actions: source.actions, currentUser: source.currentUser, disabled: pending || needsRefresh, run }}>
-      {source.kind === "mock" && (
-        <div className="mock-notice">Local preview. Changes stay in this session and reset when you reload the page.</div>
-      )}
       <div className="write-feedback" aria-live="polite">
         {pending && <span role="status">Saving and refreshing…</span>}
         {error && (

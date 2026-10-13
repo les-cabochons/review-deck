@@ -10,9 +10,11 @@ export interface TitleInput {
 export interface GroupTitle {
   title: string;
   rationale: string;
+  /** Where the group belongs in the PR's reading order, when the titler chose one (lower reads first). */
+  position?: number;
 }
 
-/** Names groups. Implementations: HeuristicTitler (default, browser-safe) and CliLlmTitler (Node, shells out). */
+/** Names groups, and may pick their reading order. Implementations: HeuristicTitler (default, browser-safe) and CliLlmTitler (Node, shells out). */
 export interface Titler {
   readonly name: string;
   title(inputs: TitleInput[], context: { prTitle: string; prDescription: string }): Promise<GroupTitle[]>;

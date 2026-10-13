@@ -1,8 +1,8 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Semantic-pr
 
-Prototype of a "semantic diff review" tool. Instead of listing changed files
+# <img src="assets/icon.svg" height="30" alt=""> Review Deck
+
+Review Deck is a "semantic diff review" tool. Instead of listing changed files
 alphabetically, it groups diff hunks by how related they are and renders them
 as a static HTML page.
 
@@ -142,7 +142,7 @@ Run `just check` for both typechecks and the write regression tests.
 
 **Local development without installing:**
 - **The dev shell** (`/dev/`) wraps the page in a fake Azure DevOps frame:
-  top bar, left nav with Repos › PR Review, and the page in an iframe, like
+  top bar, left nav with Repos › Deck, and the page in an iframe, like
   the real hub.
 - **Mock data:** the page runs against `extension/dev-data`. This includes a
   63-PR list built from real T3 Code PRs (some reviewer votes are synthetic so
@@ -213,8 +213,8 @@ Run `just check` for both typechecks and the write regression tests.
   - An update picker (compare base/update N → update M), a navigator, and
     change stats.
 - **Commits:** commits grouped by update.
-- **Entry points:** a "PR Review" hub under Repos, and an "Open in semantic
-  review" item in the PR's action menu, which opens the hub with
+- **Entry points:** a "Deck" hub under Repos, and an "Open in Review Deck"
+  item in the PR's action menu, which opens the hub with
   `?pr=<id>&repo=<id>`.
 
 **Not yet:**
@@ -260,7 +260,7 @@ line positions.
 
 The milestone plan and remaining backlog are in [docs/milestone-2.md](docs/milestone-2.md).
 Startup and Firefox regression checks are in [docs/startup-loading.md](docs/startup-loading.md).
-Opening the PR Review hub without a PR shows the inbox. Preferences still
+Opening the Deck hub without a PR shows the inbox. Preferences still
 work for the current session when browser storage is denied. The SDK handshake
 runs before loading the review UI, and parsing/clustering code loads separately.
 
@@ -347,7 +347,7 @@ extension tests and a build on every push and pull request.
 2. Put its ID in `extension/vss-extension.json` and run `npm run ext:package`.
 3. Upload the `.vsix` as a private extension, share it with your
    organization, and install it.
-4. Open a PR, then choose ⋯ → "Open in semantic review".
+4. Open a PR, then choose ⋯ → "Open in Review Deck".
 
 ## Pipeline
 
@@ -367,9 +367,9 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | `src/score/signals.ts`, `index.ts` | Pairwise signals, each 0..1 with evidence strings (see below). |
 | `src/cluster/louvain.ts`, `refine.ts` | graphology + Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. Refine step: a small community (≤ 4 hunks) whose newly added symbols are used by exactly one other community is absorbed into it, with no chaining. A new private helper belongs with its caller. Singletons go to **misc**. |
 | `src/order/topo.ts` | Kahn's algorithm: definitions before usages, code before tests. Groups are ordered the same way; misc and mechanical come last. |
-| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR to `claude -p` / `codex exec` and parses a JSON array. It falls back to heuristics per group on any failure. |
+| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR, with its title and description, to `claude -p` / `codex exec`. The model orders the groups as a story for the reviewer and names each step. It returns a JSON array in reading order. The titler falls back to heuristics per group on any failure. |
 | `src/render/html.ts` | Self-contained page; diff2html renders the diffs (server-side, so the page needs no diff JS). |
-| `src/pipeline.ts` | Orchestration. |
+| `src/pipeline.ts` | Orchestration. When an LLM titler picks a reading order, the semantic groups follow it. |
 | `src/eval/ari.ts`, `scripts/eval.ts` | Adjusted Rand Index and the comparison table. |
 | `src/node/*` | Node-only adapters: fixture and git loading (`FileProvider` via `git show`), WASM paths, embedder with disk cache, LLM CLI, the `review` CLI. |
 

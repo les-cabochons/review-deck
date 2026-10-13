@@ -1,4 +1,4 @@
-// "Open in semantic review" entry in the pull request action menu: navigates to the review hub
+// "Open in Review Deck" entry in the pull request action menu: navigates to the review hub
 // with the PR and repository ids as query parameters.
 import { CommonServiceIds, type IHostNavigationService } from "azure-devops-extension-api";
 import * as SDK from "azure-devops-extension-sdk";
