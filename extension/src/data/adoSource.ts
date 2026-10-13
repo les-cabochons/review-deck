@@ -1,4 +1,5 @@
 import { getClient } from "azure-devops-extension-api";
+import { NotificationRestClient } from "azure-devops-extension-api/Notification";
 import { type GitPullRequestCommentThread, GitRestClient } from "azure-devops-extension-api/Git";
 import { type PolicyEvaluationRecord, PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
@@ -63,6 +64,7 @@ export class AdoPrSource implements PrSource {
     readonly currentUser: Identity,
   ) {
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
+      notifications: getClient(NotificationRestClient),
       mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
       searchReviewers: async (query) => {
         if (query.trim().length < 2) return [];

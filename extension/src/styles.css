@@ -318,6 +318,60 @@ kbd {
   height: 100vh;
   box-sizing: border-box;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* Pinned to the bottom of the sidebar, like the collapse control of Azure DevOps' left navigation. */
+.hub-nav-item.hub-sidebar-toggle {
+  margin-top: auto;
+  flex: none;
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+}
+/* Folded: icons only, with counts as small badges on them and tags as their dots. Wide screens only; narrower ones
+   put the sidebar above the list. */
+@media (min-width: 801px) {
+  .hub.rail {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+  .hub.rail .hub-sidebar {
+    padding: 12px 0 0;
+    overflow-x: hidden;
+  }
+  .hub.rail .hub-nav-item {
+    justify-content: center;
+    padding: 0;
+  }
+  .hub.rail nav .hub-nav-item {
+    position: relative;
+  }
+  .hub.rail .hub-nav-item .text,
+  .hub.rail .hub-tags-head,
+  .hub.rail .hub-tag .text,
+  .hub.rail .hub-tag .count,
+  .hub.rail .hub-tags .hub-sidebar-note,
+  .hub.rail .hub-sidebar > .hub-sidebar-note {
+    display: none;
+  }
+  .hub.rail .hub-nav-item .count-pill {
+    position: absolute;
+    top: 2px;
+    right: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+  }
+  .hub.rail .hub-sidebar-sep {
+    margin: 6px 4px;
+  }
+  .hub.rail .hub-tag {
+    justify-content: center;
+    padding: 0;
+  }
 }
 .hub-sidebar-title {
   font-size: 16px;
@@ -2421,6 +2475,9 @@ kbd {
   .hub {
     grid-template-columns: minmax(0, 1fr);
   }
+  .hub-sidebar-toggle {
+    display: none;
+  }
   .hub-sidebar {
     position: static;
     height: auto;
@@ -2473,15 +2530,16 @@ kbd {
   line-height: 16px;
 }
 /* Narrow rows drop "via team" rather than clip it to a letter or two. */
-.pr-row .pr-main {
+.pr-row > .pr-sub-line {
   container-type: inline-size;
+  min-width: 0;
 }
 @container (max-width: 480px) {
   .pr-sub > .via-team {
     display: none;
   }
 }
-/* The stack chip (first) and "requested !N into" stay whole. Long branch names give way first
+/* The stack chip (first), "requested" and "into" stay whole. Long branch names give way first
    (ellipsized), then the team, then the author's name and the repo. The request's parts are flex items of .pr-sub
    themselves (display: contents). */
 .pr-row .pr-sub {
@@ -2809,6 +2867,94 @@ kbd {
 }
 .modal-close:hover {
   background: var(--hover);
+}
+/* "⋯" menu dialogs on the pull request page (share, change target, cherry-pick). */
+.pr-menu-dialog p {
+  margin: 0 0 12px;
+}
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.modal-field input,
+.modal-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-weight: 400;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.share-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.share-people li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 2px 4px;
+  border-radius: 14px;
+  background: var(--surface-3);
+}
+.share-people .modal-close {
+  padding: 2px 4px;
+  border-radius: 50%;
+}
+.pr-menu-dialog .reviewer-results {
+  margin: -8px 0 12px;
+}
+.branch-results {
+  list-style: none;
+  margin: -8px 0 12px;
+  padding: 0;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.branch-results li.muted {
+  padding: 8px 10px;
+}
+.branch-results button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.branch-results button:hover {
+  background: var(--hover);
+}
+.branch-results button.selected {
+  background: var(--palette-black-alpha-10, rgba(0, 0, 0, 0.1));
+  font-weight: 600;
+}
+.branch-results .branch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .stack-chip.warn {
   background: rgba(214, 127, 60, 0.12);
@@ -3139,13 +3285,20 @@ kbd {
   vertical-align: -1px;
 }
 @media (min-width: 701px) {
+  /* Two rows: the title beside the columns, then the request line under it across the whole row. */
   .pr-row {
     grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 36px 96px 116px;
-    column-gap: 14px;
-    gap: 16px;
+    gap: 3px 16px;
     min-height: 60px;
     padding: 10px 20px;
     border-bottom: 0;
+  }
+  .pr-row > .avatar {
+    grid-row: 1 / span 2;
+  }
+  .pr-row > .pr-sub-line {
+    grid-row: 2;
+    grid-column: 2 / -1;
   }
   .pr-row > .pr-state {
     display: none;
@@ -3163,7 +3316,7 @@ kbd {
     font-size: 14px;
   }
   .pr-sub {
-    margin-top: 3px;
+    margin-top: 0;
     gap: 8px;
   }
   .pr-sub > .pr-repo::before {
@@ -3179,16 +3332,22 @@ kbd {
     color: var(--fg2);
   }
 }
+/* Narrower: only the review state stays beside the title; checks and comments show on the PR page. */
 @media (min-width: 701px) and (max-width: 1100px) {
   .pr-row {
-    grid-template-columns: 32px minmax(0, 1fr) 120px 24px 44px;
+    grid-template-columns: 32px minmax(0, 1fr) 120px;
+  }
+  .pr-row .pr-checks,
+  .pr-row .pr-comments {
+    display: none;
   }
 }
 
 /* Sidebar selection spans the full width, like Azure DevOps' left navigation (no inset, no rounding). */
 @media (min-width: 701px) {
+  /* No bottom padding: the collapse toggle sits flush with the bottom edge. */
   .hub-sidebar {
-    padding: 12px 0;
+    padding: 12px 0 0;
   }
   .hub-nav-item {
     border-radius: 0;

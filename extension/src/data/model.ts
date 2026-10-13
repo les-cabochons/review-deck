@@ -188,6 +188,20 @@ export interface PrActions {
   setDraft(isDraft: boolean): Promise<void>;
   /** Merge types the target branch's policies allow; all of them when none limit it or they can't be read. */
   allowedMergeStrategies(repositoryId: string, targetBranch: string): Promise<MergeStrategy[]>;
+  /** Emails a link to the pull request to people, with a message (Azure DevOps "Share pull request"). */
+  share(receivers: Identity[], message: string): Promise<void>;
+  /** Whether you get notified about this pull request's changes ("Follow"). */
+  isFollowing(): Promise<boolean>;
+  setFollowing(on: boolean): Promise<void>;
+  /** Whether `branch` (a name, no refs/heads/) is one of your favorite branches in this repository. */
+  isFavoriteBranch(branch: string): Promise<boolean>;
+  setFavoriteBranch(branch: string, on: boolean): Promise<void>;
+  /** Branch names in this repository containing `query`, for branch pickers. */
+  searchBranches(query: string): Promise<string[]>;
+  /** Retargets the pull request onto `branch`. */
+  changeTarget(branch: string): Promise<void>;
+  /** Applies the pull request's changes onto `onto` in a new branch `topic`; resolves once the branch exists. */
+  cherryPick(onto: string, topic: string): Promise<void>;
 }
 
 /** Both sources implement the same read and write contracts. */
@@ -222,4 +236,9 @@ export function asVote(n: number): Vote {
 
 export function branchName(ref: string): string {
   return ref.replace(/^refs\/heads\//, "");
+}
+
+/** The full ref of a branch name (or of a ref already full). */
+export function branchRef(branch: string): string {
+  return `refs/heads/${branchName(branch)}`;
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isCompleting, mergeProblem } from "../src/data/completion";
-import { allowedStrategies, createAdoActions, threadPayload, type WriteClient } from "../src/data/adoActions";
+import { allowedStrategies, createAdoActions, type NotificationClient, threadPayload, type WriteClient } from "../src/data/adoActions";
 import { MOCK_USER, MockPrSource } from "../src/data/mockSource";
 import type { CompletionOptions, NewThread, ThreadStatus, Vote } from "../src/data/model";
 import { identityImageUrl } from "../src/data/model";
@@ -292,6 +292,87 @@ test("Given a renamed file, then mock comparisons keep a stable tracking ID", as
   assert.equal(first[0].originalPath, "src/a.ts");
   assert.ok(first[0].changeTrackingId);
   assert.equal(first[0].changeTrackingId, repeated[0].changeTrackingId);
+});
+
+/** A fake server for the "⋯" menu actions: a repository addressed by name, favorites and follow subscriptions. */
+function menuServer(cherryPick: { status: number; detailedStatus?: object }[] = []) {
+  const calls: { method: string; args: unknown[] }[] = [];
+  const favorites: { id: number; name: string; type: number }[] = [];
+  const subscriptions: { id: string; filter: Record<string, string> }[] = [];
+  const record = (method: string, args: unknown[]) => calls.push({ method, args });
+  const client = {
+    getRepository: async () => ({ id: "REPO-GUID", project: { id: "PROJECT-GUID" } }),
+    sharePullRequest: async (...args: unknown[]) => record("sharePullRequest", args),
+    updatePullRequest: async (...args: unknown[]) => record("updatePullRequest", args),
+    getRefFavorites: async () => favorites,
+    createFavorite: async (favorite: { name: string; type: number }) => favorites.push({ ...favorite, id: favorites.length + 1 }),
+    deleteRefFavorite: async (_project: string, id: number) => favorites.splice(favorites.findIndex((f) => f.id === id), 1),
+    getRefs: async (...args: unknown[]) => {
+      record("getRefs", args);
+      return [{ name: "refs/heads/uat" }, { name: "refs/heads/main" }];
+    },
+    createCherryPick: async (...args: unknown[]) => {
+      record("createCherryPick", args);
+      return { cherryPickId: 9, ...cherryPick.shift() };
+    },
+    getCherryPick: async () => ({ cherryPickId: 9, ...cherryPick.shift() }),
+  } as unknown as WriteClient;
+  const notifications = {
+    querySubscriptions: async () => subscriptions,
+    createSubscription: async ({ filter }: { filter: Record<string, string> }) => subscriptions.push({ id: `sub-${subscriptions.length}`, filter }),
+    deleteSubscription: async (id: string) => subscriptions.splice(subscriptions.findIndex((s) => s.id === id), 1),
+  } as unknown as NotificationClient;
+  const actions = createAdoActions(client, { project: "project", repo: "repo-name", pr: 7 }, MOCK_USER, { searchReviewers: async () => [], mergePolicies: async () => [], notifications });
+  return { calls, favorites, subscriptions, actions };
+}
+
+test("Given the menu's share, then only identity ids and the message are sent", async () => {
+  const { calls, actions } = menuServer();
+  await assert.rejects(actions.share([], "hi"), /at least one/);
+  await actions.share([{ id: "u1", displayName: "One", uniqueName: "one@x" }], "Have a look");
+  assert.deepEqual(calls[0].args.slice(0, 3), [{ message: "Have a look", receivers: [{ id: "u1" }] }, "repo-name", 7]);
+});
+
+test("Given follow, then it subscribes to the PR artifact by GUIDs and unfollow removes that subscription", async () => {
+  const { subscriptions, actions } = menuServer();
+  assert.equal(await actions.isFollowing(), false);
+  await actions.setFollowing(true);
+  await actions.setFollowing(true);
+  assert.deepEqual(subscriptions.map((s) => s.filter), [{ type: "Artifact", artifactType: "PullRequestId", artifactId: "PROJECT-GUID/REPO-GUID/7" }]);
+  assert.equal(await actions.isFollowing(), true);
+  await actions.setFollowing(false);
+  assert.equal(subscriptions.length, 0);
+});
+
+test("Given a favorite source branch, then it is stored as a full ref and can be removed", async () => {
+  const { favorites, actions } = menuServer();
+  await actions.setFavoriteBranch("feature/x", true);
+  assert.deepEqual(favorites.map((f) => [f.name, f.type]), [["refs/heads/feature/x", 2]]);
+  assert.equal(await actions.isFavoriteBranch("feature/x"), true);
+  await actions.setFavoriteBranch("feature/x", false);
+  assert.equal(await actions.isFavoriteBranch("feature/x"), false);
+});
+
+test("Given branch search and retargeting, then names are short and the target is a full ref", async () => {
+  const { calls, actions } = menuServer();
+  assert.deepEqual(await actions.searchBranches(" ua "), ["main", "uat"]);
+  assert.equal(calls[0].args[2], "heads/");
+  assert.equal(calls[0].args[8], "ua");
+  await actions.changeTarget("uat");
+  assert.deepEqual(calls[1].args[0], { targetRefName: "refs/heads/uat" });
+});
+
+test("Given a cherry-pick, then it waits for completion and reports conflicts", async () => {
+  const { calls, actions } = menuServer([{ status: 1 }, { status: 3 }]);
+  await actions.cherryPick("main", "cherry-pick-7-to-main");
+  assert.deepEqual(calls[0].args[0], {
+    generatedRefName: "refs/heads/cherry-pick-7-to-main",
+    ontoRefName: "refs/heads/main",
+    repository: { id: "REPO-GUID" },
+    source: { pullRequestId: 7 },
+  });
+  const failing = menuServer([{ status: 4, detailedStatus: { conflict: true } }]);
+  await assert.rejects(failing.actions.cherryPick("main", "x"), /conflict/);
 });
 
 const SQUASH: CompletionOptions = { mergeStrategy: "squash", deleteSourceBranch: true, transitionWorkItems: false, mergeCommitMessage: "Merged PR 7: Review fixture" };

@@ -1,9 +1,10 @@
 import * as React from "react";
 import { Icon } from "azure-devops-ui/Icon";
 import { Button } from "azure-devops-ui/Button";
-import type { Identity, PrOverview } from "../data/model";
+import type { PrOverview } from "../data/model";
 import { MoreMenu } from "./controls";
 import { useReviewActions } from "./ReviewActions";
+import { useSearch } from "./useSearch";
 import { TagPill, useProjectTags } from "./tags/Tags";
 import { tagKey } from "../data/tags";
 import { Avatar, cx, voteInfo } from "./util";
@@ -12,37 +13,8 @@ export const Reviewers: React.FC<{ data: PrOverview }> = ({ data }) => {
   const { actions, disabled, run } = useReviewActions();
   const [adding, setAdding] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState<Identity[]>([]);
-  const [searching, setSearching] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
   const [required, setRequired] = React.useState(false);
-  React.useEffect(() => {
-    let cancelled = false;
-    setResults([]);
-    setError(null);
-    if (!adding || query.trim().length < 2) {
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    const timer = window.setTimeout(() => {
-      actions
-        .searchReviewers(query)
-        .then((people) => {
-          if (!cancelled) setResults(people);
-        })
-        .catch((e: Error) => {
-          if (!cancelled) setError(e.message);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [actions, query, adding]);
+  const { results, searching, error } = useSearch(actions.searchReviewers, adding ? query : "", 2);
   const available = results.filter((who) => !data.pr.reviewers.some((r) => r.id === who.id));
   return (
     <section className="side-section">

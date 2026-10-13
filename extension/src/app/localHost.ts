@@ -194,8 +194,16 @@ export class LocalHost implements AppHost {
     return this.releaseCatalog;
   }
 
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string {
+    return new URL(this.href(route), location.href).href;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `https://github.com/pingdotgg/t3code/pull/${route.pr}`;
+  }
+
+  createPrUrl(_route: Extract<Route, { view: "pr" }>, source: string, target: string): string {
+    return `https://github.com/pingdotgg/t3code/compare/${encodeURIComponent(target)}...${encodeURIComponent(source)}`;
   }
 
   fileUrl(_route: Extract<Route, { view: "pr" }>, path: string, commit: string): string {

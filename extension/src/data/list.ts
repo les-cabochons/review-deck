@@ -1,6 +1,6 @@
 import { asVote, type Identity, type PolicyStatus, type PrStatus, type Reviewer, type Thread } from "./model";
 import type { PrListSnapshot } from "./listSnapshot";
-import type { CatalogProject, ListScope, RepoCatalog } from "./repoSelection";
+import type { CatalogProject, CatalogRepo, ListScope, RepoCatalog } from "./repoSelection";
 
 /** One row in the PR hub. Optional fields are filled lazily (`details`) where the host API needs extra calls. */
 export interface PrSummary {
@@ -83,8 +83,8 @@ export interface PrListSource {
    * decides the PR's section (reviewPolicy, and checks from the same call), for your PRs in collapsed sections.
    */
   details?(pr: PrSummary, scope?: DetailScope): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack" | "reviewPolicy">>>;
-  /** Link to the native Azure DevOps page for creating a pull request, when available. */
-  newPullRequestUrl?: string;
+  /** Link to the native Azure DevOps page for creating a pull request in `repo` (the project's default when omitted), when available. */
+  newPullRequestUrl?(repo?: CatalogRepo): string;
 }
 
 export class MockPrListSource implements PrListSource {
