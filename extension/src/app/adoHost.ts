@@ -4,7 +4,8 @@ import { AdoPrListSource } from "../data/adoList";
 import { AdoPrSource } from "../data/adoSource";
 import type { Identity, PrSource } from "../data/model";
 import type { BackendService } from "../review/backend";
-import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { syncRestackHooks } from "./restackHooks";
 
 /** Extension data collection holding one settings document per project, keyed by project ID. */
 const SETTINGS_COLLECTION = "project-settings";
@@ -80,8 +81,7 @@ export class AdoHost implements AppHost {
 
   async projectSettings(): Promise<ProjectSettings> {
     try {
-      const doc = (await (await this.data()).getDocument(SETTINGS_COLLECTION, this.project.id)) as Partial<ProjectSettings>;
-      return { aiTitles: doc.aiTitles === true };
+      return readProjectSettings(await (await this.data()).getDocument(SETTINGS_COLLECTION, this.project.id));
     } catch (e) {
       // A project that never saved settings has no document (404): that's the defaults too.
       if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] project settings unavailable, using defaults:", e);
@@ -92,6 +92,12 @@ export class AdoHost implements AppHost {
   async saveProjectSettings(settings: ProjectSettings): Promise<void> {
     // __etag -1: last write wins.
     await (await this.data()).setDocument(SETTINGS_COLLECTION, { id: this.project.id, __etag: -1, ...settings });
+  }
+
+  async syncRestackHooks(on: boolean): Promise<void> {
+    const backend = await this.backendService();
+    if (!backend) throw new Error("This extension was built without a backend, so it can't restack automatically.");
+    await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken() }, on);
   }
 
   async canManageProject(): Promise<boolean> {
@@ -120,6 +126,11 @@ export class AdoHost implements AppHost {
     })();
     this.dataManager.catch(() => (this.dataManager = null));
     return this.dataManager;
+  }
+
+  settingsUrl(): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    return `${this.projectUrl()}/_settings/${publisherId}.${extensionId}.settings-hub`;
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {

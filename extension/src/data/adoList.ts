@@ -42,11 +42,12 @@ export class AdoPrListSource implements PrListSource {
     return teams.map((t) => ({ id: t.id, name: t.name }));
   }
 
-  async details(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments">>> {
+  async details(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "restack">>> {
     const project = this.projectId;
-    const [threads, evaluations] = await Promise.all([
+    const [threads, evaluations, statuses] = await Promise.all([
       this.git.getThreads(pr.repository.id, pr.id, project).catch(() => []),
       this.policy.getPolicyEvaluations(project, `vstfs:///CodeReview/CodeReviewId/${project}/${pr.id}`).catch(() => []),
+      this.git.getPullRequestStatuses(pr.repository.id, pr.id, project).catch(() => []),
     ]);
     const comments = threads.filter(
       (t) => !t.isDeleted && (t.status === 1 || t.status === 6) && (t.comments ?? []).some((c) => c.commentType !== 3),
@@ -62,7 +63,7 @@ export class AdoPrListSource implements PrListSource {
           : states.some((s) => s === 0 || s === 1)
             ? "pending"
             : "passing";
-    return { comments, checks };
+    return { comments, checks, restack: latestRestack(statuses) };
   }
 
   private summary(p: GitPullRequest): PrSummary {
@@ -88,4 +89,13 @@ export class AdoPrListSource implements PrListSource {
       openable: true,
     };
   }
+}
+
+/** GitStatusState: 1 pending, 2 succeeded, 3 failed, 4 error. The backend posts genre "semantic-pr", name "restack". */
+function latestRestack(statuses: { context?: { genre?: string; name?: string }; state?: number; description?: string; creationDate?: Date }[]): PrSummary["restack"] {
+  const ours = statuses.filter((s) => s.context?.genre === "semantic-pr" && s.context?.name === "restack");
+  const latest = ours.sort((a, b) => new Date(b.creationDate ?? 0).getTime() - new Date(a.creationDate ?? 0).getTime())[0];
+  if (!latest) return undefined;
+  const state = latest.state === 1 ? "pending" : latest.state === 2 ? "succeeded" : "failed";
+  return { state, description: latest.description ?? "", date: new Date(latest.creationDate ?? Date.now()) };
 }

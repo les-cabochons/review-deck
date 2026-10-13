@@ -63,10 +63,31 @@ jobs:
         with:
           name: vsix-${{ steps.version.outputs.version }}
           path: extension/*.vsix
-      - name: Publish and share with ${{ env.SHARE_WITH }}
+      # Upload without waiting: Marketplace validation sometimes takes longer than tfx's built-in ~4 minute wait.
+      - name: Publish
         if: env.MARKETPLACE_TOKEN != ''
         run: >
           npx tfx extension publish --vsix extension/${{ env.PUBLISHER }}.semantic-pr-review-${{ steps.version.outputs.version }}.vsix
+          --token "$MARKETPLACE_TOKEN" --no-wait-validation --no-prompt
+      - name: Wait for Marketplace validation
+        if: env.MARKETPLACE_TOKEN != ''
+        timeout-minutes: 25
+        run: |
+          for attempt in $(seq 1 80); do
+            status=$(npx tfx extension isvalid --publisher "$PUBLISHER" --extension-id semantic-pr-review               --version "${{ steps.version.outputs.version }}" --token "$MARKETPLACE_TOKEN" --json --no-prompt               | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s.slice(s.indexOf("{")));console.log(j.status+" "+(j.message??""))}catch{console.log("unknown "+s.trim())}})')
+            echo "validation: $status"
+            case "$status" in
+              success*) exit 0 ;;
+              error*) echo "::error::Marketplace validation failed: $status"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Marketplace validation didn't finish in 20 minutes"; exit 1
+      # Sharing persists across versions; repeating it is harmless and covers a first publish.
+      - name: Share with ${{ env.SHARE_WITH }}
+        if: env.MARKETPLACE_TOKEN != ''
+        run: >
+          npx tfx extension share --publisher "$PUBLISHER" --extension-id semantic-pr-review
           --share-with ${{ env.SHARE_WITH }} --token "$MARKETPLACE_TOKEN" --no-prompt
       - name: Token missing
         if: env.MARKETPLACE_TOKEN == ''

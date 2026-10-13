@@ -20,6 +20,8 @@ export interface PrSummary {
   checks?: "passing" | "failing" | "pending" | "none";
   /** Active (unresolved) comment threads. */
   comments?: number;
+  /** Latest auto-restack status the backend posted on the PR (backend/src/stacks), if any. */
+  restack?: { state: "pending" | "succeeded" | "failed"; description: string; date: Date };
   /** False when the PR cannot be opened in this environment (local mode without a snapshot). */
   openable: boolean;
 }
@@ -37,7 +39,7 @@ export interface PrListSource {
   /** Teams the current user belongs to. */
   myGroups(): Promise<MyGroup[]>;
   /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
-  details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size">>>;
+  details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack">>>;
   /** Link to the native Azure DevOps page for creating a pull request, when available. */
   newPullRequestUrl?: string;
 }
@@ -49,9 +51,12 @@ export class MockPrListSource implements PrListSource {
   private readonly groups: MyGroup[];
   /** PR id -> dev-data snapshot id */
   readonly snapshots = new Map<number, string>();
+  /** The demo's default trunk patterns, so its synthetic stacks into uat and release/00-* read as stacks. */
+  readonly trunkBranches?: string[];
 
   private constructor(list: PrListSnapshot) {
     this.currentUser = list.currentUser;
+    this.trunkBranches = list.trunkBranches;
     this.groups = list.currentUserGroups ?? [];
     this.rows = list.pullRequests.map((p) => {
       if (p.snapshot) this.snapshots.set(p.pullRequestId, p.snapshot);
@@ -72,6 +77,7 @@ export class MockPrListSource implements PrListSource {
         size: p.size,
         checks: p.checks,
         comments: p.comments,
+        restack: p.restack && { ...p.restack, date: new Date(p.restack.date) },
         openable: !!p.snapshot,
       };
     });

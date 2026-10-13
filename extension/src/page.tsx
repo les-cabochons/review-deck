@@ -2,11 +2,15 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import type { AppHost } from "./app/host";
 import { Root } from "./ui/Root";
+import { SettingsPage } from "./ui/settings/SettingsPage";
 
 const root = document.getElementById("root")!;
 
+/** settings.html (Project settings → Semantic PR Review) and review.html share this bundle. */
+const isSettings = document.body.dataset.page === "settings";
+
 export function renderHost(host: AppHost) {
-  ReactDOM.render(<Root host={host} />, root);
+  ReactDOM.render(isSettings ? <SettingsPage host={host} /> : <Root host={host} />, root);
 }
 
 /** Local dev: mock data from extension/dev-data, theme from ?theme=, live reload from the esbuild server. */

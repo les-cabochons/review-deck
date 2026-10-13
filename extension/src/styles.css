@@ -309,28 +309,39 @@ kbd {
   background: var(--line);
   margin: 6px 10px;
 }
+/* Same proportions as Azure DevOps' own left navigation: 40px rows, 14px text, larger icons, and a
+   neutral gray (not blue) background on the selected item. */
 .hub-nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
+  min-height: 40px;
   border: 0;
   background: none;
   color: var(--fg);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
-  padding: 6px 10px;
+  padding: 0 12px;
   border-radius: 4px;
   cursor: pointer;
 }
 .hub-nav-item:hover {
-  background: var(--hover);
+  background: var(--palette-black-alpha-6, rgba(0, 0, 0, 0.06));
 }
 .hub-nav-item.active {
-  background: var(--selected);
+  background: var(--palette-black-alpha-10, rgba(0, 0, 0, 0.1));
   font-weight: 600;
-  box-shadow: inset 2px 0 0 var(--accent);
+}
+.hub-nav-icon,
+.hub-nav-icon * {
+  font-size: 18px !important;
+}
+.hub-nav-icon {
+  width: 20px;
+  text-align: center;
+  flex: none;
 }
 .hub-nav-item .text {
   flex: 1;
@@ -1876,4 +1887,694 @@ kbd {
 .via-team {
   flex: none;
   color: var(--link);
+}
+
+/* ---------- stacks (Graphite-style panel, GitHub-style bar) ---------- */
+.stack-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 var(--page-x) 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.stack-bar > .fabric-icon {
+  color: var(--accent);
+}
+.stack-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg);
+  border-radius: 3px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.stack-step:hover:not(:disabled) {
+  background: var(--hover);
+}
+.stack-step:disabled {
+  color: var(--fg3);
+  cursor: default;
+}
+.stack-bar-restack {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stack-panel h3 {
+  justify-content: flex-start;
+  gap: 6px;
+}
+.stack-panel h3 .count {
+  color: var(--fg2);
+  font-weight: 400;
+}
+.stack-panel h3 .spacer {
+  flex: 1;
+}
+.stack-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fg3);
+}
+.stack-mode.on {
+  color: var(--ok);
+}
+.stack-layers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stack-layers li {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0 4px 22px;
+}
+/* the rail: a line through every node, ending at the base */
+.stack-layers li::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line-strong);
+}
+.stack-layers li:first-child::before {
+  top: 14px;
+}
+.stack-layers li.stack-base::before {
+  bottom: auto;
+  height: 14px;
+}
+.stack-layers .node {
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--fg3);
+  box-sizing: border-box;
+}
+.stack-layer.tone-success .node {
+  border-color: var(--ok);
+}
+.stack-layer.tone-error .node,
+.stack-layer.tone-warning .node {
+  border-color: var(--warn);
+}
+.stack-layer.current .node {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--palette-primary, 0, 120, 212), 0.2);
+}
+.stack-layer.fork {
+  padding-left: 34px;
+}
+.stack-layer.fork .node {
+  left: 16px;
+  width: 10px;
+  height: 10px;
+}
+.stack-layer-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 0;
+  background: none;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border-radius: 3px;
+  text-align: left;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.stack-layer-link:hover:not(:disabled) {
+  background: var(--hover);
+}
+.stack-layer-link:disabled {
+  cursor: default;
+}
+.stack-layer.current .stack-layer-link {
+  background: var(--selected);
+}
+.stack-layer.current .title {
+  font-weight: 600;
+}
+.stack-layer-link .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.stack-layer-link .meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.stack-layer-link .review {
+  font-size: 12px;
+}
+.fork-tag {
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+.layer-icons {
+  display: inline-flex;
+  gap: 6px;
+  padding-top: 5px;
+  font-size: 13px;
+}
+.stack-base {
+  color: var(--fg2);
+  font-size: 12px;
+  align-items: center;
+}
+.stack-base .node {
+  border: 0;
+  background: none;
+  top: 4px;
+  left: 0;
+  width: auto;
+  height: auto;
+  font-size: 14px;
+  color: var(--fg2);
+}
+.stack-base .branch {
+  font-family: var(--mono);
+  color: var(--fg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+.stack-base.orphan .node {
+  color: var(--warn);
+}
+.stack-restack-note {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+.pr-state-inline.state-active {
+  color: var(--ok);
+}
+.pr-state-inline.state-draft {
+  color: var(--fg3);
+}
+/* hub rows: "2/4" stack position */
+.stack-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--selected);
+  color: var(--link);
+  white-space: nowrap;
+}
+.stack-chip.warn {
+  background: rgba(214, 127, 60, 0.12);
+  color: var(--warn);
+}
+.hub-setting-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.trunk-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 0 10px;
+}
+.trunk-list code,
+.trunk-edit code {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+.trunk-edit textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: 12px var(--mono);
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--fg);
+  resize: vertical;
+}
+.trunk-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+
+/* ---------- hub on phones: chips for filters, T3-style rows ---------- */
+.pr-mobile {
+  display: none;
+}
+@media (max-width: 700px) {
+  /* The sidebar dissolves: its filters become a chip row above the list, its notes and settings go below. */
+  .hub {
+    display: flex;
+    flex-direction: column;
+  }
+  .hub-sidebar {
+    display: contents;
+  }
+  .hub-sidebar-title,
+  .hub-sidebar .hub-sidebar-sep {
+    display: none;
+  }
+  .hub-sidebar > nav {
+    order: 1;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 10px 12px 2px;
+    scrollbar-width: none;
+  }
+  .hub-sidebar > nav .hub-nav-item {
+    flex: none;
+    width: auto;
+    min-height: 34px;
+    font-size: 13px;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    white-space: nowrap;
+    box-shadow: none;
+  }
+  .hub-sidebar > nav .hub-nav-item.active {
+    background: var(--palette-black-alpha-10, rgba(0, 0, 0, 0.1));
+    border-color: var(--line-strong);
+  }
+  .hub-sidebar > nav .hub-nav-icon,
+  .hub-sidebar > nav .hub-nav-icon * {
+    font-size: 15px !important;
+  }
+  .hub-main {
+    order: 2;
+  }
+  .hub-sidebar > :not(nav) {
+    order: 3;
+    margin: 0 12px;
+  }
+  .hub-sidebar > .hub-setting:first-of-type {
+    margin-top: 16px;
+  }
+  .hub-main {
+    padding: 8px 8px 0;
+  }
+
+  /* Rows: state icon, then three lines (who · where · when / title / tags · size). */
+  .pr-row {
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 12px 12px;
+  }
+  .pr-row > :not(.pr-state):not(.pr-mobile) {
+    display: none !important;
+  }
+  .pr-row > .pr-state {
+    padding-top: 2px;
+    font-size: 16px;
+  }
+  .pr-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .m-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg2);
+    font-size: 13px;
+  }
+  .m-where {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .m-time {
+    margin-left: auto;
+    flex: none;
+    color: var(--fg3);
+  }
+  .m-title {
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--fg);
+    overflow-wrap: anywhere;
+  }
+  .not-openable .m-title {
+    color: var(--fg2);
+  }
+  .m-bottom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .m-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+  }
+  .m-review {
+    font-weight: 600;
+  }
+  .m-size {
+    align-self: end;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .hub-toolbar {
+    flex-wrap: wrap;
+    position: static;
+  }
+  .hub-toolbar .search-box {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------- Project settings → Semantic PR Review ---------- */
+.hub-settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 10px 0;
+  font-size: 12px;
+  color: var(--link);
+  text-decoration: none;
+}
+.hub-settings-link:hover {
+  text-decoration: underline;
+}
+.settings-page {
+  max-width: 820px;
+  padding: 24px 32px 48px;
+}
+.settings-header h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+.settings-header p {
+  margin: 0 0 20px;
+}
+.settings-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.settings-section h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+/* The settings components were made for the narrow hub sidebar: give them page-sized text. */
+.settings-section .hub-sidebar-sep {
+  display: none;
+}
+.settings-section .hub-setting-head {
+  justify-content: flex-end;
+  margin-top: -24px;
+}
+.settings-section .hub-setting-head strong {
+  visibility: hidden;
+}
+.settings-section .hub-sidebar-note {
+  font-size: 13px;
+  padding: 0;
+  max-width: 640px;
+}
+.settings-section .hub-setting .bolt-toggle-button-container {
+  padding: 6px 0 0;
+}
+.settings-section .trunk-list code,
+.settings-section .trunk-edit code {
+  font-size: 13px;
+}
+.settings-section .trunk-edit textarea {
+  max-width: 420px;
+  font-size: 13px;
+}
+.settings-section .trunk-edit-actions {
+  justify-content: flex-start;
+}
+@media (max-width: 700px) {
+  .settings-page {
+    padding: 16px 12px 32px;
+  }
+}
+.settings-field {
+  margin: 12px 0 18px;
+}
+.settings-label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.settings-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.settings-help {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  max-width: 640px;
+}
+.settings-help code {
+  font-size: 12px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+.save-status {
+  font-size: 12px;
+}
+.trunk-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 460px;
+}
+.trunk-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.trunk-rows li > .flex-column {
+  flex: 1;
+  min-width: 0;
+}
+.trunk-rows input {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.trunk-problem {
+  flex: 1 0 100%;
+  font-size: 12px;
+}
+.trunk-add {
+  margin-top: 2px;
+}
+
+/* ---------- hub sections and rows: Azure DevOps' own PR list look ---------- */
+.inbox-section {
+  background: var(--callout-background-color, var(--surface));
+  border: 0;
+  border-radius: 4px;
+  box-shadow: 0 1.6px 3.6px rgba(0, 0, 0, 0.13), 0 0.3px 0.9px rgba(0, 0, 0, 0.11);
+}
+.inbox-section-header {
+  gap: 12px;
+  padding: 14px 20px;
+  font-size: 16px;
+  font-weight: 400;
+}
+.inbox-section-header .fabric-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+.inbox-section-header .count-pill {
+  font-size: 12px;
+}
+.inbox-empty {
+  padding: 0 20px 16px 48px;
+}
+.pr-rows {
+  border-top: 0;
+}
+.branch-icon {
+  font-size: 12px;
+  color: var(--fg2);
+  vertical-align: -1px;
+}
+.pr-request .branch-inline {
+  margin-left: 2px;
+}
+@media (min-width: 701px) {
+  .pr-row {
+    grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 36px 96px 116px;
+    column-gap: 14px;
+    gap: 16px;
+    min-height: 60px;
+    padding: 10px 20px;
+    border-bottom: 0;
+  }
+  .pr-row > .pr-state {
+    display: none;
+  }
+  .pr-row:hover,
+  .pr-row.selected {
+    background: var(--palette-black-alpha-4, rgba(0, 0, 0, 0.04));
+  }
+  .pr-row.selected {
+    box-shadow: none;
+    background: var(--palette-black-alpha-6, rgba(0, 0, 0, 0.06));
+  }
+  .pr-title a {
+    font-weight: 400;
+    font-size: 14px;
+  }
+  .pr-sub {
+    margin-top: 3px;
+    gap: 8px;
+  }
+  .pr-sub > .pr-request {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .pr-sub > .pr-repo {
+    flex: none;
+  }
+  .pr-sub > .pr-repo::before {
+    content: "· ";
+  }
+  .pr-time {
+    font-size: 13px;
+    color: var(--fg2);
+    white-space: nowrap;
+  }
+  .pr-comments {
+    font-size: 13px;
+    color: var(--fg2);
+  }
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  .pr-row {
+    grid-template-columns: 32px minmax(0, 1fr) 120px 24px 44px;
+  }
+}
+
+/* Sidebar selection spans the full width, like Azure DevOps' left navigation (no inset, no rounding). */
+@media (min-width: 701px) {
+  .hub-sidebar {
+    padding: 12px 0;
+  }
+  .hub-nav-item {
+    border-radius: 0;
+    padding: 0 20px;
+  }
+  .hub-sidebar-sep {
+    margin: 6px 20px;
+  }
+  .hub-sidebar-note {
+    padding: 12px 20px 0;
+  }
+  .hub-settings-link {
+    margin: 12px 20px 0;
+  }
+}
+
+/* ---------- Azure DevOps surfaces: the review page's cards use the same values as azure-devops-ui's Card ---------- */
+:root {
+  --radius: 4px;
+  --card-bg: var(--callout-background-color, var(--surface));
+  /* azure-devops-ui "depth-8", the shadow on every bolt-card */
+  --shadow-card: 0 3.2px 7.2px 0 var(--callout-shadow-color, rgba(0, 0, 0, 0.132)), 0 0.6px 1.8px 0 var(--callout-shadow-secondary-color, rgba(0, 0, 0, 0.108));
+}
+/* Top-level cards: elevated, no outline. */
+.side-section,
+.timeline-card,
+.overview-main .timeline-thread > .thread,
+.overview-main > .comment-composer,
+.group-section,
+.files-content > .file-card,
+.navigator,
+.stack-bar,
+.commit-list,
+.inbox-section,
+.settings-section {
+  background: var(--card-bg);
+  border-color: transparent;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+/* The group's colour stripe stays (set inline per group). */
+.group-section {
+  border-left-width: 3px;
+}
+/* Cards inside cards: flat, with a hairline, like Azure DevOps' nested surfaces. */
+.group-section .hunk-card,
+.pierre-annotation .thread,
+.pierre-annotation .comment-composer,
+.thread .comment-composer {
+  box-shadow: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.group-section .hunk-card {
+  background: var(--surface);
+}
+/* azure-devops-ui's sticky tab bar paints --background-color; keep it the page colour (still opaque while sticky). */
+.pr-tabs.bolt-tabbar,
+.pr-tabs.bolt-tabbar.sticky {
+  background: var(--canvas);
 }

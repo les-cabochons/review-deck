@@ -2,7 +2,7 @@ import { MockPrListSource } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
 import type { BackendService } from "../review/backend";
-import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "semantic-pr.local.projectSettings";
 
@@ -78,10 +78,9 @@ export class LocalHost implements AppHost {
   /** Kept in localStorage; the local user may change them. */
   async projectSettings(): Promise<ProjectSettings> {
     try {
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<ProjectSettings>;
-      return { aiTitles: saved.aiTitles === true };
+      return readProjectSettings({ trunkBranches: this.list.trunkBranches, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") });
     } catch {
-      return DEFAULT_PROJECT_SETTINGS;
+      return readProjectSettings({ trunkBranches: this.list.trunkBranches });
     }
   }
 
@@ -91,6 +90,14 @@ export class LocalHost implements AppHost {
 
   async canManageProject(): Promise<boolean> {
     return true;
+  }
+
+  /** No Azure DevOps here: the setting is saved, and nothing calls the backend. */
+  async syncRestackHooks(): Promise<void> {}
+
+  /** The same bundle, as the dev shell's "Project settings" page. */
+  settingsUrl(): string {
+    return `settings.html${location.search}`;
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {

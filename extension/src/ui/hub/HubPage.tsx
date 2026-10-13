@@ -13,7 +13,8 @@ import {
   type SectionId,
 } from "../../data/list";
 import { DropdownButton } from "../controls";
-import { AiTitlesSetting } from "./AiTitlesSetting";
+import { CHECKS, reviewState, STATE_ICON } from "../prState";
+import { stackIndex } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
@@ -33,6 +34,11 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const search = React.useRef<HTMLInputElement>(null);
 
   const [groups, setGroups] = React.useState<MyGroup[]>([]);
+  const [trunks, setTrunks] = React.useState<string[] | null>(null);
+  React.useEffect(() => {
+    host.projectSettings().then((s) => setTrunks(s.trunkBranches));
+  }, [host]);
+  const stacks = React.useMemo(() => (prs && trunks ? stackIndex(prs, trunks) : new Map()), [prs, trunks]);
   const [groupError, setGroupError] = React.useState<string | null>(null);
 
   const load = React.useCallback(() => {
@@ -138,7 +144,6 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   return (
     <div className="hub">
       <aside className="hub-sidebar">
-        <div className="hub-sidebar-title">Pull requests</div>
         <nav aria-label="Inbox sections">
           <SidebarItem icon="Inbox" text="Inbox" count={sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)} active={filter === "inbox"} onClick={() => choose("inbox")} />
           <div className="hub-sidebar-sep" />
@@ -165,7 +170,11 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
           </p>
         )}
         {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
-        <AiTitlesSetting host={host} />
+        {host.settingsUrl() && (
+          <a className="hub-settings-link" href={host.settingsUrl()!} target={host.kind === "ado" ? "_top" : undefined}>
+            <Icon iconName="Settings" /> Project settings
+          </a>
+        )}
       </aside>
 
       <main className="hub-main">
@@ -225,6 +234,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                             pr={{ ...pr, ...details.get(pr.id) }}
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
+                            stack={stacks.get(pr.id)}
                             selected={index === selected}
                             onOpen={() => open(pr)}
                             onHover={() => setSelected(index)}
@@ -251,41 +261,27 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
   onClick,
 }) => (
   <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined}>
-    <Icon iconName={icon} />
+    <Icon iconName={icon} className="hub-nav-icon" />
     <span className="text">{text}</span>
     {count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
   </button>
 );
 
-const STATE_ICON: Record<string, { icon: string; className: string; label: string }> = {
-  draft: { icon: "BranchRequestDraft", className: "state-draft", label: "Draft" },
-  active: { icon: "BranchPullRequest", className: "state-active", label: "Active" },
-  completed: { icon: "BranchMerged", className: "state-completed", label: "Completed" },
-  abandoned: { icon: "BranchRequestClosed", className: "state-abandoned", label: "Abandoned" },
-};
 
-function reviewState(pr: PrSummary): { label: string; tone: string } {
-  if (pr.status === "completed") return { label: "Merged", tone: "merged" };
-  if (pr.status === "abandoned") return { label: "Abandoned", tone: "error" };
-  if (pr.isDraft) return { label: "Draft", tone: "neutral" };
-  if (pr.reviewers.some((r) => r.vote === -10)) return { label: "Rejected", tone: "error" };
-  if (pr.reviewers.some((r) => r.vote === -5)) return { label: "Waiting for author", tone: "warning" };
-  if (pr.reviewers.some((r) => r.vote >= 5)) return { label: "Approved", tone: "success" };
-  if (pr.reviewers.length === 0) return { label: "No reviewers", tone: "neutral" };
-  return { label: "Review pending", tone: "neutral" };
-}
-
-const CHECKS: Record<string, { icon: string; tone: string; label: string }> = {
-  passing: { icon: "CompletedSolid", tone: "success", label: "Checks passing" },
-  failing: { icon: "StatusErrorFull", tone: "error", label: "Checks failing" },
-  pending: { icon: "ProgressLoopOuter", tone: "info", label: "Checks running" },
-  none: { icon: "CircleRing", tone: "neutral", label: "No checks" },
-};
-
-const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; selected: boolean; onOpen: () => void; onHover: () => void }> = ({
+const PrRow: React.FC<{
+  pr: PrSummary;
+  me: string;
+  via: PrSummary["reviewers"];
+  /** Position in a stack ("2 of 4"), if the PR is stacked. */
+  stack?: { index: number; size: number; bottomId: number };
+  selected: boolean;
+  onOpen: () => void;
+  onHover: () => void;
+}> = ({
   pr,
   me,
   via,
+  stack,
   selected,
   onOpen,
   onHover,
@@ -294,6 +290,14 @@ const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; 
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
   const when = pr.closedDate ?? pr.updatedDate ?? pr.creationDate;
+  const stackChip = stack && (
+    <span
+              className={cx("stack-chip", pr.restack?.state === "failed" && "warn")}
+              title={`Layer ${stack.index} of ${stack.size} in a stack (bottom: !${stack.bottomId})${pr.restack?.state === "failed" ? `. ${pr.restack.description}` : ""}`}
+            >
+              <Icon iconName="BranchFork2" /> {stack.index}/{stack.size}
+            </span>
+  );
   return (
     <div
       role="listitem"
@@ -306,7 +310,7 @@ const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; 
       <span className={cx("pr-state", state.className)} title={state.label}>
         <Icon iconName={state.icon} />
       </span>
-      <Avatar who={pr.createdBy} size={24} />
+      <Avatar who={pr.createdBy} size={32} />
       <div className="pr-main">
         <div className="pr-title">
           <a
@@ -320,13 +324,15 @@ const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; 
             {pr.title}
           </a>
         </div>
+        {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
         <div className="pr-sub muted">
-          <span>!{pr.id}</span>
-          <span>{pr.repository.name}</span>
-          <span className="branch-inline">
-            {pr.sourceBranch} → {pr.targetBranch}
+          <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
+            {pr.createdBy.id === me ? "You" : pr.createdBy.displayName} requested !{pr.id} into{" "}
+            <Icon iconName="OpenSource" className="branch-icon" />
+            <span className="branch-inline">{pr.targetBranch}</span>
           </span>
-          <span>{pr.createdBy.id === me ? "you" : pr.createdBy.displayName}</span>
+          <span className="pr-repo">{pr.repository.name}</span>
+          {stackChip}
           {via.length > 0 && !pr.reviewers.some((r) => r.id === me) && (
             <span className="via-team" title={`Review requested from ${via.map((v) => v.displayName).join(", ")}`}>
               via {via[0].displayName}
@@ -365,8 +371,47 @@ const PrRow: React.FC<{ pr: PrSummary; me: string; via: PrSummary["reviewers"]; 
       </span>
       <span className="pr-size">{pr.size ? <SizeBar {...pr.size} /> : null}</span>
       <span className="pr-time muted" title={when.toLocaleString()}>
-        {shortAgo(when)}
+        {pr.status === "completed" ? "Completed" : pr.status === "abandoned" ? "Abandoned" : "Updated"} {shortAgoPhrase(when)}
       </span>
+      {/* Phone layout (styles.css, max-width 700px), like T3 Code's PR list: who and where, the full title, then tags and size. */}
+      <div className="pr-mobile">
+        <div className="m-top">
+          <Avatar who={pr.createdBy} size={20} />
+          <span className="m-where">
+            {pr.repository.name} !{pr.id}
+          </span>
+          {stackChip}
+          <span className="m-time" title={when.toLocaleString()}>
+            {shortAgo(when)}
+          </span>
+        </div>
+        <div className="m-title">{pr.title}</div>
+        <div className="m-bottom">
+          <span className="m-tags">
+          <span className={cx("m-review", `tone-${review.tone}`)}>{review.label}</span>
+          {checks && checks !== CHECKS.none && (
+            <span className={`tone-${checks.tone}`} title={checks.label}>
+              <Icon iconName={checks.icon} />
+            </span>
+          )}
+          {!!pr.comments && (
+            <span className="muted">
+              <Icon iconName="Comment" /> {pr.comments}
+            </span>
+          )}
+          {pr.labels.slice(0, 2).map((l) => (
+            <span key={l} className="label-pill">
+              {l}
+            </span>
+          ))}
+          </span>
+          {pr.size && (
+            <span className="m-size">
+              <span className="adds">+{pr.size.adds.toLocaleString()}</span> <span className="dels">−{pr.size.dels.toLocaleString()}</span>
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -388,6 +433,12 @@ const SizeBar: React.FC<{ files: number; adds: number; dels: number }> = ({ file
 };
 
 const compact = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** "20h ago", or the long form when there's no short one ("just now"). */
+function shortAgoPhrase(date: Date): string {
+  const short = shortAgo(date);
+  return /^[0-9]/.test(short) ? `${short} ago` : short;
+}
 
 function shortAgo(date: Date): string {
   const text = ago(date);

@@ -14,9 +14,11 @@ interface Props {
   review: ReviewModel | null;
   onOpenGroup: (groupId: string) => void;
   onOpenFiles: () => void;
+  /** Shown first in the sidebar (the stack panel). */
+  sidebarTop?: React.ReactNode;
 }
 
-export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpenFiles }) => {
+export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpenFiles, sidebarTop }) => {
   const { actions } = useReviewActions();
   return (
     <div className="overview">
@@ -26,6 +28,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpen
         <CommentComposer label="Add a comment" onSave={(content) => actions.createThread({ content })} />
       </div>
       <aside className="overview-side">
+        {sidebarTop}
         <SemanticSummary review={review} onOpenGroup={onOpenGroup} />
         <Reviewers data={data} />
         <Checks data={data} />

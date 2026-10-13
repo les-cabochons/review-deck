@@ -52,6 +52,7 @@ async function main() {
     saveProjectSettings: async () => {},
     canManageProject: async () => false,
     nativePrUrl: () => null,
+    settingsUrl: () => null,
   };
   ReactDOM.render(<PrPage host={host} route={route} source={source} />, document.getElementById("root"));
 }

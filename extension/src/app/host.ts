@@ -1,3 +1,4 @@
+import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
 import type { PrListSource } from "../data/list";
 import type { Identity, PrSource } from "../data/model";
 import type { BackendService } from "../review/backend";
@@ -14,9 +15,23 @@ export const BACKEND_URL = typeof __BACKEND_URL__ === "string" ? __BACKEND_URL__
 export interface ProjectSettings {
   /** Send each group's changed lines to the backend's LLM (gpt-5-nano) for titles. */
   aiTitles: boolean;
+  /** Branch patterns where stacks end (see src/stack/branches.ts), e.g. main, dev, uat, release-style 00- branches. */
+  trunkBranches: string[];
+  /** The backend keeps stacks rebased on their parents (service hooks -> src/stack/restack.ts). */
+  autoRestack: boolean;
 }
 
-export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false };
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false, trunkBranches: DEFAULT_TRUNK_PATTERNS, autoRestack: false };
+
+/** Settings from storage, with anything missing or malformed at its default. */
+export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings, unknown>> | null | undefined): ProjectSettings {
+  const trunks = Array.isArray(saved?.trunkBranches) ? saved.trunkBranches.filter((t): t is string => typeof t === "string" && t.trim() !== "") : [];
+  return {
+    aiTitles: saved?.aiTitles === true,
+    trunkBranches: trunks.length ? trunks : DEFAULT_TRUNK_PATTERNS,
+    autoRestack: saved?.autoRestack === true,
+  };
+}
 
 /** The two pages of the hub: the PR inbox, or one pull request. */
 export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number };
@@ -43,6 +58,13 @@ export interface AppHost {
   saveProjectSettings(settings: ProjectSettings): Promise<void>;
   /** Whether the user may change project settings (Azure DevOps: "Edit project-level information"). False if unknown. */
   canManageProject(): Promise<boolean>;
+  /**
+   * Creates (on) or removes (off) this project's service hooks that call the backend's auto-restack.
+   * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
+   */
+  syncRestackHooks(on: boolean): Promise<void>;
+  /** Project settings → Semantic PR Review (the settings-hub contribution), or null if there's none. */
+  settingsUrl(): string | null;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
 }
