@@ -14,8 +14,9 @@ import {
 } from "../../data/list";
 import { DropdownButton } from "../controls";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
-import { stackIndex } from "../../../../src/stack/stacks";
+import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
+import { StackDialog } from "../stack/StackDialog";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
@@ -42,6 +43,9 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   }, [host]);
   const stacks = React.useMemo(() => (prs && trunks ? stackIndex(prs, trunks) : new Map()), [prs, trunks]);
   const [groupError, setGroupError] = React.useState<string | null>(null);
+  const [stackOpen, setStackOpen] = React.useState<StackPosition<PrSummary> | null>(null);
+  const showStack = (pr: PrSummary) => prs && trunks && setStackOpen(stackFor(pr, prs, trunks));
+  const closeStack = React.useCallback(() => setStackOpen(null), []);
 
   const load = React.useCallback(() => {
     setError(null);
@@ -105,6 +109,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (stackOpen) return;
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "/" && !typing) {
         e.preventDefault();
@@ -249,6 +254,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                             stack={stacks.get(pr.id)}
                             selected={index === selected}
                             onOpen={() => open(pr)}
+                            onStack={() => showStack(pr)}
                             onHover={() => setSelected(index)}
                           />
                         );
@@ -260,6 +266,17 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
           })}
         {prs && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
       </main>
+      {stackOpen && (
+        <StackDialog
+          position={stackOpen}
+          details={details}
+          onClose={closeStack}
+          onOpen={(pr) => {
+            setStackOpen(null);
+            open(pr);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -288,27 +305,25 @@ const PrRow: React.FC<{
   stack?: { index: number; size: number; bottomId: number };
   selected: boolean;
   onOpen: () => void;
+  /** Show the whole stack, from the stack chip. */
+  onStack: () => void;
   onHover: () => void;
-}> = ({
-  pr,
-  me,
-  via,
-  stack,
-  selected,
-  onOpen,
-  onHover,
-}) => {
+}> = ({ pr, me, via, stack, selected, onOpen, onStack, onHover }) => {
   const state = STATE_ICON[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
   const when = pr.closedDate ?? pr.updatedDate ?? pr.creationDate;
   const stackChip = stack && (
-    <span
-              className={cx("stack-chip", pr.restack?.state === "failed" && "warn")}
-              title={`Layer ${stack.index} of ${stack.size} in a stack (bottom: !${stack.bottomId})${pr.restack?.state === "failed" ? `. ${pr.restack.description}` : ""}`}
-            >
-              <Icon iconName="BranchFork2" /> {stack.index}/{stack.size}
-            </span>
+    <button
+      className={cx("stack-chip", pr.restack?.state === "failed" && "warn")}
+      title={`Layer ${stack.index} of ${stack.size} in a stack (bottom: !${stack.bottomId})${pr.restack?.state === "failed" ? `. ${pr.restack.description}` : ""}. Click to see the whole stack.`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onStack();
+      }}
+    >
+      <Icon iconName="BranchFork2" /> {stack.index}/{stack.size}
+    </button>
   );
   return (
     <div
@@ -335,27 +350,30 @@ const PrRow: React.FC<{
           >
             {pr.title}
           </a>
+          {/* Like GitHub: tags follow the title and wrap with it, never truncated. */}
+          {pr.labels.map((l) => (
+            <span key={l} className="label-pill">
+              {l}
+            </span>
+          ))}
         </div>
         {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
+        {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
         <div className="pr-sub muted">
+          {stackChip}
           <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
-            {pr.createdBy.id === me ? "You" : pr.createdBy.displayName} requested !{pr.id} into{" "}
+            <span className="who">{pr.createdBy.id === me ? "You" : pr.createdBy.displayName}</span>
+            <span className="requested">requested !{pr.id} into</span>
             <Icon iconName="OpenSource" className="branch-icon" />
             <span className="branch-inline">{pr.targetBranch}</span>
           </span>
           <span className="pr-repo">{pr.repository.name}</span>
-          {stackChip}
           {via.length > 0 && !pr.reviewers.some((r) => r.id === me) && (
             <span className="via-team" title={`Review requested from ${via.map((v) => v.displayName).join(", ")}`}>
               via {via[0].displayName}
               {via.length > 1 ? ` +${via.length - 1}` : ""}
             </span>
           )}
-          {pr.labels.slice(0, 3).map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
-          ))}
         </div>
       </div>
       <span className={cx("review-state", `tone-${review.tone}`)}>{review.label}</span>
@@ -397,7 +415,14 @@ const PrRow: React.FC<{
             {shortAgo(when)}
           </span>
         </div>
-        <div className="m-title">{pr.title}</div>
+        <div className="m-title">
+          {pr.title}
+          {pr.labels.map((l) => (
+            <span key={l} className="label-pill">
+              {l}
+            </span>
+          ))}
+        </div>
         <div className="m-bottom">
           <span className="m-tags">
           <span className={cx("m-review", `tone-${review.tone}`)}>{review.label}</span>
@@ -411,11 +436,6 @@ const PrRow: React.FC<{
               <Icon iconName="Comment" /> {pr.comments}
             </span>
           )}
-          {pr.labels.slice(0, 2).map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
-          ))}
           </span>
           {pr.size && (
             <span className="m-size">
