@@ -35,7 +35,7 @@ async function renderHosted() {
   const host = await withTimeout(AdoHost.create(), "Could not connect to Azure DevOps navigation. Reload to try again.");
   // Bounded wait: if the user's saved preferences are slow, the page opens with this browser's.
   await connectPreferences(host.preferences());
-  renderHost(host);
+  await renderHost(host);
 }
 
 // Local mode: opened directly, or inside the dev shell (?local), or an old ?mock= link.

@@ -221,6 +221,16 @@ Run `just check` for both typechecks and the write regression tests.
 - **Entry points:** a "Deck" hub under Repos, and an "Open in Review Deck"
   item in the PR's action menu, which opens the hub with
   `?pr=<id>&repo=<id>`.
+- **Changelog hub (Repos › Changelog):** the selected repository's git tags
+  that follow the tag convention, as cards. Each card has an editable release
+  description and a Changelog generated from the commits since the previous
+  tag, grouped by conventional-commit type. **Releases** are the tags whose
+  latest publishing pipeline run succeeded with artifacts. They list each
+  artifact's files with sizes, sha256 digests read from `SHA256SUMS`, and
+  downloads. Project settings › Review Deck › Changelog sets the tag
+  convention and the publishing pipeline per repository. Terms are defined in
+  `GLOSSARY.md`, and the design is in issue #24. This hub needs the
+  `vso.build` scope, so existing installs need an admin to approve the update.
 
 **Not yet:**
 - **Complete/abandon, viewed-file state, auto-complete, merge options:** milestone 3.

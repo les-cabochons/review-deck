@@ -23,15 +23,35 @@ export interface RepoSelection {
   favorites: boolean;
   projects: string[];
   repos: string[];
+  /**
+   * Instead of the rest: whatever Azure DevOps has selected each time the hub opens, the current project or the
+   * repository in the Repos breadcrumb (the current project when none is).
+   */
+  current?: "project" | "repo";
 }
 
 export const ALL_PROJECTS: RepoSelection = { favorites: false, projects: [], repos: [] };
+export const CURRENT_PROJECT: RepoSelection = { ...ALL_PROJECTS, current: "project" };
+export const CURRENT_REPO: RepoSelection = { ...ALL_PROJECTS, current: "repo" };
+
+/** Where the hub is opened: the current project, and the repository picked in the Repos breadcrumb if any. */
+export interface CurrentContext {
+  projectId: string;
+  repoId: string | null;
+}
+
+/** The projects and repositories a selection stands for here; a "current" choice becomes the actual ones. */
+export function resolveSelection(s: RepoSelection, context: CurrentContext): RepoSelection {
+  if (s.current === "repo" && context.repoId) return { ...ALL_PROJECTS, repos: [context.repoId] };
+  if (s.current) return { ...ALL_PROJECTS, projects: [context.projectId] };
+  return s;
+}
 
 /** Where the hub looks for pull requests: every project you can see, or some projects and repositories (ids). */
 export type ListScope = "organization" | { projects: string[]; repos: string[] };
 
 export function isAll(s: RepoSelection): boolean {
-  return !s.favorites && s.projects.length === 0 && s.repos.length === 0;
+  return !s.current && !s.favorites && s.projects.length === 0 && s.repos.length === 0;
 }
 
 /** Selecting a project subsumes its repositories; unselecting it leaves none of them picked. */
@@ -93,6 +113,7 @@ export function parseSelection(json: string | null): RepoSelection | null {
   try {
     const v = JSON.parse(json) as Partial<RepoSelection>;
     const ids = (a: unknown) => (Array.isArray(a) ? a.filter((x): x is string => typeof x === "string") : []);
+    if (v.current === "project" || v.current === "repo") return { ...ALL_PROJECTS, current: v.current };
     return { favorites: v.favorites === true, projects: ids(v.projects), repos: ids(v.repos) };
   } catch {
     return null;

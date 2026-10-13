@@ -56,6 +56,7 @@
   ],
   "scopes": [
     "vso.code_write",
+    "vso.build",
     "vso.work",
     "vso.project",
     "vso.hooks_write"
@@ -76,6 +77,23 @@
           "dark": "images/deck-dark.png"
         },
         "order": 100
+      }
+    },
+    {
+      "id": "changelog-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Changelog: the repository's tags and releases, with generated changelogs and pipeline artifacts.",
+      "targets": [
+        "ms.vss-code-web.code-hub-group"
+      ],
+      "properties": {
+        "name": "Changelog",
+        "uri": "dist/changelog.html",
+        "icon": {
+          "light": "images/changelog-light.png",
+          "dark": "images/changelog-dark.png"
+        },
+        "order": 101
       }
     },
     {

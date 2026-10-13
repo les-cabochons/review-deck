@@ -5,6 +5,7 @@ import { AdoPrListSource } from "../data/adoList";
 import { AdoPrSource } from "../data/adoSource";
 import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
+import type { ReleaseCatalog } from "../data/releases";
 import type { BackendService } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
 import { type AppHost, BACKEND_URL, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
@@ -37,6 +38,7 @@ export class AdoHost implements AppHost {
   private readonly hostUrl: string;
   private dataManager: Promise<IExtensionDataManager> | null = null;
   private tagStore: AdoTagStore | null = null;
+  private releaseCatalog: Promise<ReleaseCatalog> | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
@@ -120,9 +122,19 @@ export class AdoHost implements AppHost {
     }
   }
 
-  async saveProjectSettings(settings: ProjectSettings): Promise<void> {
+  async updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings> {
+    const data = await this.data();
+    let saved: Partial<Record<keyof ProjectSettings, unknown>> | null = null;
+    try {
+      saved = await data.getDocument(SETTINGS_COLLECTION, this.project.id);
+    } catch (e) {
+      // Never saved (404) is the defaults; anything else could mean overwriting settings we couldn't read.
+      if ((e as { status?: number }).status !== 404) throw e;
+    }
+    const settings = { ...readProjectSettings(saved), ...change };
     // __etag -1: last write wins.
-    await (await this.data()).setDocument(SETTINGS_COLLECTION, { id: this.project.id, __etag: -1, ...settings });
+    await data.setDocument(SETTINGS_COLLECTION, { id: this.project.id, __etag: -1, ...settings });
+    return settings;
   }
 
   async syncRestackHooks(on: boolean): Promise<void> {
@@ -193,6 +205,22 @@ export class AdoHost implements AppHost {
   tags(): AdoTagStore {
     this.tagStore ??= new AdoTagStore({ hostUrl: this.hostUrl, projectId: this.project.id, token: () => SDK.getAccessToken(), data: () => this.data() });
     return this.tagStore;
+  }
+
+  releases(): Promise<ReleaseCatalog> {
+    // A separate chunk: the Build and File Container clients are only needed by the Changelog hub and its settings.
+    this.releaseCatalog ??= import("./adoReleases").then(
+      ({ AdoReleaseCatalog }) =>
+        new AdoReleaseCatalog({
+          hostUrl: this.hostUrl,
+          projectId: this.project.id,
+          projectName: this.project.name,
+          token: () => SDK.getAccessToken(),
+          data: () => this.data(),
+        }),
+    );
+    this.releaseCatalog.catch(() => (this.releaseCatalog = null));
+    return this.releaseCatalog;
   }
 
   /** In user-scoped extension data, so your stars follow you to every project and browser. */

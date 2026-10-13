@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { AiTitlesSetting } from "../hub/AiTitlesSetting";
+import { ChangelogSettings } from "./ChangelogSettings";
 import { StackSettings } from "./StackSettings";
 
 /**
@@ -15,11 +16,15 @@ export const SettingsPage: React.FC<{ host: AppHost }> = ({ host }) => {
     <div className="settings-page">
       <header className="settings-header">
         <h1>Review Deck</h1>
-        <p className="muted">Settings for this project's pull request hub and review page.</p>
+        <p className="muted">Settings for this project's pull request hub, review page and changelog.</p>
       </header>
       <section className="settings-section" aria-labelledby="settings-stacks">
         <h2 id="settings-stacks">Stacked pull requests</h2>
         <StackSettings host={host} />
+      </section>
+      <section className="settings-section" aria-labelledby="settings-changelog">
+        <h2 id="settings-changelog">Changelog</h2>
+        <ChangelogSettings host={host} />
       </section>
       <section className="settings-section" aria-labelledby="settings-ai">
         <h2 id="settings-ai">AI group titles</h2>

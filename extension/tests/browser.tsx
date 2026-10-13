@@ -50,7 +50,7 @@ async function main() {
     setTitle: (title) => (document.title = title),
     backendService: async () => null,
     projectSettings: async () => ({ aiTitles: false }),
-    saveProjectSettings: async () => {},
+    updateProjectSettings: async () => ({ aiTitles: false }),
     canManageProject: async () => false,
     savedReviews: () => ({ load: async () => null, save: async () => {} }),
     nativePrUrl: () => null,

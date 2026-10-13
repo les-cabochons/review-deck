@@ -4,6 +4,7 @@ import { Toggle } from "azure-devops-ui/Toggle";
 import * as React from "react";
 import { invalidTrunkPattern, shortBranch } from "../../../../src/stack/branches";
 import type { AppHost, ProjectSettings } from "../../app/host";
+import { SaveStatus } from "./SaveStatus";
 
 interface Row {
   id: number;
@@ -53,11 +54,10 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
   if (!settings) return null;
 
   const save = async (change: Partial<ProjectSettings>) => {
-    const next = { ...latest.current!, ...change };
     setStatus("saving");
     setError(null);
     try {
-      await host.saveProjectSettings(next);
+      const next = await host.updateProjectSettings(change);
       latest.current = next;
       setSettings(next);
       setStatus("saved");
@@ -175,11 +175,3 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     </div>
   );
 };
-
-/** "Saving…" / "Saved", the quiet autosave confirmation Azure DevOps settings pages use. */
-export const SaveStatus: React.FC<{ status: "saving" | "saved" | null }> = ({ status }) =>
-  status ? (
-    <span className="save-status muted" role="status">
-      {status === "saving" ? "Saving…" : "Saved"}
-    </span>
-  ) : null;

@@ -35,6 +35,8 @@
       /* Same light/dark icon pair as the hub contribution in vss-extension.json. */
       .sub .hub-icon { width: 16px; height: 16px; margin: 0 8px -3px -24px; background: url(../images/deck-light.png) center / contain no-repeat; display: inline-block; }
       :root[data-theme="dark"] .sub .hub-icon { background-image: url(../images/deck-dark.png); }
+      .sub .hub-icon.changelog { background-image: url(../images/changelog-light.png); }
+      :root[data-theme="dark"] .sub .hub-icon.changelog { background-image: url(../images/changelog-dark.png); }
       .sub.link:hover { color: var(--fg); }
       main { min-width: 0; min-height: 0; }
       iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
@@ -75,6 +77,7 @@
       <div class="sub">Branches</div>
       <div class="sub">Pull requests</div>
       <div class="sub active" id="hub-link"><i class="hub-icon"></i>Deck</div>
+      <div class="sub link" id="changelog-link"><i class="hub-icon changelog"></i>Changelog</div>
       <div class="item"><i style="background:#2b88d8"></i><span class="label">Pipelines</span></div>
       <div class="item"><i style="background:#3ea24f"></i><span class="label">Test Plans</span></div>
       <div class="item"><i style="background:#c239b3"></i><span class="label">Artifacts</span></div>
@@ -118,9 +121,24 @@
       document.getElementById("collapse").addEventListener("click", () => document.body.classList.toggle("collapsed"));
       document.getElementById("reload").addEventListener("click", () => frame.contentWindow.location.reload());
       for (const id of ["settings-link", "settings-sub"]) document.getElementById(id).addEventListener("click", () => {
+        activate("settings-sub", "Review Deck");
         frame.src = `/dist/settings.html?local=1&theme=${theme.value}`;
       });
+      /** Marks the nav item of the page shown, and names it in the breadcrumb. */
+      function activate(id, name) {
+        for (const el of document.querySelectorAll("nav .sub")) {
+          el.classList.toggle("active", el.id === id);
+          el.classList.toggle("link", el.id !== id);
+        }
+        document.querySelector(".crumbs b").textContent = name;
+      }
+      document.getElementById("changelog-link").addEventListener("click", () => {
+        // Azure DevOps shows its repository picker after the hub name; the page reads it as the current repository.
+        activate("changelog-link", "Changelog / lantern ▾");
+        frame.src = `/dist/changelog.html?local=1&theme=${theme.value}`;
+      });
       document.getElementById("hub-link").addEventListener("click", () => {
+        activate("hub-link", "Deck");
         frame.src = `/dist/review.html?local=1&theme=${theme.value}`;
       });
     </script>

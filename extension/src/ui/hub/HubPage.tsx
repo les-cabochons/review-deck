@@ -17,7 +17,7 @@ import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
-import { ALL_PROJECTS, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, selectionScope } from "../../data/repoSelection";
+import { CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { RepoPicker } from "./RepoPicker";
@@ -33,12 +33,13 @@ type Filter = "inbox" | SectionId;
  */
 export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, active }) => {
   const cacheScope = host.cacheScope;
-  // The last list shown paints at once if it was for the saved repository choice. Without a saved choice, the
-  // default (the breadcrumb's repository) is only known later; if it turns out different, the rows are dropped then.
+  // The last list shown paints at once if it was for the saved repository choice. With the default or a "current"
+  // choice, the repository it stands for (the breadcrumb's) is only known later; if it turns out different, the rows
+  // are dropped then.
   const [cached] = React.useState(() => {
     const snap = readHubSnapshot(cacheScope);
     const saved = parseSelection(readPreference("hub.selection", ""));
-    return snap && (!saved || snap.selection === JSON.stringify(saved)) ? snap : null;
+    return snap && (!saved || saved.current || snap.selection === JSON.stringify(saved)) ? snap : null;
   });
   const [source, setSource] = React.useState<PrListSource | null>(null);
   const [prs, setPrs] = React.useState<PrSummary[] | null>(cached?.prs ?? null);
@@ -47,8 +48,10 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [listLoading, setListLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  // Null until the saved choice, or on a first visit the Repos breadcrumb's repository, is known.
+  // The saved choice, or on a first visit the Repos breadcrumb's repository. Null until the list source loads.
   const [selection, setSelection] = React.useState<RepoSelection | null>(null);
+  // The current project and the breadcrumb's repository, which "current" choices stand for.
+  const [context, setContext] = React.useState<CurrentContext | null>(null);
   const [catalog, setCatalog] = React.useState<RepoCatalog | null>(null);
   const [catalogError, setCatalogError] = React.useState<string | null>(null);
   const [favorites, setFavorites] = React.useState<string[] | null>(null);
@@ -80,18 +83,18 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   React.useEffect(() => {
     if (!source) return;
     source.catalog().then(setCatalog, (e: Error) => setCatalogError(e.message));
-    const saved = parseSelection(readPreference("hub.selection", ""));
-    if (saved) setSelection(saved);
-    else
-      host
-        .currentRepository()
-        .catch(() => null)
-        .then((r) => setSelection(r ? { ...ALL_PROJECTS, repos: [r.id] } : { ...ALL_PROJECTS, projects: [source.currentProjectId] }));
+    setSelection(parseSelection(readPreference("hub.selection", "")) ?? CURRENT_REPO);
+    host
+      .currentRepository()
+      .catch(() => null)
+      .then((r) => setContext({ projectId: source.currentProjectId, repoId: r?.id ?? null }));
   }, [host, source]);
-  const scope = selection && favorites ? selectionScope(selection, favorites) : null;
+  // What the selection stands for; a saved list of projects and repositories doesn't wait for the breadcrumb.
+  const resolved = selection && (!selection.current ? selection : context && resolveSelection(selection, context));
+  const scope = resolved && favorites ? selectionScope(resolved, favorites) : null;
   // A string, so effects rerun only when the queries change.
   const scopeKey = scope && JSON.stringify(scope);
-  const selectionKey = selection && JSON.stringify(selection);
+  const selectionKey = resolved && JSON.stringify(resolved);
 
   const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
   // Drop the tag filter when that tag is renamed or deleted.
@@ -307,6 +310,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
               catalog={catalog}
               catalogError={catalogError}
               selection={selection}
+              context={context}
               onChange={pick}
               favorites={favorites ?? []}
               onToggleFavorite={toggleFavorite}
