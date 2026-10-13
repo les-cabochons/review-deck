@@ -17,6 +17,8 @@ import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
+import { tagKey } from "../../data/tags";
+import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
@@ -28,6 +30,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [repo, setRepo] = React.useState<string | null>(null);
+  const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
   // Empty sections start closed; opening one only lasts until reload.
@@ -47,7 +50,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const showStack = (pr: PrSummary) => prs && trunks && setStackOpen(stackFor(pr, prs, trunks));
   const closeStack = React.useCallback(() => setStackOpen(null), []);
 
-  const load = React.useCallback(() => {
+  const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
+  // Drop the tag filter when that tag is renamed or deleted.
+  React.useEffect(() => {
+    if (tag && tagsByKey.size && !tagsByKey.has(tagKey(tag))) setTag(null);
+  }, [tag, tagsByKey]);
+  const loadPrs = React.useCallback(() => {
     setError(null);
     host
       .listSource()
@@ -68,16 +76,28 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
       })
       .catch((e: Error) => setError(e.message));
   }, [host]);
+  const load = () => {
+    reloadTags();
+    loadPrs();
+  };
+  // Also after a tag is renamed or deleted, so rows show the new names.
   React.useEffect(() => {
-    load();
-  }, [load]);
+    loadPrs();
+  }, [loadPrs, tagRevision]);
   React.useEffect(() => {
     host.setTitle("Pull requests");
   }, [host]);
 
   const me = host.currentUser;
   const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
-  const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query)).map((p) => ({ ...p, ...details.get(p.id) }));
+  const visible = (prs ?? [])
+    .filter((p) => (!repo || p.repository.id === repo) && (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
+    .map((p) => ({ ...p, ...details.get(p.id) }));
+  const tagCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of prs ?? []) if (p.status === "active") for (const l of p.labels) counts.set(tagKey(l), (counts.get(tagKey(l)) ?? 0) + 1);
+    return counts;
+  }, [prs]);
   const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
   const sections = inboxSections(visible, me, groupIds);
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
@@ -132,7 +152,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   });
   React.useEffect(() => {
     setSelected(0);
-  }, [filter, query, repo]);
+  }, [filter, query, repo, tag]);
   React.useEffect(() => {
     document.querySelector(".pr-row.selected")?.scrollIntoView({ block: "nearest" });
   }, [selected]);
@@ -176,21 +196,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             />
           ))}
         </nav>
-        {groups.length > 0 && (
-          <p className="hub-sidebar-note muted" title={groups.map((g) => g.name).join(", ")}>
-            Includes reviews requested from your {groups.length === 1 ? `team ${groups[0].name}` : `${groups.length} teams`}.
-          </p>
-        )}
+        <div className="hub-sidebar-sep" />
+        <SidebarTags counts={tagCounts} active={tag} onSelect={setTag} />
         {groupError && (
           <p className="hub-sidebar-note tone-warning" role="status">
             Couldn't load your teams, so only reviews assigned to you directly are counted. {groupError}
           </p>
-        )}
-        {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
-        {host.settingsUrl() && (
-          <a className="hub-settings-link" href={host.settingsUrl()!} target={host.kind === "ado" ? "_top" : undefined}>
-            <Icon iconName="Settings" /> Project settings
-          </a>
         )}
       </aside>
 
@@ -352,9 +363,7 @@ const PrRow: React.FC<{
           </a>
           {/* Like GitHub: tags follow the title and wrap with it, never truncated. */}
           {pr.labels.map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
+            <TagPill key={l} name={l} />
           ))}
         </div>
         {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
@@ -418,9 +427,7 @@ const PrRow: React.FC<{
         <div className="m-title">
           {pr.title}
           {pr.labels.map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
+            <TagPill key={l} name={l} />
           ))}
         </div>
         <div className="m-bottom">

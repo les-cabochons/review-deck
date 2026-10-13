@@ -1,6 +1,7 @@
 import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
 import type { PrListSource } from "../data/list";
 import type { Identity, PrSource } from "../data/model";
+import type { TagStore } from "../data/tags";
 import type { BackendService } from "../review/backend";
 
 /** Backend (Azure Function) base URL, set at build time from SEMANTIC_PR_BACKEND_URL (extension/build.mjs). */
@@ -63,8 +64,8 @@ export interface AppHost {
    * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
    */
   syncRestackHooks(on: boolean): Promise<void>;
-  /** Project settings → Semantic PR Review (the settings-hub contribution), or null if there's none. */
-  settingsUrl(): string | null;
+  /** This project's tags, with their colors and descriptions. */
+  tags(): TagStore;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
 }
