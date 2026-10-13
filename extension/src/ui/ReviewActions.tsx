@@ -5,7 +5,11 @@ interface ReviewActions {
   actions: PrActions;
   currentUser: Identity;
   disabled: boolean;
+  /** The last failed write or refresh, until the next one starts. */
+  error: string | null;
   run: (write: () => Promise<void>) => Promise<boolean>;
+  /** Re-reads the PR without showing the saving state, to follow work Azure DevOps does in the background. */
+  poll: () => Promise<void>;
 }
 
 const Context = React.createContext<ReviewActions | null>(null);
@@ -65,8 +69,17 @@ export const ReviewActionsProvider: React.FC<{
     return true; // The write succeeded even if reloading failed. Do not repost the draft.
   };
 
+  const poll = async () => {
+    if (inFlight.current) return;
+    try {
+      onData(await source.load());
+    } catch {
+      // The next poll tries again.
+    }
+  };
+
   return (
-    <Context.Provider value={{ actions: source.actions, currentUser: source.currentUser, disabled: pending || needsRefresh, run }}>
+    <Context.Provider value={{ actions: source.actions, currentUser: source.currentUser, disabled: pending || needsRefresh, error, run, poll }}>
       <div className="write-feedback" aria-live="polite">
         {pending && <span role="status">Saving and refreshing…</span>}
         {error && (

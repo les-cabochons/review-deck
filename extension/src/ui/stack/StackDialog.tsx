@@ -2,6 +2,7 @@ import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import type { StackPosition } from "../../../../src/stack/stacks";
 import type { PrSummary } from "../../data/list";
+import { useModal } from "../modal";
 import { StackLayers } from "./StackPanel";
 
 /** The whole stack in a modal, GitHub-style, from a hub row's stack chip. Pick any layer to open it. */
@@ -12,21 +13,7 @@ export const StackDialog: React.FC<{
   onClose: () => void;
 }> = ({ position, details, onOpen, onClose }) => {
   const dialog = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    const restore = document.activeElement as HTMLElement | null;
-    dialog.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restore?.focus?.();
-    };
-  }, [onClose]);
+  useModal(dialog, onClose);
   const index = position.layers.findIndex((l) => l.id === position.pr.id);
   return (
     <div className="modal-backdrop" onClick={onClose}>

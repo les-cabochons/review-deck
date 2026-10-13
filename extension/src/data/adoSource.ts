@@ -4,11 +4,12 @@ import { type PolicyEvaluationRecord, PolicyRestClient } from "azure-devops-exte
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
 import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
-import { createAdoActions } from "./adoActions";
+import { createAdoActions, fromCompletionOptionsJson, isNoOne, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
 import { thread as threadFromJson } from "./mockSource";
 import {
   asVote,
   identityImageUrl,
+  mergeStatusFromNumber,
   type ChangeType,
   type FileChange,
   type Identity,
@@ -61,22 +62,25 @@ export class AdoPrSource implements PrSource {
     private readonly pullRequestId: number,
     readonly currentUser: Identity,
   ) {
-    this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, async (query) => {
-      if (query.trim().length < 2) return [];
-      const service = await getService<IVssIdentityService>(IdentityServiceIds.IdentityService);
-      const results = await service.searchIdentitiesAsync(query.trim(), ["user", "group"]);
-      return results
-        .map((result) => {
-          const person = result as PickerIdentity;
-          // localId is the Azure DevOps identity GUID. originId belongs to the backing directory.
-          return {
-            id: person.localId ?? "",
-            displayName: person.displayName ?? person.signInAddress ?? person.entityId,
-            uniqueName: person.signInAddress ?? person.mail ?? "",
-            imageUrl: identityImageUrl(person.image, `https://dev.azure.com/${encodeURIComponent(getHost().name)}/`),
-          };
-        })
-        .filter((person) => !!person.id);
+    this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
+      mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
+      searchReviewers: async (query) => {
+        if (query.trim().length < 2) return [];
+        const service = await getService<IVssIdentityService>(IdentityServiceIds.IdentityService);
+        const results = await service.searchIdentitiesAsync(query.trim(), ["user", "group"]);
+        return results
+          .map((result) => {
+            const person = result as PickerIdentity;
+            // localId is the Azure DevOps identity GUID. originId belongs to the backing directory.
+            return {
+              id: person.localId ?? "",
+              displayName: person.displayName ?? person.signInAddress ?? person.entityId,
+              uniqueName: person.signInAddress ?? person.mail ?? "",
+              imageUrl: identityImageUrl(person.image, `https://dev.azure.com/${encodeURIComponent(getHost().name)}/`),
+            };
+          })
+          .filter((person) => !!person.id);
+      },
     });
   }
 
@@ -110,6 +114,13 @@ export class AdoPrSource implements PrSource {
         },
         reviewers: (pr.reviewers ?? []).map((r) => ({ ...identity(r), vote: asVote(r.vote), isRequired: !!r.isRequired })),
         labels: labels.filter((l) => l.active !== false).map((l) => l.name),
+        headCommit: pr.lastMergeSourceCommit?.commitId ?? iterations.at(-1)?.sourceRefCommit.commitId ?? "",
+        mergeStatus: mergeStatusFromNumber(pr.mergeStatus),
+        autoCompleteSetBy: realIdentity(pr.autoCompleteSetBy),
+        completionOptions: fromCompletionOptionsJson(pr.completionOptions),
+        completionQueued: pr.completionQueueTime ? new Date(pr.completionQueueTime) : undefined,
+        mergeFailure: pr.mergeFailureMessage || undefined,
+        closedBy: realIdentity(pr.closedBy),
       },
       iterations: iterations.map((it) => ({
         id: it.id,
@@ -181,6 +192,11 @@ function identity(i: IdentityLike | undefined): Identity {
     uniqueName: i?.uniqueName ?? "",
     imageUrl: i?.imageUrl,
   };
+}
+
+/** Optional identities (auto-complete, closed by) are missing or the empty identity when unset. */
+function realIdentity(i: IdentityLike | undefined): Identity | undefined {
+  return isNoOne(i?.id) ? undefined : identity(i);
 }
 
 /** Converts a REST thread into the snapshot JSON shape, so one mapper (mockSource.thread) handles both. */

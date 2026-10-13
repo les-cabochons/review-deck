@@ -67,12 +67,12 @@ Grouping runs in your browser. Review Deck reads files through the Azure DevOps 
 A build with the Review Deck backend adds two things. Sentence embeddings make the grouping more accurate; they run on the backend's own CPU, not an external AI service. **AI group titles** are written by a small language model from the PR description and the changed lines. AI titles are **off by default** in every project, and only a project administrator can turn them on. Without them, groups get rule-based titles.
 
 **Why does it need these permissions?**
-- *Code (read and write):* to read diffs and to post comments, votes, reviewers, tags and description edits that you make.
+- *Code (read and write):* to read diffs, to post comments, votes, reviewers, tags and description edits that you make, and to complete or abandon a PR when you choose to.
 - *Work items (read):* to show the work items linked to a PR.
 - *Project and team (read):* to list your projects and repositories.
 - *Service hooks (read and write):* used only by auto-restack, to hear when a PR in a stack changes.
 
-Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description. The one exception is auto-restack, which a project administrator has to turn on.
+Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
 
 **Which languages are supported?**
 Every file shows up and gets a diff. Structural grouping is deepest for TypeScript and JavaScript (including TSX/JSX), and syntax highlighting covers TS/TSX, JS/JSX, JSON, Markdown, CSS, HTML, YAML and shell scripts. Other files are grouped by their paths and shared names.
@@ -81,7 +81,7 @@ Every file shows up and gets a diff. Structural grouping is deepest for TypeScri
 Yes. Review Deck adds pages; it doesn't remove or change the built-in ones. Use **Classic review** to switch at any time.
 
 **Can I complete or abandon a PR from Review Deck?**
-Not yet. Completing, abandoning and merge options are planned. Use the classic page for now.
+Yes. **Complete** opens the merge dialog: pick the merge type (the ones your branch policies allow), edit the merge commit message, and choose whether to complete linked work items and delete the source branch. If required checks haven't passed yet, set **auto-complete** to merge once they do, or override the policies with a reason if you have permission. Abandon, reactivate, mark as draft and publish are behind the same button.
 
 **Are my pending review comments visible to others?**
 No. Azure DevOps has no server-side pending review, so drafts stay in your browser until you choose **Finish review**.

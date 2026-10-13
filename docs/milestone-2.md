@@ -18,7 +18,8 @@ Continue the approved full PR review page plan with milestone 2. Run locally aga
 - [x] Milestone 2: regression tests and browser verification.
 - [x] Publish and install privately in Azure DevOps Services, then validate milestone 2 writes on test PR #1.
 - [ ] [Finish live validation cases requiring more test data or permissions](https://github.com/alextrepa/semantic-pr/issues/1). Cross-update/rename anchors, group identities, another reviewer's vote, and actual permission denials remain unverified.
-- [ ] Milestone 3: completion, auto-complete, abandon, merge options, reviewed-file state.
+- [x] Milestone 3: completion, auto-complete, abandon, merge options.
+- [ ] Reviewed-file state.
 - [ ] Later: work item linking, comment editing/deletion, likes, identity mentions, syntax highlighting, expanded context.
 - [ ] Deferred: stack navigation, browser embeddings and LLM titles.
 

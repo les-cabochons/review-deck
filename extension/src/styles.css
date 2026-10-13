@@ -1060,6 +1060,51 @@ kbd {
   margin-top: 14px;
 }
 
+/* completion: header notice and the complete / auto-complete dialog */
+.completion-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.completion-notice .link-button {
+  margin-left: 8px;
+}
+.complete-dialog > p {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.complete-warning {
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--hover);
+}
+.complete-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.complete-field {
+  display: block;
+  margin-top: 12px;
+}
+.complete-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.complete-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* ---------- overview ---------- */
 .overview {
   display: grid;
