@@ -7,13 +7,15 @@ import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
 import type { BackendService } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, BACKEND_URL, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 import { syncRestackHooks } from "./restackHooks";
 
 /** Extension data collection holding one settings document per project, keyed by project ID. */
 const SETTINGS_COLLECTION = "project-settings";
 /** Extension data collection holding each pull request's latest finished grouping (review/saved.ts). */
 const REVIEWS_COLLECTION = "saved-reviews";
+/** User-scoped extension data value holding your starred repository ids. */
+const FAVORITES_KEY = "favorite-repos";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
 const EDIT_PROJECT = 2;
@@ -177,6 +179,22 @@ export class AdoHost implements AppHost {
   tags(): AdoTagStore {
     this.tagStore ??= new AdoTagStore({ hostUrl: this.hostUrl, projectId: this.project.id, token: () => SDK.getAccessToken(), data: () => this.data() });
     return this.tagStore;
+  }
+
+  /** In user-scoped extension data, so your stars follow you to every project and browser. */
+  favoriteRepos(): FavoriteRepos {
+    return {
+      load: async () => {
+        try {
+          const ids = await (await this.data()).getValue<unknown>(FAVORITES_KEY, { scopeType: "User", defaultValue: [] });
+          return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+        } catch (e) {
+          console.warn("[semantic-pr] favorite repositories unavailable:", e);
+          return [];
+        }
+      },
+      save: async (ids) => void (await (await this.data()).setValue(FAVORITES_KEY, ids, { scopeType: "User" })),
+    };
   }
 
   private data(): Promise<IExtensionDataManager> {

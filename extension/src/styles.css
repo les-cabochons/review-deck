@@ -424,6 +424,166 @@ kbd {
 .search-box > [class*="ms-Icon"] {
   color: var(--fg2);
 }
+/* Project picker: projects with their repositories, search, and starred favorites. */
+.repo-picker-button .bolt-button-text {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-picker {
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  background: var(--callout-background-color, var(--surface));
+  border-radius: 4px;
+}
+.repo-picker-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: min(480px, calc(100vh - 120px));
+}
+.repo-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px;
+  padding: 0 8px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+}
+.repo-picker-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.repo-picker-search input {
+  flex: 1;
+  border: 0 !important;
+  padding: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.repo-picker-search > [class*="ms-Icon"] {
+  color: var(--fg2);
+}
+.repo-picker-list {
+  overflow-y: auto;
+  padding-bottom: 6px;
+}
+.picker-group + .picker-group {
+  border-top: 1px solid var(--line-soft);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.picker-group-title {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg2);
+}
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px 0 12px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.picker-row.active {
+  background: var(--hover);
+}
+.picker-row.disabled {
+  cursor: default;
+  color: var(--fg3);
+}
+.picker-back {
+  font-weight: 600;
+}
+.picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-meta {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.picker-project {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-lead {
+  color: var(--fg2);
+  font-size: 14px;
+}
+.picker-lead.star-on,
+.picker-star.starred {
+  color: #e3a21a;
+}
+.picker-tick {
+  color: var(--accent);
+}
+.picker-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--fg2);
+  border-radius: 2px;
+  font-size: 11px;
+}
+.picker-check.checked,
+.picker-check.mixed {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.picker-mixed {
+  width: 8px;
+  height: 2px;
+  background: #fff;
+}
+.picker-icon-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--fg2);
+  cursor: pointer;
+}
+.picker-icon-button:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+.picker-star:not(.starred) {
+  opacity: 0.45;
+}
+.picker-row.active .picker-star,
+.picker-star:focus-visible {
+  opacity: 1;
+}
+.picker-note {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+}
 .inbox-section {
   background: var(--surface);
   border: 1px solid var(--line);

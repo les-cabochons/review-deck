@@ -4,7 +4,6 @@ import * as React from "react";
 import type { AppHost } from "../../app/host";
 import {
   inboxSections,
-  type ListScope,
   matchesQuery,
   type MyGroup,
   type PrListSource,
@@ -13,13 +12,14 @@ import {
   SECTION_META,
   type SectionId,
 } from "../../data/list";
-import { DropdownButton } from "../controls";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
+import { ALL_PROJECTS, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, selectionScope } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
+import { RepoPicker } from "./RepoPicker";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
@@ -30,10 +30,11 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [prs, setPrs] = React.useState<PrSummary[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  // The Repos breadcrumb's repository by default; null for every repository in `scope`.
-  const [repo, setRepo] = React.useState<string | null>(null);
-  const [current, setCurrent] = React.useState<{ id: string; name: string } | null | undefined>(undefined);
-  const [scope, setScope] = React.useState<ListScope>("project");
+  // Null until the saved choice, or on a first visit the Repos breadcrumb's repository, is known.
+  const [selection, setSelection] = React.useState<RepoSelection | null>(null);
+  const [catalog, setCatalog] = React.useState<RepoCatalog | null>(null);
+  const [catalogError, setCatalogError] = React.useState<string | null>(null);
+  const [favorites, setFavorites] = React.useState<string[] | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
@@ -55,45 +56,56 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const closeStack = React.useCallback(() => setStackOpen(null), []);
 
   React.useEffect(() => {
-    host.currentRepository().then(
-      (r) => {
-        setCurrent(r);
-        setRepo(r?.id ?? null);
-      },
-      () => setCurrent(null),
-    );
+    host.listSource().then(setSource, (e: Error) => setError(e.message));
+    host.favoriteRepos().load().then(setFavorites);
   }, [host]);
+  React.useEffect(() => {
+    if (!source) return;
+    source.catalog().then(setCatalog, (e: Error) => setCatalogError(e.message));
+    const saved = parseSelection(readPreference("hub.selection", ""));
+    if (saved) setSelection(saved);
+    else
+      host
+        .currentRepository()
+        .catch(() => null)
+        .then((r) => setSelection(r ? { ...ALL_PROJECTS, repos: [r.id] } : { ...ALL_PROJECTS, projects: [source.currentProjectId] }));
+  }, [host, source]);
+  const scope = selection && favorites ? selectionScope(selection, favorites) : null;
+  // A string, so effects rerun only when the queries change.
+  const scopeKey = scope && JSON.stringify(scope);
 
   const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
   // Drop the tag filter when that tag is renamed or deleted.
   React.useEffect(() => {
     if (tag && tagsByKey.size && !tagsByKey.has(tagKey(tag))) setTag(null);
   }, [tag, tagsByKey]);
+  const request = React.useRef(0);
   const loadPrs = React.useCallback(() => {
+    if (!source || !scopeKey) return;
+    const id = ++request.current;
     setError(null);
-    host
-      .listSource()
-      .then(async (s) => {
-        setSource(s);
-        // Teams only widen "Needs your review"; the list still works without them.
-        const [list] = await Promise.all([
-          s.list(scope),
-          s.myGroups().then(
-            (g) => {
-              setGroups(g);
-              setGroupError(null);
-            },
-            (e: Error) => setGroupError(e.message),
-          ),
-        ]);
-        setPrs(list);
-      })
-      .catch((e: Error) => setError(e.message));
-  }, [host, scope]);
+    // Teams only widen "Needs your review"; the list still works without them.
+    Promise.all([
+      source.list(JSON.parse(scopeKey) as ListScope),
+      source.myGroups().then(
+        (g) => {
+          setGroups(g);
+          setGroupError(null);
+        },
+        (e: Error) => setGroupError(e.message),
+      ),
+    ])
+      // A slower answer for an earlier selection must not replace the current one.
+      .then(([list]) => id === request.current && setPrs(list))
+      .catch((e: Error) => id === request.current && setError(e.message));
+  }, [source, scopeKey]);
   const load = () => {
     reloadTags();
     loadPrs();
   };
+  React.useEffect(() => {
+    setPrs(null);
+  }, [scopeKey]);
   // Also after a tag is renamed or deleted, so rows show the new names.
   React.useEffect(() => {
     loadPrs();
@@ -102,17 +114,26 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     host.setTitle("Pull requests");
   }, [host]);
 
+  const pick = (next: RepoSelection) => {
+    setSelection(next);
+    writePreference("hub.selection", JSON.stringify(next));
+  };
+  const toggleFavorite = (repoId: string) => {
+    const before = favorites ?? [];
+    const next = before.includes(repoId) ? before.filter((f) => f !== repoId) : [...before, repoId];
+    setFavorites(next);
+    host
+      .favoriteRepos()
+      .save(next)
+      .catch((e) => {
+        console.warn("[semantic-pr] could not save favorite repositories:", e);
+        setFavorites(before);
+      });
+  };
+
   const me = host.currentUser;
-  const repos = React.useMemo(() => {
-    const byId = new Map((prs ?? []).map((p) => [p.repository.id, p.repository]));
-    const projects = new Set([...byId.values()].map((r) => r.projectId));
-    const named = [...byId.values()].map((r) => [r.id, projects.size > 1 ? `${r.projectName} / ${r.name}` : r.name] as const);
-    // The current repository has a place in the menu even with no pull requests.
-    if (current && !byId.has(current.id)) named.unshift([current.id, current.name]);
-    return named;
-  }, [prs, current]);
   const visible = (prs ?? [])
-    .filter((p) => (!repo || p.repository.id === repo) && (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
+    .filter((p) => (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
     .map((p) => ({ ...p, ...details.get(p.id) }));
   const tagCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
@@ -146,15 +167,6 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   }, [source, enrich.map((r) => r.id).join(",")]);
 
   const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
-  const showAll = () => {
-    setRepo(null);
-    if (scope === "organization") return;
-    setPrs(null);
-    setDetails(new Map());
-    setScope("organization");
-  };
-  const everything = scope === "organization" ? "All projects" : "All repositories";
-
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -181,7 +193,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   });
   React.useEffect(() => {
     setSelected(0);
-  }, [filter, query, repo, tag]);
+  }, [filter, query, scopeKey, tag]);
   React.useEffect(() => {
     document.querySelector(".pr-row.selected")?.scrollIntoView({ block: "nearest" });
   }, [selected]);
@@ -248,16 +260,15 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             />
             {!query && <kbd>/</kbd>}
           </div>
-          <DropdownButton
-            text={repo ? (repos.find(([id]) => id === repo)?.[1] ?? "Repository") : everything}
-            icon="Repo"
-            options={[
-              { id: "all", text: everything, checked: !repo, onSelect: () => setRepo(null) },
-              ...repos.map(([id, name]) => ({ id, text: name, checked: repo === id, onSelect: () => setRepo(id) })),
-            ]}
-          />
-          {(repo || scope === "project") && (
-            <Button text="All projects" iconProps={{ iconName: "Globe" }} subtle onClick={showAll} tooltipProps={{ text: "Clear the repository filter and show pull requests from every project" }} />
+          {selection && (
+            <RepoPicker
+              catalog={catalog}
+              catalogError={catalogError}
+              selection={selection}
+              onChange={pick}
+              favorites={favorites ?? []}
+              onToggleFavorite={toggleFavorite}
+            />
           )}
           <Button iconProps={{ iconName: "Refresh" }} subtle ariaLabel="Refresh" onClick={load} />
           <span className="spacer" />
@@ -269,12 +280,9 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             Could not load pull requests: {error}
           </div>
         )}
-        {(!prs || current === undefined) && !error && (
-          <div className="loading">{scope === "organization" ? "Loading pull requests from every project…" : "Loading pull requests…"}</div>
-        )}
+        {!prs && !error && <div className="loading">{scope === "organization" ? "Loading pull requests from every project…" : "Loading pull requests…"}</div>}
 
         {prs &&
-          current !== undefined &&
           shown.map((s) => {
             const closed = filter === "inbox" && isCollapsed(s);
             return (
@@ -310,7 +318,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
               </section>
             );
           })}
-        {prs && current !== undefined && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
+        {prs && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
       </main>
       {stackOpen && (
         <StackDialog
