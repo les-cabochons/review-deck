@@ -1,5 +1,5 @@
 import { basename, dirname } from "../core/paths.js";
-import type { HunkInfo, SignalName } from "../core/types.js";
+import type { HunkInfo } from "../core/types.js";
 import type { GroupTitle, TitleInput, Titler } from "./types.js";
 
 /** Rule-based titles from the group's dominant symbol, change pattern and common directory. */
@@ -11,42 +11,44 @@ export class HeuristicTitler implements Titler {
   }
 }
 
+/**
+ * Rules can't know why a change was made, so the rationale only adds what the title doesn't say (where a moved
+ * declaration came from, what else changed); the header already shows counts, and the diff shows the rest.
+ */
 export function describeGroup({ group, hunks, pairs }: TitleInput): GroupTitle {
-  const files = new Set(hunks.map((h) => h.file.path));
-  const where = `${hunks.length} hunk${hunks.length === 1 ? "" : "s"} in ${files.size} file${files.size === 1 ? "" : "s"}`;
-
+  const source = "heuristic" as const;
   if (group.kind === "mechanical") {
     const kinds = countBy(hunks.map((h) => h.mechanical?.kind ?? "other"));
     return {
       title: "Mechanical changes",
-      rationale: `Collapsed: ${[...kinds].map(([k, n]) => `${n} ${k}`).join(", ")}. Nothing to review line by line.`,
+      rationale: `${[...kinds].map(([k, n]) => `${n} ${k}`).join(", ")}. Nothing to review line by line.`,
+      source,
     };
   }
   if (group.kind === "misc") {
-    return { title: "Other changes", rationale: `${where} with no strong link to any other change.` };
+    return { title: "Other changes", rationale: "Changes with no strong link to the rest of the pull request.", source };
   }
 
   const code = hunks.filter((h) => !h.isTest);
   const scope = commonDir((code.length ? code : hunks).map((h) => h.file.path));
   const suffix = scope.includes("/") ? ` in ${scope}` : "";
-  const linkedBy = summarizeLinks(pairs);
+  const tests = hunks.some((h) => h.isTest) && code.length > 0 ? " Includes its tests." : "";
 
   const rename = detectRename(hunks);
-  if (rename) {
-    return { title: `Rename ${rename.from} → ${rename.to}`, rationale: `Same identifier substitution in ${where}.${linkedBy}` };
-  }
+  if (rename) return { title: `Rename ${rename.from} → ${rename.to}`, rationale: tests.trim(), source };
 
   const move = detectMove(hunks);
   if (move) {
     return {
       title: `Move ${move.name} to ${basename(move.to)}`,
-      rationale: `Removed from ${move.from} and re-added in ${move.to}; ${where} update call sites and tests.${linkedBy}`,
+      rationale: `Moved from ${move.from}, with its call sites updated.${tests}`,
+      source,
     };
   }
 
   if (hunks.every((h) => h.commentOnly)) {
     const syms = unique(hunks.map((h) => h.symbol).filter(isSymbol)).slice(0, 3);
-    return { title: `Document ${syms.join(", ") || "code"}`, rationale: `Comment-only changes: ${where}.` };
+    return { title: `Document ${syms.join(", ") || "code"}`, rationale: "Comments only; no code changes.", source };
   }
 
   // Name the group after its hub: the non-test hunk with the most link weight inside the group.
@@ -62,11 +64,13 @@ export function describeGroup({ group, hunks, pairs }: TitleInput): GroupTitle {
     .flatMap((h) => rankAdded([h], hunks).filter((q) => !isDataDecl(h, q)))
     .filter((q) => q !== hubName && !q.startsWith(`${hubName}.`));
   const extra = helpers.length > 0 ? ` (+ ${helpers.slice(0, 2).map((q) => q.split(".").pop()).join(", ")})` : "";
-  const touched = unique((code.length ? code : hunks).map((h) => h.symbol).filter(isSymbol));
-  return {
-    title: `${verb} ${hubName}${extra}${suffix}`,
-    rationale: `Centers on ${hubName}${helpers.length ? `, introducing ${helpers.slice(0, 4).join(", ")}` : ""}; touches ${touched.slice(0, 4).join(", ") || "no named symbols"} (${where}).${linkedBy}`,
-  };
+  // Only what the title doesn't already name.
+  const named = new Set([hubName, ...helpers.slice(0, 2)].map((q) => q.split(".").pop()!));
+  const others = unique([...helpers.slice(2), ...(code.length ? code : hunks).map((h) => h.symbol).filter(isSymbol)])
+    .map((q) => q.split(".").pop()!)
+    .filter((q) => !named.has(q));
+  const also = others.length ? `Also changes ${others.slice(0, 3).join(", ")}${others.length > 3 ? ` and ${others.length - 3} more` : ""}.` : "";
+  return { title: `${verb} ${hubName}${extra}${suffix}`, rationale: `${also}${tests}`.trim(), source };
 }
 
 function pickHub(candidates: HunkInfo[], pairs: TitleInput["pairs"]): HunkInfo {
@@ -86,27 +90,6 @@ function isDataDecl(h: HunkInfo, qualified: string): boolean {
 }
 
 const isSymbol = (s: string | null): s is string => !!s && !s.startsWith("(") && !/^(describe|it|test)\(/.test(s);
-
-function summarizeLinks(pairs: TitleInput["pairs"]): string {
-  const strongest = new Map<SignalName, number>();
-  const symbols = new Map<string, number>();
-  for (const p of pairs) {
-    for (const [name, s] of Object.entries(p.signals) as [SignalName, { score: number; evidence: string[] }][]) {
-      if (name === "path" || s.score < 0.3) continue;
-      strongest.set(name, (strongest.get(name) ?? 0) + 1);
-      if (name === "structural") {
-        for (const e of s.evidence) {
-          const sym = e.split(" ").pop()!;
-          symbols.set(sym, (symbols.get(sym) ?? 0) + 1);
-        }
-      }
-    }
-  }
-  if (strongest.size === 0) return "";
-  const parts = [...strongest].sort((a, b) => b[1] - a[1]).map(([n, c]) => `${c}× ${n}`);
-  const top = [...symbols].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([s]) => s);
-  return ` Linked by ${parts.join(", ")}${top.length ? ` (via ${top.join(", ")})` : ""}.`;
-}
 
 /** Finds X→Y if most hunks only swap identifier X for Y. */
 function detectRename(hunks: HunkInfo[]): { from: string; to: string } | null {

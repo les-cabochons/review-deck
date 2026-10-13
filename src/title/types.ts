@@ -1,4 +1,4 @@
-import type { Group, HunkInfo, PairScore } from "../core/types.js";
+import type { Group, HunkInfo, PairScore, TitleSource } from "../core/types.js";
 
 export interface TitleInput {
   group: Group;
@@ -12,6 +12,7 @@ export interface GroupTitle {
   rationale: string;
   /** Where the group belongs in the PR's reading order, when the titler chose one (lower reads first). */
   position?: number;
+  source: TitleSource;
 }
 
 /** Names groups, and may pick their reading order. Implementations: HeuristicTitler (default, browser-safe) and CliLlmTitler (Node, shells out). */

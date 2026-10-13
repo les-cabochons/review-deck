@@ -20,7 +20,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     archive = {
       source  = "hashicorp/archive"
@@ -36,6 +36,13 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+  # Only what this file creates; azurerm 5 registers nothing by default.
+  resource_providers_to_register = [
+    "Microsoft.CognitiveServices",
+    "Microsoft.Consumption",
+    "Microsoft.Storage",
+    "Microsoft.Web",
+  ]
 }
 
 resource "random_string" "suffix" {
@@ -151,7 +158,7 @@ resource "azurerm_windows_function_app" "this" {
     minimum_tls_version = "1.2"
 
     application_stack {
-      node_version = "~22"
+      node_version = "~24"
     }
 
     cors {

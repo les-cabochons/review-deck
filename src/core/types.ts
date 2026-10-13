@@ -76,7 +76,7 @@ export interface HunkInfo {
   text: string;
 }
 
-export type SignalName = "structural" | "testPairing" | "lexical" | "semantic" | "path";
+export type SignalName = "structural" | "testPairing" | "lexical" | "semantic" | "path" | "description";
 
 export interface SignalScore {
   score: number;
@@ -96,7 +96,15 @@ export interface Group {
   hunkIds: string[];
   title: string;
   rationale: string;
+  /** Who wrote the title and rationale (absent in groupings saved before this was recorded). */
+  titleSource?: TitleSource;
 }
+
+/**
+ * `llm`: a model read the changes and the PR description. `description`: the PR description's step that matches
+ * the group. `heuristic`: rules over the code structure (symbols, renames, moves).
+ */
+export type TitleSource = "llm" | "description" | "heuristic";
 
 export interface ReviewResult {
   title: string;

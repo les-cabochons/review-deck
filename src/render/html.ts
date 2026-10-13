@@ -7,13 +7,14 @@ export interface RenderAssets {
   diff2htmlCss: string;
 }
 
-const SIGNALS: SignalName[] = ["structural", "testPairing", "lexical", "semantic", "path"];
+const SIGNALS: SignalName[] = ["structural", "testPairing", "lexical", "semantic", "path", "description"];
 const SIGNAL_LABEL: Record<SignalName, string> = {
   structural: "struct",
   testPairing: "test",
   lexical: "lexical",
   semantic: "semantic",
   path: "path",
+  description: "desc",
 };
 const PALETTE = ["#2563eb", "#d97706", "#059669", "#db2777", "#7c3aed", "#0891b2", "#65a30d", "#dc2626"];
 
