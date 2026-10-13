@@ -59,6 +59,8 @@
   ],
   "scopes": [
     "vso.code_write",
+    "vso.code_manage",
+    "vso.notification_write",
     "vso.build",
     "vso.work",
     "vso.project",

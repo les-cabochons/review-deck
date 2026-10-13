@@ -69,9 +69,7 @@ export class AdoHost implements AppHost {
   navigate(route: Route): void {
     if (route.view === "pr" && route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) {
       // Another project's PR: open it in that project's hub, so its settings and links apply.
-      const { publisherId, extensionId } = SDK.getExtensionContext();
-      const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
-      this.nav.navigate(`${this.hostUrl}${encodeURIComponent(route.project)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`);
+      this.nav.navigate(this.reviewUrl(route));
       return;
     }
     this.current = route;
@@ -84,7 +82,7 @@ export class AdoHost implements AppHost {
   }
 
   async listSource() {
-    return new AdoPrListSource(this.project.id, this.currentUser, this.hostUrl, `${this.projectUrl()}/_git/${encodeURIComponent(this.project.name)}/pullrequestcreate`);
+    return new AdoPrListSource(this.project.id, this.currentUser, this.hostUrl, `${this.projectUrl()}/_git/${encodeURIComponent(this.project.name)}`);
   }
 
   async currentRepository(): Promise<{ id: string; name: string } | null> {
@@ -281,8 +279,19 @@ export class AdoHost implements AppHost {
     return this.dataManager;
   }
 
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
+    return `${this.hostUrl}${encodeURIComponent(route.project ?? this.project.name)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequest/${route.pr}`;
+  }
+
+  createPrUrl(route: Extract<Route, { view: "pr" }>, source: string, target: string): string {
+    const query = new URLSearchParams({ sourceRef: source, targetRef: target });
+    return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequestcreate?${query}`;
   }
 
   fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string {

@@ -125,8 +125,12 @@ export interface AppHost {
   favoriteRepos(): FavoriteRepos;
   /** Git tags, pipeline runs and release descriptions, for the Changelog hub. Loaded on first use, so other pages don't carry it. */
   releases(): Promise<ReleaseCatalog>;
+  /** This pull request in Review Deck, as a link others can open (the hub page, not the extension's iframe). */
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
+  /** The native page for creating a pull request from `source` into `target` (branch names). */
+  createPrUrl(route: Extract<Route, { view: "pr" }>, source: string, target: string): string | null;
   /** The native page for a file at a commit, for "View file" links. */
   fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string | null;
 }

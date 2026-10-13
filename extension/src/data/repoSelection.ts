@@ -91,6 +91,15 @@ export function selectionScope(s: RepoSelection, favorites: readonly string[]): 
   return { projects: s.projects, repos: [...new Set([...s.repos, ...(s.favorites ? favorites : [])])] };
 }
 
+/** The one repository a selection lists, if it lists exactly one: where a new pull request should go. */
+export function singleRepo(s: RepoSelection, favorites: readonly string[], catalog: RepoCatalog): CatalogRepo | undefined {
+  const scope = selectionScope(s, favorites);
+  if (scope === "organization") return undefined;
+  const repos = catalog.flatMap((p) => p.repos);
+  const ids = new Set([...scope.repos, ...catalog.filter((p) => scope.projects.includes(p.id)).flatMap((p) => p.repos.map((r) => r.id))]);
+  return ids.size === 1 ? repos.find((r) => ids.has(r.id)) : undefined;
+}
+
 /** The picker button's text. */
 export function selectionLabel(s: RepoSelection, catalog: RepoCatalog): string {
   if (isAll(s)) return "All projects";

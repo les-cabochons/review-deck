@@ -7,7 +7,8 @@ export function useModal(ref: React.RefObject<HTMLElement>, onClose: () => void)
   close.current = onClose;
   React.useEffect(() => {
     const restore = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    // A field that autofocused inside keeps focus.
+    if (!ref.current?.contains(document.activeElement)) ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();

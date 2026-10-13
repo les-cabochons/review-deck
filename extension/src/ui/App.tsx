@@ -7,12 +7,12 @@ import { hubPatch, rememberPr } from "../data/hubCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { CommitsTab } from "./CommitsTab";
-import { MoreMenu } from "./controls";
 import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
 import { GroupingStatus } from "./GroupingStatus";
 import { OverviewTab } from "./OverviewTab";
+import { PrMenu, type PrMenuLinks } from "./PrMenu";
 import { StackBar, StackPanel } from "./stack/StackPanel";
 import { useStack } from "./stack/useStack";
 import { readPreference, writePreference } from "./preferences";
@@ -206,6 +206,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     }),
     [native, host, route],
   );
+  const menuLinks = React.useMemo<PrMenuLinks>(
+    () => ({ review: host.reviewUrl(route), native, createPr: (source, target) => host.createPrUrl(route, source, target) }),
+    [host, route, native],
+  );
 
   const selectTab = (id: TabId) => {
     setTab(id);
@@ -238,7 +242,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
             <HostLinks.Provider value={links}>
               <div className="review-page">
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
-                <PrHeader data={data} review={review} progress={progress} />
+                <PrHeader data={data} review={review} progress={progress} links={menuLinks} onToast={(message) => setToast({ message })} />
                 {stack && <StackBar view={stack} onOpen={openLayer} />}
                 <TabBar className="pr-tabs" selectedTabId={tab} onSelectedTabChanged={(id) => selectTab(id as TabId)} tabSize={TabSize.Tall}>
                   <Tab id="overview" name="Overview" />
@@ -363,7 +367,13 @@ const TimedToast: React.FC<{ spec: ToastSpec; onDone: () => void }> = ({ spec, o
   );
 };
 
-const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data, review, progress }) => {
+const PrHeader: React.FC<{
+  data: PrOverview;
+  review: ReviewModel | null;
+  progress: AnalysisProgress | null;
+  links: PrMenuLinks;
+  onToast: (message: string) => void;
+}> = ({ data, review, progress, links, onToast }) => {
   const { pr } = data;
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
@@ -380,13 +390,7 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
           <ReviewButton vote={vote} />
           <VoteButton vote={vote} />
           <CompletionButton data={data} />
-          <MoreMenu
-            label="More actions"
-            subtle={false}
-            options={[
-              { id: "copy", text: "Copy pull request link", icon: "Link", onSelect: () => void navigator.clipboard?.writeText(location.href) },
-            ]}
-          />
+          <PrMenu pr={pr} links={links} onToast={onToast} />
         </div>
       </div>
       <div className="pr-meta">
