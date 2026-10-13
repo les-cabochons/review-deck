@@ -17,7 +17,7 @@ import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
-import { CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope } from "../../data/repoSelection";
+import { type CatalogRepo, CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope, singleRepo } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { RepoPicker } from "./RepoPicker";
@@ -57,6 +57,12 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [favorites, setFavorites] = React.useState<string[] | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
+  // Folded to an icon rail, like Azure DevOps' own left navigation.
+  const [railOnly, setRailOnly] = React.useState(() => readPreference<"open" | "rail">("hub.sidebar", "open") === "rail");
+  const toggleRail = () => {
+    setRailOnly(!railOnly);
+    writePreference("hub.sidebar", railOnly ? "open" : "rail");
+  };
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
   // Empty sections start closed; opening one only lasts until reload.
   const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
@@ -92,6 +98,11 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   // What the selection stands for; a saved list of projects and repositories doesn't wait for the breadcrumb.
   const resolved = selection && (!selection.current ? selection : context && resolveSelection(selection, context));
   const scope = resolved && favorites ? selectionScope(resolved, favorites) : null;
+  // New pull requests go to the one repository the selection lists, else to the Repos breadcrumb's repository.
+  const breadcrumbRepo: CatalogRepo | undefined = context?.repoId
+    ? (catalog?.flatMap((p) => p.repos).find((r) => r.id === context.repoId) ?? { id: context.repoId, name: context.repoId, projectId: context.projectId })
+    : undefined;
+  const newPrRepo = (resolved && catalog && favorites && singleRepo(resolved, favorites, catalog)) || breadcrumbRepo;
   // A string, so effects rerun only when the queries change.
   const scopeKey = scope && JSON.stringify(scope);
   const selectionKey = resolved && JSON.stringify(resolved);
@@ -265,7 +276,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
 
   let rowIndex = 0;
   return (
-    <div className="hub">
+    <div className={cx("hub", railOnly && "rail")}>
       <aside className="hub-sidebar">
         <nav aria-label="Inbox sections">
           <SidebarItem icon="Inbox" text="Inbox" count={sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)} active={filter === "inbox"} onClick={() => choose("inbox")} />
@@ -289,6 +300,15 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             Couldn't load your teams, so only reviews assigned to you directly are counted. {groupError}
           </p>
         )}
+        <button
+          className="hub-nav-item hub-sidebar-toggle"
+          onClick={toggleRail}
+          aria-expanded={!railOnly}
+          aria-label={railOnly ? "Expand navigation" : "Collapse navigation"}
+          title={railOnly ? "Expand navigation" : "Collapse navigation"}
+        >
+          <Icon iconName={railOnly ? "DoubleChevronRight" : "DoubleChevronLeft"} className="hub-nav-icon" />
+        </button>
       </aside>
 
       <main className="hub-main" ref={main}>
@@ -325,7 +345,9 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             onClick={load}
           />
           <span className="spacer" />
-          {source?.newPullRequestUrl && <Button text="New pull request" primary href={source.newPullRequestUrl} target="_top" />}
+          {source?.newPullRequestUrl && (
+            <Button text="New pull request" primary href={source.newPullRequestUrl(newPrRepo)} target="_top" />
+          )}
           {/* Shown while the list or row details are loading; rows on screen may be from the last visit until then. */}
           {refreshing && prs && <div className="hub-progress" role="progressbar" aria-label="Updating pull requests" />}
         </div>
@@ -399,7 +421,7 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
   attention,
   onClick,
 }) => (
-  <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined}>
+  <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined} title={text}>
     <Icon iconName={icon} className="hub-nav-icon" />
     <span className="text">{text}</span>
     {count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
@@ -468,13 +490,19 @@ const PrRow: React.FC<{
             <TagPill key={l} name={l} />
           ))}
         </div>
-        {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
-        {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
+      </div>
+      {/* A line of its own under the title, as wide as the row: the columns beside the title don't narrow it. */}
+      {/* Azure DevOps' wording with the branches: "Alex Trépanier requested feature/x into main". */}
+      {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
+      <div className="pr-sub-line">
         <div className="pr-sub muted">
           {stackChip}
-          <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
+          <span className="pr-request" title={`!${pr.id}: ${pr.sourceBranch} → ${pr.targetBranch}`}>
             <span className="who">{pr.createdBy.id === me ? "You" : pr.createdBy.displayName}</span>
-            <span className="requested">requested !{pr.id} into</span>
+            <span className="requested">requested</span>
+            <Icon iconName="OpenSource" className="branch-icon" />
+            <span className="branch-inline source">{pr.sourceBranch}</span>
+            <span className="requested">into</span>
             <Icon iconName="OpenSource" className="branch-icon" />
             <span className="branch-inline">{pr.targetBranch}</span>
           </span>

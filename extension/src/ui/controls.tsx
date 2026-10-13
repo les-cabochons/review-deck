@@ -18,6 +18,8 @@ export interface MenuOption {
   /** Renders a divider instead of an item. */
   divider?: boolean;
   onSelect?: () => void;
+  /** Makes the item a link; it opens in the whole Azure DevOps page, not the extension's frame. */
+  href?: string;
 }
 
 let menuIds = 0;
@@ -37,6 +39,8 @@ function toItems(options: MenuOption[]): IMenuItem[] {
           iconProps: o.icon ? { iconName: o.icon, className: o.iconClassName } : undefined,
           checked: o.checked,
           disabled: o.disabled,
+          href: o.href,
+          target: o.href ? "_top" : undefined,
           onActivate: () => o.onSelect?.(),
         },
   );

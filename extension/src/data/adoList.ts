@@ -4,7 +4,7 @@ import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { activeComments, type DetailScope, type MyGroup, policyFacts, type PrListSource, type PrSummary } from "./list";
 import { policyStatus } from "./adoSource";
-import type { CatalogProject, ListScope, RepoCatalog } from "./repoSelection";
+import type { CatalogProject, CatalogRepo, ListScope, RepoCatalog } from "./repoSelection";
 import { asVote, type Identity, identityImageUrl, type PrStatus, threadStatusFromNumber } from "./model";
 
 const PR_STATUS: Record<number, PrStatus> = { 1: "active", 2: "abandoned", 3: "completed" };
@@ -23,8 +23,13 @@ export class AdoPrListSource implements PrListSource {
     private readonly projectId: string,
     readonly currentUser: Identity,
     private readonly hostUrl: string,
-    readonly newPullRequestUrl?: string,
+    private readonly defaultRepoUrl: string,
   ) {}
+
+  newPullRequestUrl(repo?: CatalogRepo): string {
+    // Ids work in place of names, and say which project a repository picked from another one lives in.
+    return repo ? `${this.hostUrl}${repo.projectId}/_git/${repo.id}/pullrequestcreate` : `${this.defaultRepoUrl}/pullrequestcreate`;
+  }
 
   get currentProjectId(): string {
     return this.projectId;

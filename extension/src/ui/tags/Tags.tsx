@@ -86,7 +86,7 @@ export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string
             const isActive = active !== null && tagKey(active) === tagKey(t.name);
             return (
               <li key={t.name}>
-                <button className={cx("hub-tag", isActive && "active")} aria-pressed={isActive} onClick={() => onSelect(isActive ? null : t.name)} title={t.description || undefined}>
+                <button className={cx("hub-tag", isActive && "active")} aria-pressed={isActive} onClick={() => onSelect(isActive ? null : t.name)} title={t.description || t.name}>
                   <span className="tag-dot" style={{ background: t.color }} />
                   <span className="text">{t.name}</span>
                   {!!counts.get(tagKey(t.name)) && <span className="count">{counts.get(tagKey(t.name))}</span>}

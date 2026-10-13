@@ -1,5 +1,7 @@
 import {
   asVote,
+  branchName,
+  branchRef,
   isLineAnchor,
   MERGE_STRATEGIES,
   mergeStatusFromNumber,
@@ -59,6 +61,8 @@ export class MockPrSource implements PrSource {
         usersLiked: [],
       };
     };
+    let following = false;
+    const favorites = new Set<string>();
     const active = (doing: string) => {
       const pr = this.snap.pullRequest;
       if (pr.status !== PR_STATUS_NUMBER.active) throw new Error(`Only an active pull request can be ${doing}.`);
@@ -151,6 +155,24 @@ export class MockPrSource implements PrSource {
       },
       setDescription: async (description) => {
         this.snap.pullRequest.description = description;
+      },
+      share: async (receivers) => {
+        if (!receivers.length) throw new Error("Add at least one person to share with.");
+      },
+      isFollowing: async () => following,
+      setFollowing: async (on) => void (following = on),
+      isFavoriteBranch: async (branch) => favorites.has(branch),
+      setFavoriteBranch: async (branch, on) => void (on ? favorites.add(branch) : favorites.delete(branch)),
+      searchBranches: async (query) => {
+        const { sourceRefName, targetRefName } = this.snap.pullRequest;
+        const names = [...new Set(["main", "uat", "release/00-next", ...[sourceRefName, targetRefName].map(branchName)])];
+        return names.filter((n) => n.toLowerCase().includes(query.trim().toLowerCase())).sort();
+      },
+      changeTarget: async (branch) => {
+        this.snap.pullRequest.targetRefName = branchRef(branch);
+      },
+      cherryPick: async (onto, topic) => {
+        if (!onto.trim() || !topic.trim()) throw new Error("Pick a target branch and name the new branch.");
       },
       // The same checks Azure DevOps makes before it merges.
       complete: async (options, headCommit) => {
