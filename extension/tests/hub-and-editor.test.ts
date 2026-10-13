@@ -97,6 +97,16 @@ test("Given an @ being typed, then the query is detected and replaced by an Azur
   assert.equal(done.start, done.text.length);
 });
 
+test("Given my PR, then it is approved only once it needs no more reviews", () => {
+  const approved = (overrides: Partial<PrSummary>) => sectionOf(pr(1, { createdBy: me, ...overrides }), me);
+  assert.equal(approved({ reviewers: [reviewer(other, 10), reviewer(me, 0, true)] }), "waiting", "a required reviewer hasn't voted");
+  assert.equal(approved({ reviewers: [reviewer(other, 5, true), reviewer(me, 0)] }), "approved", "every required reviewer approved");
+  assert.equal(approved({ reviewers: [reviewer(other, 10)], reviewPolicy: "unmet" }), "waiting", "the minimum number of reviewers isn't met");
+  assert.equal(approved({ reviewers: [reviewer(other, 10), reviewer(me, 0)], reviewPolicy: "met" }), "approved");
+  assert.equal(approved({ reviewers: [reviewer(other, 0, true)], reviewPolicy: "met" }), "waiting", "required reviewers block even without a policy");
+  assert.equal(approved({ reviewers: [reviewer(other, 10)], reviewPolicy: "none" }), "approved");
+});
+
 test("Given a review requested from one of my teams, then it needs my review until I vote myself", () => {
   const team: Identity = { id: "team-web", displayName: "[repo]\Web", uniqueName: "repo\Web" };
   const groups = new Set([team.id]);

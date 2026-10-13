@@ -47,11 +47,15 @@ export const PierreDiff: React.FC<Props> = ({ metadata, mode, annotations, rende
     instance.current = diff;
     return () => { diff.cleanUp(); instance.current = null; };
   }, [metadata]);
+  const renderedMode = React.useRef(mode);
   React.useLayoutEffect(() => {
     const diff = instance.current;
     if (!diff || !host.current) return;
     diff.setOptions(options());
-    diff.render({ fileDiff: metadata, containerWrapper: host.current, lineAnnotations: annotations });
+    // Pierre skips re-rendering an unchanged diff, so a new diffStyle alone needs forceRender.
+    const forceRender = renderedMode.current !== mode;
+    renderedMode.current = mode;
+    diff.render({ fileDiff: metadata, containerWrapper: host.current, lineAnnotations: annotations, forceRender });
   }, [metadata, mode, annotations, theme, !!onComment]);
 
   return <>

@@ -1,7 +1,6 @@
 // Azure DevOps-native buttons used across pages: a dropdown button ("Inline ▾") and split buttons
 // ("Approve | ▾"). They wrap azure-devops-ui so look, keyboard handling and menus match the host.
 import { MenuButton, MenuItemType, type IMenuItem } from "azure-devops-ui/Menu";
-import { Button } from "azure-devops-ui/Button";
 import { SplitButton } from "azure-devops-ui/SplitButton";
 import * as React from "react";
 
@@ -9,6 +8,8 @@ export interface MenuOption {
   id: string;
   text: string;
   icon?: string;
+  /** Extra class on the icon, e.g. to draw it as a coloured badge. */
+  iconClassName?: string;
   secondaryText?: string;
   checked?: boolean;
   disabled?: boolean;
@@ -30,7 +31,7 @@ function toItems(options: MenuOption[]): IMenuItem[] {
           id: o.id,
           text: o.text,
           secondaryText: o.secondaryText,
-          iconProps: o.icon ? { iconName: o.icon } : undefined,
+          iconProps: o.icon ? { iconName: o.icon, className: o.iconClassName } : undefined,
           checked: o.checked,
           disabled: o.disabled,
           onActivate: () => o.onSelect?.(),
@@ -85,13 +86,13 @@ export const SplitActionButton: React.FC<{
   );
 };
 
-/** Icon-only "⋯" menu for comment and row actions. */
-export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean }> = ({ label, options, disabled }) => {
+/** Icon-only "⋯" menu for comment and row actions; `subtle={false}` for the filled page-header one. */
+export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean; subtle?: boolean }> = ({ label, options, disabled, subtle = true }) => {
   const id = useMenuId("more");
   return (
     <MenuButton
       className="more-menu"
-      subtle
+      subtle={subtle}
       hideDropdownIcon
       iconProps={{ iconName: "More" }}
       ariaLabel={label}
@@ -101,25 +102,54 @@ export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled
   );
 };
 
-/**
- * A two-state view toggle ("Side by side", "Group by concern"): one click flips it and the pressed
- * look shows it's on, like Azure DevOps' own view toggles. No menu.
- */
-export const ToggleButton: React.FC<{
+export interface ModeOption<T extends string> {
+  value: T;
   text: string;
   icon: string;
-  pressed: boolean;
-  onToggle: (pressed: boolean) => void;
+}
+
+/**
+ * A two-way view switch like Azure DevOps' "Inline ▾" diff toggle: the button names the current mode,
+ * one click flips to the other, and the chevron lists both.
+ */
+export function ModeToggle<T extends string>({
+  options,
+  value,
+  onChange,
+  menuLabel,
+  tooltip,
+  disabled,
+}: {
+  options: [ModeOption<T>, ModeOption<T>];
+  value: T;
+  onChange: (value: T) => void;
+  menuLabel: string;
+  /** Overrides the default "Currently in 'X' mode. Click to toggle to 'Y' mode." */
   tooltip?: string;
   disabled?: boolean;
-}> = ({ text, icon, pressed, onToggle, tooltip, disabled }) => (
-  <Button
-    className={pressed ? "toggle-button pressed" : "toggle-button"}
-    text={text}
-    iconProps={{ iconName: icon }}
-    ariaPressed={pressed}
-    tooltipProps={tooltip ? { text: tooltip } : undefined}
-    disabled={disabled}
-    onClick={() => onToggle(!pressed)}
-  />
-);
+}): React.ReactElement {
+  const id = useMenuId("mode");
+  const current = options.find((o) => o.value === value) ?? options[0];
+  const other = options.find((o) => o !== current)!;
+  return (
+    <SplitButton
+      className="mode-toggle"
+      disabled={disabled}
+      buttonProps={{
+        text: current.text,
+        iconProps: { iconName: current.icon },
+        tooltipProps: { text: tooltip ?? `Currently in '${current.text}' mode. Click to toggle to '${other.text}' mode.` },
+        onClick: () => onChange(other.value),
+      }}
+      menuButtonProps={{
+        ariaLabel: menuLabel,
+        contextualMenuProps: {
+          menuProps: {
+            id,
+            items: toItems(options.map((o) => ({ id: o.value, text: o.text, icon: o.icon, onSelect: () => onChange(o.value) }))),
+          },
+        },
+      }}
+    />
+  );
+}

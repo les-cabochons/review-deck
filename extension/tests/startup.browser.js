@@ -51,10 +51,12 @@ async page => {
   await page.getByRole('tab',{name:'Overview',exact:true}).waitFor();
   await page.getByRole('tab',{name:/Files/}).click();
   await page.locator('.files-content').waitFor();
-  await page.getByRole('radio',{name:'Side by side',exact:true}).click();
+  const toggles=page.locator('.files-toolbar .mode-toggle');
+  await toggles.nth(1).locator('button').first().click();
   await page.locator('.diff-split').first().waitFor();
-  await page.getByRole('radio',{name:'A–Z',exact:true}).click();
-  if (await page.getByRole('radio',{name:'A–Z',exact:true}).getAttribute('aria-checked')!=='true') throw new Error('File view did not change with blocked storage');
+  await page.getByRole('button',{name:'File view',exact:true}).click();
+  await page.getByRole('menuitem',{name:'Files A–Z'}).click();
+  if ((await toggles.nth(0).locator('button').first().innerText()).trim()!=='Files A–Z') throw new Error('File view did not change with blocked storage');
   if (await page.locator('.error-box').count()) throw new Error(await page.locator('.error-box').first().innerText());
   const styled=await page.locator('.files-layout').evaluate(node=>getComputedStyle(node).display);
   if (!['grid','flex'].includes(styled)) throw new Error('Packaged stylesheet did not load');

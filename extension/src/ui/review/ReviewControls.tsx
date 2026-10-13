@@ -7,27 +7,35 @@ import { useReviewActions } from "../ReviewActions";
 import { cx, plural, VOTE_INFO } from "../util";
 import { usePendingReview } from "./PendingReview";
 
-const VOTE_MENU: Vote[] = [10, 5, -5, -10];
+// Azure DevOps' vote menu: imperative labels, each with its vote's coloured badge.
+const VOTE_MENU: { vote: Vote; text: string }[] = [
+  { vote: 10, text: "Approve" },
+  { vote: 5, text: "Approve with suggestions" },
+  { vote: -5, text: "Wait for author" },
+  { vote: -10, text: "Reject" },
+];
 
 /** The Azure DevOps vote control: "Approve" with the other votes behind the chevron. */
 export const VoteButton: React.FC<{ vote: Vote }> = ({ vote }) => {
   const { actions, disabled, run } = useReviewActions();
   const set = (v: Vote) => v !== vote && void run(() => actions.setVote(v));
   const options: MenuOption[] = [
-    ...VOTE_MENU.map((v) => ({ id: String(v), text: VOTE_INFO[String(v)].label, icon: VOTE_INFO[String(v)].icon, checked: v === vote, onSelect: () => set(v) })),
+    ...VOTE_MENU.map(({ vote: v, text }) => {
+      const info = VOTE_INFO[String(v)];
+      return { id: String(v), text, icon: info.icon, iconClassName: `vote-badge tone-${info.tone}`, onSelect: () => set(v) };
+    }),
     { id: "div", text: "", divider: true },
-    { id: "reset", text: "Reset feedback", icon: "Undo", disabled: vote === 0, onSelect: () => set(0) },
+    { id: "reset", text: "Reset feedback", icon: "CircleFill", iconClassName: "vote-reset", disabled: vote === 0, onSelect: () => set(0) },
   ];
-  const label = vote === 0 ? "Approve" : VOTE_INFO[String(vote)].label;
+  // Like Azure DevOps, the button always reads "Approve": the current vote shows on the reviewer list.
   return (
     <SplitActionButton
-      className={cx("vote-button", vote !== 0 && `voted tone-${VOTE_INFO[String(vote)].tone}`)}
-      text={label}
-      icon={vote === 0 ? undefined : VOTE_INFO[String(vote)].icon}
-      onClick={() => set(vote === 0 ? 10 : vote)}
+      className="vote-button"
+      text="Approve"
+      onClick={() => set(10)}
       options={options}
       disabled={disabled}
-      menuLabel="More vote options"
+      menuLabel="More actions"
     />
   );
 };

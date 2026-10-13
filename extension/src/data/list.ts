@@ -20,6 +20,11 @@ export interface PrSummary {
   checks?: "passing" | "failing" | "pending" | "none";
   /** Active (unresolved) comment threads. */
   comments?: number;
+  /**
+   * Whether the target branch's blocking reviewer policies (minimum number of reviewers, required reviewers) pass;
+   * "none" when no such policy applies. Builds, comments and merge conflicts don't count.
+   */
+  reviewPolicy?: "met" | "unmet" | "none";
   /** Latest auto-restack status the backend posted on the PR (backend/src/stacks), if any. */
   restack?: { state: "pending" | "succeeded" | "failed"; description: string; date: Date };
   /** False when the PR cannot be opened in this environment (local mode without a snapshot). */
@@ -42,7 +47,7 @@ export interface PrListSource {
   /** Teams the current user belongs to. */
   myGroups(): Promise<MyGroup[]>;
   /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
-  details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack">>>;
+  details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack" | "reviewPolicy">>>;
   /** Link to the native Azure DevOps page for creating a pull request, when available. */
   newPullRequestUrl?: string;
 }
@@ -99,6 +104,20 @@ export class MockPrListSource implements PrListSource {
   async myGroups(): Promise<MyGroup[]> {
     return this.groups;
   }
+
+  /** In-memory tag rename (to a name) or deletion (null) across the demo's pull requests. */
+  replaceLabel(from: string, to: string | null): void {
+    const key = from.toLowerCase();
+    for (const row of this.rows) {
+      const kept = row.labels.filter((l) => l.toLowerCase() !== key);
+      if (kept.length !== row.labels.length) row.labels = to ? [...kept, to] : kept;
+    }
+  }
+
+  /** Every label on the demo's pull requests. */
+  get labels(): string[] {
+    return this.rows.flatMap((r) => r.labels);
+  }
 }
 
 // ---------- inbox sections (Graphite-style) ----------
@@ -142,13 +161,24 @@ export function sectionOf(pr: PrSummary, me: Identity, groups: ReadonlySet<strin
   if (mine) {
     if (pr.isDraft) return "drafts";
     if (pr.reviewers.some((r) => r.vote < 0)) return "returned";
-    if (pr.reviewers.some((r) => r.vote >= 5 && !groups.has(r.id))) return "approved";
+    if (reviewsDone(pr, groups)) return "approved";
     return "waiting";
   }
   if (pr.isDraft) return "other";
   if (myVote && myVote.vote !== 0) return "reviewed";
   if (myVote || requestedVia(pr, groups).length > 0) return "needs-review";
   return "other";
+}
+
+/**
+ * True when the PR needs no more reviews, even if it can't merge yet (failing build, conflicts): every required
+ * reviewer approved, and the branch's reviewer policies pass, or without them at least one other person approved.
+ */
+function reviewsDone(pr: PrSummary, groups: ReadonlySet<string>): boolean {
+  const approves = (r: Reviewer) => r.vote >= 5;
+  if (!pr.reviewers.filter((r) => r.isRequired).every(approves)) return false;
+  if (pr.reviewPolicy && pr.reviewPolicy !== "none") return pr.reviewPolicy === "met";
+  return pr.reviewers.some((r) => approves(r) && !groups.has(r.id));
 }
 
 export function involvesMe(pr: PrSummary, me: Identity, groups: ReadonlySet<string>): boolean {

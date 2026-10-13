@@ -1,10 +1,12 @@
 import { MockPrListSource } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
+import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService } from "../review/backend";
 import { type AppHost, BACKEND_URL, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "semantic-pr.local.projectSettings";
+const TAGS_KEY = "semantic-pr.local.tagStyles";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -102,9 +104,27 @@ export class LocalHost implements AppHost {
   /** No Azure DevOps here: the setting is saved, and nothing calls the backend. */
   async syncRestackHooks(): Promise<void> {}
 
-  /** The same bundle, as the dev shell's "Project settings" page. */
-  settingsUrl(): string {
-    return `settings.html${location.search}`;
+  /** Styles in localStorage; renames and deletions change the demo's pull requests in memory. */
+  tags(): TagStore {
+    const read = (): TagStyles => {
+      try {
+        return JSON.parse(localStorage.getItem(TAGS_KEY) ?? "{}") as TagStyles;
+      } catch {
+        return {};
+      }
+    };
+    const write = (styles: TagStyles) => localStorage.setItem(TAGS_KEY, JSON.stringify(styles));
+    return {
+      list: async () => mergeTags(this.list.labels, read()),
+      save: async (previous, tag) => {
+        if (previous && previous !== tag.name) this.list.replaceLabel(previous, tag.name.trim());
+        write(withTag(read(), previous, tag));
+      },
+      remove: async (name) => {
+        this.list.replaceLabel(name, null);
+        write(withoutTag(read(), name));
+      },
+    };
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {

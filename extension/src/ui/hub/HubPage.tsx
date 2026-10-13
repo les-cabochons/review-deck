@@ -15,8 +15,11 @@ import {
 } from "../../data/list";
 import { DropdownButton } from "../controls";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
-import { stackIndex } from "../../../../src/stack/stacks";
+import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { readPreference, writePreference } from "../preferences";
+import { StackDialog } from "../stack/StackDialog";
+import { tagKey } from "../../data/tags";
+import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
@@ -31,8 +34,11 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [repo, setRepo] = React.useState<string | null>(null);
   const [current, setCurrent] = React.useState<{ id: string; name: string } | null | undefined>(undefined);
   const [scope, setScope] = React.useState<ListScope>("project");
+  const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
+  // Empty sections start closed; opening one only lasts until reload.
+  const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
   const [details, setDetails] = React.useState<Map<number, Partial<PrSummary>>>(new Map());
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
@@ -44,6 +50,9 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   }, [host]);
   const stacks = React.useMemo(() => (prs && trunks ? stackIndex(prs, trunks) : new Map()), [prs, trunks]);
   const [groupError, setGroupError] = React.useState<string | null>(null);
+  const [stackOpen, setStackOpen] = React.useState<StackPosition<PrSummary> | null>(null);
+  const showStack = (pr: PrSummary) => prs && trunks && setStackOpen(stackFor(pr, prs, trunks));
+  const closeStack = React.useCallback(() => setStackOpen(null), []);
 
   React.useEffect(() => {
     host.currentRepository().then(
@@ -55,7 +64,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     );
   }, [host]);
 
-  const load = React.useCallback(() => {
+  const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
+  // Drop the tag filter when that tag is renamed or deleted.
+  React.useEffect(() => {
+    if (tag && tagsByKey.size && !tagsByKey.has(tagKey(tag))) setTag(null);
+  }, [tag, tagsByKey]);
+  const loadPrs = React.useCallback(() => {
     setError(null);
     host
       .listSource()
@@ -76,9 +90,14 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
       })
       .catch((e: Error) => setError(e.message));
   }, [host, scope]);
+  const load = () => {
+    reloadTags();
+    loadPrs();
+  };
+  // Also after a tag is renamed or deleted, so rows show the new names.
   React.useEffect(() => {
-    load();
-  }, [load]);
+    loadPrs();
+  }, [loadPrs, tagRevision]);
   React.useEffect(() => {
     host.setTitle("Pull requests");
   }, [host]);
@@ -92,17 +111,26 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     if (current && !byId.has(current.id)) named.unshift([current.id, current.name]);
     return named;
   }, [prs, current]);
-  const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query));
+  const visible = (prs ?? [])
+    .filter((p) => (!repo || p.repository.id === repo) && (!tag || p.labels.some((l) => tagKey(l) === tagKey(tag))) && matchesQuery(p, query))
+    .map((p) => ({ ...p, ...details.get(p.id) }));
+  const tagCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of prs ?? []) if (p.status === "active") for (const l of p.labels) counts.set(tagKey(l), (counts.get(tagKey(l)) ?? 0) + 1);
+    return counts;
+  }, [prs]);
   const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
   const sections = inboxSections(visible, me, groupIds);
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
   const rows = shown.flatMap((s) => (collapsed.has(s.id) && filter === "inbox" ? [] : s.prs));
 
-  // Lazily enrich visible rows (checks, comment counts) where the host needs extra calls per PR.
+  // Lazily enrich visible rows (checks, comment counts) where the host needs extra calls per PR. Your open PRs
+  // come first even when collapsed: their reviewer policies decide between Approved and Waiting for review.
+  const enrich = [...new Map([...visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft), ...rows].map((p) => [p.id, p])).values()];
   React.useEffect(() => {
     if (!source?.details) return;
     let cancelled = false;
-    const todo = rows.filter((p) => !details.has(p.id)).slice(0, 24);
+    const todo = enrich.filter((p) => !details.has(p.id)).slice(0, 24);
     if (todo.length === 0) return;
     const queue = [...todo];
     const worker = async () => {
@@ -115,7 +143,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     return () => {
       cancelled = true;
     };
-  }, [source, rows.map((r) => r.id).join(",")]);
+  }, [source, enrich.map((r) => r.id).join(",")]);
 
   const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
   const showAll = () => {
@@ -130,6 +158,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (stackOpen) return;
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "/" && !typing) {
         e.preventDefault();
@@ -152,7 +181,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   });
   React.useEffect(() => {
     setSelected(0);
-  }, [filter, query, repo]);
+  }, [filter, query, repo, tag]);
   React.useEffect(() => {
     document.querySelector(".pr-row.selected")?.scrollIntoView({ block: "nearest" });
   }, [selected]);
@@ -161,10 +190,18 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     setFilter(f);
     writePreference("hub.filter", f);
   };
-  const toggle = (id: SectionId) => {
+  const isCollapsed = (s: { id: SectionId; prs: PrSummary[] }) => collapsed.has(s.id) || (s.prs.length === 0 && !openedEmpty.has(s.id));
+  const toggle = (s: { id: SectionId; prs: PrSummary[] }) => {
+    if (s.prs.length === 0 && !collapsed.has(s.id)) {
+      const next = new Set(openedEmpty);
+      if (next.has(s.id)) next.delete(s.id);
+      else next.add(s.id);
+      setOpenedEmpty(next);
+      return;
+    }
     const next = new Set(collapsed);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (next.has(s.id)) next.delete(s.id);
+    else next.add(s.id);
     setCollapsed(next);
     writePreference("hub.collapsed", JSON.stringify([...next]));
   };
@@ -188,21 +225,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             />
           ))}
         </nav>
-        {groups.length > 0 && (
-          <p className="hub-sidebar-note muted" title={groups.map((g) => g.name).join(", ")}>
-            Includes reviews requested from your {groups.length === 1 ? `team ${groups[0].name}` : `${groups.length} teams`}.
-          </p>
-        )}
+        <div className="hub-sidebar-sep" />
+        <SidebarTags counts={tagCounts} active={tag} onSelect={setTag} />
         {groupError && (
           <p className="hub-sidebar-note tone-warning" role="status">
             Couldn't load your teams, so only reviews assigned to you directly are counted. {groupError}
           </p>
-        )}
-        {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
-        {host.settingsUrl() && (
-          <a className="hub-settings-link" href={host.settingsUrl()!} target={host.kind === "ado" ? "_top" : undefined}>
-            <Icon iconName="Settings" /> Project settings
-          </a>
         )}
       </aside>
 
@@ -248,15 +276,15 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
         {prs &&
           current !== undefined &&
           shown.map((s) => {
-            const isCollapsed = filter === "inbox" && collapsed.has(s.id);
+            const closed = filter === "inbox" && isCollapsed(s);
             return (
               <section key={s.id} className={cx("inbox-section", `section-${s.id}`)}>
-                <button className="inbox-section-header" onClick={() => (filter === "inbox" ? toggle(s.id) : undefined)} aria-expanded={!isCollapsed}>
-                  {filter === "inbox" && <Icon iconName={isCollapsed ? "ChevronRight" : "ChevronDown"} />}
+                <button className="inbox-section-header" onClick={() => (filter === "inbox" ? toggle(s) : undefined)} aria-expanded={!closed}>
+                  {filter === "inbox" && <Icon iconName={closed ? "ChevronRight" : "ChevronDown"} />}
                   <span className="title">{s.title}</span>
                   <span className="count-pill">{s.prs.length}</span>
                 </button>
-                {!isCollapsed &&
+                {!closed &&
                   (s.prs.length === 0 ? (
                     <p className="inbox-empty muted">{query ? "No matches." : s.empty}</p>
                   ) : (
@@ -266,12 +294,13 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                         return (
                           <PrRow
                             key={pr.id}
-                            pr={{ ...pr, ...details.get(pr.id) }}
+                            pr={pr}
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             stack={stacks.get(pr.id)}
                             selected={index === selected}
                             onOpen={() => open(pr)}
+                            onStack={() => showStack(pr)}
                             onHover={() => setSelected(index)}
                           />
                         );
@@ -283,6 +312,17 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
           })}
         {prs && current !== undefined && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
       </main>
+      {stackOpen && (
+        <StackDialog
+          position={stackOpen}
+          details={details}
+          onClose={closeStack}
+          onOpen={(pr) => {
+            setStackOpen(null);
+            open(pr);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -311,27 +351,25 @@ const PrRow: React.FC<{
   stack?: { index: number; size: number; bottomId: number };
   selected: boolean;
   onOpen: () => void;
+  /** Show the whole stack, from the stack chip. */
+  onStack: () => void;
   onHover: () => void;
-}> = ({
-  pr,
-  me,
-  via,
-  stack,
-  selected,
-  onOpen,
-  onHover,
-}) => {
+}> = ({ pr, me, via, stack, selected, onOpen, onStack, onHover }) => {
   const state = STATE_ICON[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
   const when = pr.closedDate ?? pr.updatedDate ?? pr.creationDate;
   const stackChip = stack && (
-    <span
-              className={cx("stack-chip", pr.restack?.state === "failed" && "warn")}
-              title={`Layer ${stack.index} of ${stack.size} in a stack (bottom: !${stack.bottomId})${pr.restack?.state === "failed" ? `. ${pr.restack.description}` : ""}`}
-            >
-              <Icon iconName="BranchFork2" /> {stack.index}/{stack.size}
-            </span>
+    <button
+      className={cx("stack-chip", pr.restack?.state === "failed" && "warn")}
+      title={`Layer ${stack.index} of ${stack.size} in a stack (bottom: !${stack.bottomId})${pr.restack?.state === "failed" ? `. ${pr.restack.description}` : ""}. Click to see the whole stack.`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onStack();
+      }}
+    >
+      <Icon iconName="BranchFork2" /> {stack.index}/{stack.size}
+    </button>
   );
   return (
     <div
@@ -358,27 +396,28 @@ const PrRow: React.FC<{
           >
             {pr.title}
           </a>
+          {/* Like GitHub: tags follow the title and wrap with it, never truncated. */}
+          {pr.labels.map((l) => (
+            <TagPill key={l} name={l} />
+          ))}
         </div>
         {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
+        {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
         <div className="pr-sub muted">
+          {stackChip}
           <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
-            {pr.createdBy.id === me ? "You" : pr.createdBy.displayName} requested !{pr.id} into{" "}
+            <span className="who">{pr.createdBy.id === me ? "You" : pr.createdBy.displayName}</span>
+            <span className="requested">requested !{pr.id} into</span>
             <Icon iconName="OpenSource" className="branch-icon" />
             <span className="branch-inline">{pr.targetBranch}</span>
           </span>
           <span className="pr-repo">{pr.repository.name}</span>
-          {stackChip}
           {via.length > 0 && !pr.reviewers.some((r) => r.id === me) && (
             <span className="via-team" title={`Review requested from ${via.map((v) => v.displayName).join(", ")}`}>
               via {via[0].displayName}
               {via.length > 1 ? ` +${via.length - 1}` : ""}
             </span>
           )}
-          {pr.labels.slice(0, 3).map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
-          ))}
         </div>
       </div>
       <span className={cx("review-state", `tone-${review.tone}`)}>{review.label}</span>
@@ -420,7 +459,12 @@ const PrRow: React.FC<{
             {shortAgo(when)}
           </span>
         </div>
-        <div className="m-title">{pr.title}</div>
+        <div className="m-title">
+          {pr.title}
+          {pr.labels.map((l) => (
+            <TagPill key={l} name={l} />
+          ))}
+        </div>
         <div className="m-bottom">
           <span className="m-tags">
           <span className={cx("m-review", `tone-${review.tone}`)}>{review.label}</span>
@@ -434,11 +478,6 @@ const PrRow: React.FC<{
               <Icon iconName="Comment" /> {pr.comments}
             </span>
           )}
-          {pr.labels.slice(0, 2).map((l) => (
-            <span key={l} className="label-pill">
-              {l}
-            </span>
-          ))}
           </span>
           {pr.size && (
             <span className="m-size">

@@ -347,6 +347,7 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
           <VoteButton vote={vote} />
           <SplitActionButton
             text="Complete"
+            icon="BranchPullRequest"
             primary
             disabled
             onClick={() => {}}
@@ -359,6 +360,7 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
           />
           <MoreMenu
             label="More actions"
+            subtle={false}
             options={[
               { id: "copy", text: "Copy pull request link", icon: "Link", onSelect: () => void navigator.clipboard?.writeText(location.href) },
               { id: "todo", text: todo, disabled: true },

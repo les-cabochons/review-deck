@@ -68,7 +68,7 @@ export class AdoPrListSource implements PrListSource {
     return teams.map((t) => ({ id: t.id, name: t.name }));
   }
 
-  async details(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "restack">>> {
+  async details(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "restack" | "reviewPolicy">>> {
     const project = pr.repository.projectId;
     const [threads, evaluations, statuses] = await Promise.all([
       this.git.getThreads(pr.repository.id, pr.id, project).catch(() => []),
@@ -89,7 +89,11 @@ export class AdoPrListSource implements PrListSource {
           : states.some((s) => s === 0 || s === 1)
             ? "pending"
             : "passing";
-    return { comments, checks, restack: latestRestack(statuses) };
+    const reviews = evaluations.filter(
+      (e) => e.configuration?.isBlocking && /minimum number of reviewers|required reviewers/i.test(e.configuration?.type?.displayName ?? "") && (e.status as number) !== 4,
+    );
+    const reviewPolicy: PrSummary["reviewPolicy"] = reviews.length === 0 ? "none" : reviews.every((e) => (e.status as number) === 2) ? "met" : "unmet";
+    return { comments, checks, reviewPolicy, restack: latestRestack(statuses) };
   }
 
   private summary(p: GitPullRequest): PrSummary {
