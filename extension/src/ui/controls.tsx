@@ -9,6 +9,8 @@ export interface MenuOption {
   id: string;
   text: string;
   icon?: string;
+  /** Extra class on the icon, e.g. to draw it as a coloured badge. */
+  iconClassName?: string;
   secondaryText?: string;
   checked?: boolean;
   disabled?: boolean;
@@ -30,7 +32,7 @@ function toItems(options: MenuOption[]): IMenuItem[] {
           id: o.id,
           text: o.text,
           secondaryText: o.secondaryText,
-          iconProps: o.icon ? { iconName: o.icon } : undefined,
+          iconProps: o.icon ? { iconName: o.icon, className: o.iconClassName } : undefined,
           checked: o.checked,
           disabled: o.disabled,
           onActivate: () => o.onSelect?.(),
@@ -85,13 +87,13 @@ export const SplitActionButton: React.FC<{
   );
 };
 
-/** Icon-only "⋯" menu for comment and row actions. */
-export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean }> = ({ label, options, disabled }) => {
+/** Icon-only "⋯" menu for comment and row actions; `subtle={false}` for the filled page-header one. */
+export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean; subtle?: boolean }> = ({ label, options, disabled, subtle = true }) => {
   const id = useMenuId("more");
   return (
     <MenuButton
       className="more-menu"
-      subtle
+      subtle={subtle}
       hideDropdownIcon
       iconProps={{ iconName: "More" }}
       ariaLabel={label}

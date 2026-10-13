@@ -271,14 +271,36 @@ kbd {
   padding: 4px 6px;
   min-width: 0;
 }
-.vote-button.voted.tone-success .bolt-button:first-child {
-  color: var(--ok);
+.pr-actions .more-menu .bolt-button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
 }
-.vote-button.voted.tone-warning .bolt-button:first-child {
-  color: var(--warn);
+/* vote menu: each vote's filled, coloured circle, like Azure DevOps */
+.fabric-icon.vote-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
 }
-.vote-button.voted.tone-error .bolt-button:first-child {
-  color: var(--err);
+.vote-badge.tone-success {
+  background: var(--ok);
+}
+.vote-badge.tone-warning {
+  background: var(--warn);
+}
+.vote-badge.tone-error {
+  background: var(--err);
+}
+.fabric-icon.vote-reset {
+  color: var(--fg);
+  font-size: 16px;
 }
 
 /* ---------- PR hub (Graphite-style inbox) ---------- */
