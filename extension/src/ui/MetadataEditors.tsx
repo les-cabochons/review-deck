@@ -4,6 +4,8 @@ import { Button } from "azure-devops-ui/Button";
 import type { Identity, PrOverview } from "../data/model";
 import { MoreMenu } from "./controls";
 import { useReviewActions } from "./ReviewActions";
+import { TagPill, useProjectTags } from "./tags/Tags";
+import { tagKey } from "../data/tags";
 import { Avatar, cx, voteInfo } from "./util";
 
 export const Reviewers: React.FC<{ data: PrOverview }> = ({ data }) => {
@@ -140,7 +142,10 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
   const { actions, disabled, run } = useReviewActions();
   const [adding, setAdding] = React.useState(false);
   const [name, setName] = React.useState("");
+  const { tags, reload } = useProjectTags();
   const duplicate = data.pr.labels.some((l) => l.toLowerCase() === name.trim().toLowerCase());
+  // Offer the project's tags in their own spelling, so "Bug" doesn't become a second "bug".
+  const suggestions = tags.filter((t) => !data.pr.labels.some((l) => tagKey(l) === tagKey(t.name)));
   return (
     <section className="side-section">
       <h3>
@@ -154,13 +159,22 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
           className="tag-editor"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (name.trim() && !duplicate && (await run(() => actions.addTag(name)))) {
+            const existing = tags.find((t) => tagKey(t.name) === tagKey(name));
+            if (name.trim() && !duplicate && (await run(() => actions.addTag(existing?.name ?? name)))) {
+              reload();
               setAdding(false);
               setName("");
             }
           }}
         >
-          <input aria-label="Tag name" value={name} onChange={(e) => setName(e.target.value)} disabled={disabled} autoFocus />
+          <input aria-label="Tag name" list="project-tags" value={name} onChange={(e) => setName(e.target.value)} disabled={disabled} autoFocus />
+          <datalist id="project-tags">
+            {suggestions.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.description}
+              </option>
+            ))}
+          </datalist>
           <Button text="Add tag" primary type="submit" disabled={disabled || !name.trim() || duplicate} />
           {duplicate && <p className="muted">This tag is already added.</p>}
         </form>
@@ -170,8 +184,7 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
       ) : (
         <div className="tags">
           {data.pr.labels.map((label) => (
-            <span key={label} className="pill">
-              {label}{" "}
+            <TagPill key={label} name={label} className="removable">
               <button
                 className="icon-button"
                 aria-label={`Remove tag ${label}`}
@@ -180,7 +193,7 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
               >
                 <Icon iconName="Cancel" />
               </button>
-            </span>
+            </TagPill>
           ))}
         </div>
       )}

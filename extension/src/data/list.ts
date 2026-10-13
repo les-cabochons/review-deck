@@ -101,6 +101,20 @@ export class MockPrListSource implements PrListSource {
   async myGroups(): Promise<MyGroup[]> {
     return this.groups;
   }
+
+  /** In-memory tag rename (to a name) or deletion (null) across the demo's pull requests. */
+  replaceLabel(from: string, to: string | null): void {
+    const key = from.toLowerCase();
+    for (const row of this.rows) {
+      const kept = row.labels.filter((l) => l.toLowerCase() !== key);
+      if (kept.length !== row.labels.length) row.labels = to ? [...kept, to] : kept;
+    }
+  }
+
+  /** Every label on the demo's pull requests. */
+  get labels(): string[] {
+    return this.rows.flatMap((r) => r.labels);
+  }
 }
 
 // ---------- inbox sections (Graphite-style) ----------

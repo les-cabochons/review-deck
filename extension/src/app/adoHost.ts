@@ -2,6 +2,7 @@ import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
 import { AdoPrListSource } from "../data/adoList";
 import { AdoPrSource } from "../data/adoSource";
+import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
 import type { BackendService } from "../review/backend";
 import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
@@ -25,6 +26,7 @@ export class AdoHost implements AppHost {
   private readonly project = SDK.getWebContext().project;
   private readonly hostUrl: string;
   private dataManager: Promise<IExtensionDataManager> | null = null;
+  private tagStore: AdoTagStore | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
@@ -119,6 +121,11 @@ export class AdoHost implements AppHost {
     }
   }
 
+  tags(): AdoTagStore {
+    this.tagStore ??= new AdoTagStore({ hostUrl: this.hostUrl, projectId: this.project.id, token: () => SDK.getAccessToken(), data: () => this.data() });
+    return this.tagStore;
+  }
+
   private data(): Promise<IExtensionDataManager> {
     this.dataManager ??= (async () => {
       const service = await SDK.getService<IExtensionDataService>(CommonServiceIds.ExtensionDataService);
@@ -126,11 +133,6 @@ export class AdoHost implements AppHost {
     })();
     this.dataManager.catch(() => (this.dataManager = null));
     return this.dataManager;
-  }
-
-  settingsUrl(): string {
-    const { publisherId, extensionId } = SDK.getExtensionContext();
-    return `${this.projectUrl()}/_settings/${publisherId}.${extensionId}.settings-hub`;
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {

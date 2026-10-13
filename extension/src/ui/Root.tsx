@@ -3,6 +3,7 @@ import { type AppHost, type Route, sameRoute } from "../app/host";
 import type { PrSource } from "../data/model";
 import { PrPage } from "./App";
 import { HubPage } from "./hub/HubPage";
+import { ProjectTagsProvider } from "./tags/Tags";
 
 /** Switches between the PR hub and a pull request without reloading the page. */
 export const Root: React.FC<{ host: AppHost }> = ({ host }) => {
@@ -17,8 +18,11 @@ export const Root: React.FC<{ host: AppHost }> = ({ host }) => {
     window.scrollTo(0, 0);
   }, [route]);
 
-  if (route.view === "hub") return <HubPage host={host} />;
-  return <PrRoute key={`${route.repo}/${route.pr}`} host={host} route={route} />;
+  return (
+    <ProjectTagsProvider host={host}>
+      {route.view === "hub" ? <HubPage host={host} /> : <PrRoute key={`${route.repo}/${route.pr}`} host={host} route={route} />}
+    </ProjectTagsProvider>
+  );
 };
 
 const PrRoute: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }> }> = ({ host, route }) => {
