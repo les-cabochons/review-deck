@@ -151,7 +151,7 @@ resource "azurerm_windows_function_app" "this" {
     minimum_tls_version = "1.2"
 
     application_stack {
-      node_version = "~22"
+      node_version = "~24"
     }
 
     cors {
