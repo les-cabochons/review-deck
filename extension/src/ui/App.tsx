@@ -7,7 +7,7 @@ import { hubPatch, rememberPr } from "../data/hubCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { CommitsTab } from "./CommitsTab";
-import { MoreMenu, SplitActionButton } from "./controls";
+import { MoreMenu } from "./controls";
 import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
@@ -18,6 +18,7 @@ import { useStack } from "./stack/useStack";
 import { readPreference, writePreference } from "./preferences";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
+import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
 import { ReviewButton, VoteButton } from "./review/ReviewControls";
 import { Avatar, cx, IdentityNames, plural, Time } from "./util";
 
@@ -337,11 +338,11 @@ const TimedToast: React.FC<{ spec: ToastSpec; onDone: () => void }> = ({ spec, o
   );
 };
 
-const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data: { pr }, review, progress }) => {
+const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progress: AnalysisProgress | null }> = ({ data, review, progress }) => {
+  const { pr } = data;
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
   const status = STATUS[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
-  const todo = "Completion arrives in milestone 3";
   const stats = review ? diffStats(review) : null;
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : undefined;
   return (
@@ -353,25 +354,12 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
         <div className="pr-actions">
           <ReviewButton vote={vote} />
           <VoteButton vote={vote} />
-          <SplitActionButton
-            text="Complete"
-            icon="BranchPullRequest"
-            primary
-            disabled
-            onClick={() => {}}
-            menuLabel="Completion options"
-            options={[
-              { id: "auto", text: "Set auto-complete", icon: "TriggerAuto", disabled: true },
-              { id: "draft", text: "Mark as draft", icon: "BranchRequestDraft", disabled: true },
-              { id: "abandon", text: "Abandon", icon: "BranchRequestClosed", disabled: true },
-            ]}
-          />
+          <CompletionButton data={data} />
           <MoreMenu
             label="More actions"
             subtle={false}
             options={[
               { id: "copy", text: "Copy pull request link", icon: "Link", onSelect: () => void navigator.clipboard?.writeText(location.href) },
-              { id: "todo", text: todo, disabled: true },
             ]}
           />
         </div>
@@ -402,6 +390,7 @@ const PrHeader: React.FC<{ data: PrOverview; review: ReviewModel | null; progres
           </span>
         )}
       </div>
+      <CompletionNotice pr={pr} />
     </header>
   );
 };

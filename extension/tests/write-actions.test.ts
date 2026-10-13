@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createAdoActions, threadPayload, type WriteClient } from "../src/data/adoActions";
+import { isCompleting, mergeProblem } from "../src/data/completion";
+import { allowedStrategies, createAdoActions, threadPayload, type WriteClient } from "../src/data/adoActions";
 import { MOCK_USER, MockPrSource } from "../src/data/mockSource";
-import type { NewThread, ThreadStatus, Vote } from "../src/data/model";
+import type { CompletionOptions, NewThread, ThreadStatus, Vote } from "../src/data/model";
 import { identityImageUrl } from "../src/data/model";
 import type { PrSnapshot } from "../src/data/snapshot";
 import { lineThreadInput } from "../src/ui/LineComments";
@@ -113,7 +114,10 @@ function clientRecorder() {
       },
     ]),
   ) as WriteClient;
-  return { calls, client, actions: createAdoActions(client, { project: "project", repo: "repo", pr: 7 }, MOCK_USER, async () => []) };
+  return { calls, client, actions: createAdoActions(client, { project: "project", repo: "repo", pr: 7 }, MOCK_USER, {
+    searchReviewers: async () => [],
+    mergePolicies: async () => [],
+  }) };
 }
 
 function reviewerServer() {
@@ -276,4 +280,149 @@ test("Given a renamed file, then mock comparisons keep a stable tracking ID", as
   assert.equal(first[0].originalPath, "src/a.ts");
   assert.ok(first[0].changeTrackingId);
   assert.equal(first[0].changeTrackingId, repeated[0].changeTrackingId);
+});
+
+const SQUASH: CompletionOptions = { mergeStrategy: "squash", deleteSourceBranch: true, transitionWorkItems: false, mergeCommitMessage: "Merged PR 7: Review fixture" };
+
+test("Given completion options, when completing, then the adapter pins the reviewed source commit and sends Azure DevOps' merge type number", async () => {
+  const { actions, calls } = clientRecorder();
+  await actions.complete(SQUASH, "abc123");
+  assert.deepEqual(calls, [
+    {
+      method: "updatePullRequest",
+      args: [
+        {
+          status: 3,
+          lastMergeSourceCommit: { commitId: "abc123" },
+          completionOptions: { mergeStrategy: 2, deleteSourceBranch: true, transitionWorkItems: false, mergeCommitMessage: "Merged PR 7: Review fixture" },
+        },
+        "repo",
+        7,
+        "project",
+      ],
+    },
+  ]);
+});
+
+test("Given an override, then completing records the reason, rejects a blank one, and auto-complete never overrides", async () => {
+  const { actions, calls } = clientRecorder();
+  await actions.complete({ ...SQUASH, bypassReason: " hotfix " }, "abc123");
+  const body = calls[0].args[0] as { completionOptions: Record<string, unknown> };
+  assert.equal(body.completionOptions.bypassPolicy, true);
+  assert.equal(body.completionOptions.bypassReason, "hotfix");
+  await assert.rejects(actions.complete({ ...SQUASH, bypassReason: "  " }, "abc123"), /reason/);
+  await assert.rejects(actions.complete(SQUASH, ""), /source commit/);
+  await actions.setAutoComplete({ ...SQUASH, bypassReason: "hotfix" });
+  const auto = calls.at(-1)?.args[0] as { autoCompleteSetBy: { id: string }; completionOptions: Record<string, unknown> };
+  assert.equal(auto.autoCompleteSetBy.id, MOCK_USER.id);
+  assert.equal(auto.completionOptions.bypassPolicy, undefined);
+  assert.equal(calls.length, 2);
+});
+
+test("Given lifecycle actions, then each sends only the field it changes", async () => {
+  const { actions, calls } = clientRecorder();
+  await actions.setAutoComplete(null);
+  await actions.abandon();
+  await actions.reactivate();
+  await actions.setDraft(true);
+  await actions.setDraft(false);
+  assert.deepEqual(
+    calls.map((c) => c.args[0]),
+    [{ autoCompleteSetBy: { id: "00000000-0000-0000-0000-000000000000" } }, { status: 2 }, { status: 1 }, { isDraft: true }, { isDraft: false }],
+  );
+});
+
+test("Given merge type policies, then only the types every policy covering the target branch allows remain", () => {
+  const policy = (scope: object, settings: object, isEnabled = true) => ({ isEnabled, settings: { scope: [scope], ...settings } });
+  const exact = { repositoryId: "repo", refName: "refs/heads/main", matchKind: "Exact" };
+  assert.deepEqual(allowedStrategies([], "repo", "main"), ["noFastForward", "squash", "rebase", "rebaseMerge"]);
+  assert.deepEqual(allowedStrategies([policy(exact, { allowSquash: true, allowRebase: true })], "repo", "main"), ["squash", "rebase"]);
+  assert.deepEqual(allowedStrategies([policy(exact, { useSquashMerge: true })], "repo", "refs/heads/main"), ["squash"]);
+  assert.deepEqual(
+    allowedStrategies([policy({ repositoryId: null, refName: "refs/heads/release/", matchKind: "Prefix" }, { allowRebase: true })], "repo", "release/1.0"),
+    ["rebase"],
+  );
+  assert.equal(allowedStrategies([policy(exact, { allowSquash: true })], "other-repo", "main").length, 4);
+  assert.equal(allowedStrategies([policy(exact, { allowSquash: true }, false)], "repo", "main").length, 4);
+  assert.equal(allowedStrategies([policy(exact, { allowSquash: true })], "repo", "dev").length, 4);
+  assert.deepEqual(allowedStrategies([policy(exact, { useSquashMerge: false })], "repo", "main"), ["noFastForward"], "classic policy: merge only");
+  assert.deepEqual(allowedStrategies([policy(exact, { useSquashMerge: true, allowRebase: true })], "repo", "main"), ["rebase"], "allow flags win");
+});
+
+test("Given unreadable merge policies, then every merge type is offered and Azure DevOps enforces the rest", async () => {
+  const { client } = clientRecorder();
+  const actions = createAdoActions(client, { project: "project", repo: "repo", pr: 7 }, MOCK_USER, {
+    searchReviewers: async () => [],
+    mergePolicies: async () => { throw new Error("Forbidden"); },
+  });
+  assert.equal((await actions.allowedMergeStrategies("repo", "main")).length, 4);
+});
+
+function withHead(): PrSnapshot {
+  const snap = snapshot();
+  snap.pullRequest.lastMergeSourceCommit = { commitId: "head" };
+  return snap;
+}
+
+test("Given a local PR, when completing, then it merges only at the loaded head, in the background, with the chosen options", async () => {
+  const source = new MockPrSource(withHead());
+  assert.equal((await source.load()).pr.headCommit, "head");
+  await assert.rejects(source.actions.complete(SQUASH, "older"), /new commits/);
+  await source.actions.complete(SQUASH, "head");
+  let { pr } = await source.load();
+  assert.equal(pr.status, "active", "the first read after completing still sees the merge queued");
+  assert.ok(pr.completionQueued);
+  ({ pr } = await source.load());
+  assert.equal(pr.status, "completed");
+  assert.equal(pr.completionQueued, undefined);
+  assert.equal(pr.closedBy?.id, MOCK_USER.id);
+  assert.deepEqual(pr.completionOptions, { ...SQUASH });
+  await assert.rejects(source.actions.abandon(), /active/);
+});
+
+test("Given a required policy that hasn't passed, then completing needs an override, and auto-complete waits instead", async () => {
+  const snap = withHead();
+  snap.policies = [{ evaluationId: "build", status: "running", configuration: { isBlocking: true, type: { displayName: "Build" }, settings: {} } }];
+  const source = new MockPrSource(snap);
+  await assert.rejects(source.actions.complete(SQUASH, "head"), /Required policies/);
+  await source.actions.setAutoComplete(SQUASH);
+  let { pr } = await source.load();
+  assert.equal(pr.autoCompleteSetBy?.id, MOCK_USER.id);
+  assert.equal(pr.completionOptions?.mergeStrategy, "squash");
+  await source.actions.setAutoComplete(null);
+  assert.equal((await source.load()).pr.autoCompleteSetBy, undefined);
+  await source.actions.complete({ ...SQUASH, bypassReason: "Build infra is down" }, "head");
+  await source.load();
+  ({ pr } = await source.load());
+  assert.equal(pr.status, "completed");
+});
+
+test("Given a local PR, then draft, publish, abandon and reactivate round-trip, and a draft can't be completed", async () => {
+  const source = new MockPrSource(withHead());
+  await source.actions.setDraft(true);
+  assert.equal((await source.load()).pr.isDraft, true);
+  await assert.rejects(source.actions.complete(SQUASH, "head"), /Publish/);
+  await source.actions.setDraft(false);
+  await source.actions.abandon();
+  let { pr } = await source.load();
+  assert.equal(pr.status, "abandoned");
+  assert.equal(pr.closedBy?.id, MOCK_USER.id);
+  await assert.rejects(source.actions.setDraft(true), /active/);
+  await source.actions.reactivate();
+  ({ pr } = await source.load());
+  assert.equal(pr.status, "active");
+  assert.equal(pr.closedBy, undefined);
+});
+
+test("Given a queued completion, then the PR counts as completing until Azure DevOps reports a failure or conflicts", async () => {
+  const source = new MockPrSource(withHead());
+  await source.actions.complete(SQUASH, "head");
+  const { pr } = await source.load();
+  assert.equal(isCompleting(pr), true);
+  assert.equal(mergeProblem(pr), null);
+  assert.equal(isCompleting({ ...pr, mergeStatus: "conflicts" }), false);
+  assert.equal(isCompleting({ ...pr, mergeFailure: "TF401179: rebase failed" }), false);
+  assert.equal(mergeProblem({ ...pr, mergeFailure: "TF401179: rebase failed" }), "TF401179: rebase failed");
+  assert.match(mergeProblem({ ...pr, mergeStatus: "rejectedByPolicy" }) ?? "", /policy/);
+  assert.equal(isCompleting({ ...pr, status: "completed" }), false);
 });

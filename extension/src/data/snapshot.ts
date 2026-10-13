@@ -1,6 +1,17 @@
 // JSON shape of an offline PR snapshot (local dev mode). Mirrors the Azure DevOps REST
 // models loosely (dates as ISO strings, enums as numbers) so the same view code renders both.
 
+/** Completion options as Azure DevOps stores them on a pull request (older ones only set squashMerge). */
+export interface CompletionOptionsJson {
+  mergeStrategy?: number;
+  squashMerge?: boolean;
+  deleteSourceBranch?: boolean;
+  transitionWorkItems?: boolean;
+  mergeCommitMessage?: string;
+  bypassPolicy?: boolean;
+  bypassReason?: string;
+}
+
 export interface IdentityJson {
   id: string;
   displayName: string;
@@ -63,6 +74,12 @@ export interface PrSnapshot {
     repository: { id: string; name: string; project: { id: string; name: string } };
     reviewers: (IdentityJson & { vote: number; isRequired: boolean })[];
     labels: { id: string; name: string; active: boolean }[];
+    lastMergeSourceCommit?: { commitId: string };
+    autoCompleteSetBy?: IdentityJson;
+    completionOptions?: CompletionOptionsJson;
+    closedBy?: IdentityJson;
+    completionQueueTime?: string;
+    mergeFailureMessage?: string;
   };
   iterations: {
     id: number;

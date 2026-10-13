@@ -5,7 +5,16 @@ import type {
   GitRestClient,
   IdentityRefWithVote,
 } from "azure-devops-extension-api/Git";
-import type { Identity, NewThread, PrActions, ThreadStatus } from "./model";
+import type { CompletionOptionsJson } from "./snapshot";
+import {
+  type CompletionOptions,
+  type Identity,
+  MERGE_STRATEGIES,
+  type MergeStrategy,
+  type NewThread,
+  type PrActions,
+  type ThreadStatus,
+} from "./model";
 
 export type WriteClient = Pick<
   GitRestClient,
@@ -30,6 +39,84 @@ export const STATUS_NUMBER: Record<ThreadStatus, number> = {
   byDesign: 5,
   pending: 6,
 };
+
+/** GitPullRequestMergeStrategy */
+const STRATEGY_NUMBER: Record<MergeStrategy, number> = { noFastForward: 1, squash: 2, rebase: 3, rebaseMerge: 4 };
+/** PullRequestStatus */
+export const PR_STATUS_NUMBER = { active: 1, abandoned: 2, completed: 3 } as const;
+/** The empty identity: what Azure DevOps returns for an unset auto-complete, and what clears it. */
+const NO_ONE = "00000000-0000-0000-0000-000000000000";
+export const isNoOne = (id: string | undefined): boolean => !id || id === NO_ONE;
+
+export function fromCompletionOptionsJson(o: CompletionOptionsJson | null | undefined): CompletionOptions | undefined {
+  if (!o) return undefined;
+  const strategy = MERGE_STRATEGIES.find((m) => STRATEGY_NUMBER[m] === o.mergeStrategy) ?? (o.squashMerge ? "squash" : "noFastForward");
+  return {
+    mergeStrategy: strategy,
+    deleteSourceBranch: !!o.deleteSourceBranch,
+    transitionWorkItems: !!o.transitionWorkItems,
+    mergeCommitMessage: o.mergeCommitMessage ?? "",
+  };
+}
+
+/** The request body's completion options. Overriding policies needs a reason, and auto-complete never overrides. */
+export function toCompletionOptionsJson(options: CompletionOptions, allowBypass: boolean): CompletionOptionsJson {
+  const json: CompletionOptionsJson = {
+    mergeStrategy: STRATEGY_NUMBER[options.mergeStrategy],
+    deleteSourceBranch: options.deleteSourceBranch,
+    transitionWorkItems: options.transitionWorkItems,
+    mergeCommitMessage: options.mergeCommitMessage,
+  };
+  if (allowBypass && options.bypassReason !== undefined) {
+    if (!options.bypassReason.trim()) throw new Error("Enter a reason for overriding the branch policies.");
+    json.bypassPolicy = true;
+    json.bypassReason = options.bypassReason.trim();
+  }
+  return json;
+}
+
+/** The "Require a merge strategy" (Limit merge types) branch policy. */
+export const MERGE_POLICY_TYPE = "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab";
+
+export interface MergePolicy {
+  isEnabled: boolean;
+  isDeleted?: boolean;
+  settings?: {
+    scope?: { repositoryId?: string | null; refName?: string; matchKind?: string }[];
+    useSquashMerge?: boolean;
+    allowNoFastForward?: boolean;
+    allowSquash?: boolean;
+    allowRebase?: boolean;
+    allowRebaseMerge?: boolean;
+  };
+}
+
+const ALLOW_KEY = { noFastForward: "allowNoFastForward", squash: "allowSquash", rebase: "allowRebase", rebaseMerge: "allowRebaseMerge" } as const;
+
+/** Merge types every merge policy covering this branch allows. No policy (or a nonsensical one) allows all. */
+export function allowedStrategies(policies: MergePolicy[], repositoryId: string, targetBranch: string): MergeStrategy[] {
+  const ref = `refs/heads/${targetBranch.replace(/^refs\/heads\//, "")}`;
+  let allowed = [...MERGE_STRATEGIES];
+  for (const policy of policies) {
+    const settings = policy.settings ?? {};
+    if (!policy.isEnabled || policy.isDeleted) continue;
+    const covers = (settings.scope ?? []).some(
+      (s) =>
+        (!s.repositoryId || s.repositoryId === repositoryId) &&
+        (!s.refName || (s.matchKind?.toLowerCase() === "prefix" ? ref.startsWith(s.refName) : ref === s.refName)),
+    );
+    if (!covers) continue;
+    allowed = allowed.filter((m) => policyAllows(settings, m));
+  }
+  return allowed.length ? allowed : [...MERGE_STRATEGIES];
+}
+
+/** Current policies list the types they allow; older ones only say squash (true) or merge (false). */
+function policyAllows(settings: NonNullable<MergePolicy["settings"]>, strategy: MergeStrategy): boolean {
+  if (MERGE_STRATEGIES.some((m) => settings[ALLOW_KEY[m]] !== undefined)) return settings[ALLOW_KEY[strategy]] === true;
+  if (settings.useSquashMerge !== undefined) return strategy === (settings.useSquashMerge ? "squash" : "noFastForward");
+  return true;
+}
 
 export function requireContent(content: string): string {
   if (!content.trim()) throw new Error("Enter a comment before posting.");
@@ -81,9 +168,10 @@ export function createAdoActions(
   git: WriteClient,
   scope: { project: string; repo: string; pr: number },
   currentUser: Identity,
-  searchReviewers: PrActions["searchReviewers"],
+  reads: { searchReviewers: PrActions["searchReviewers"]; mergePolicies: () => Promise<MergePolicy[]> },
 ): PrActions {
   const { project, repo, pr } = scope;
+  const update = (body: Record<string, unknown>) => git.updatePullRequest(body as unknown as GitPullRequest, repo, pr, project);
   return {
     async createThread(input) {
       await git.createThread(threadPayload(input) as GitPullRequestCommentThread, repo, pr, project);
@@ -109,7 +197,7 @@ export function createAdoActions(
         repo, pr, currentUser.id, project,
       );
     },
-    searchReviewers,
+    searchReviewers: reads.searchReviewers,
     async addReviewer(who, required) {
       await git.createPullRequestReviewer({ id: who.id, vote: 0, isRequired: required } as IdentityRefWithVote, repo, pr, who.id, project);
     },
@@ -129,7 +217,32 @@ export function createAdoActions(
       await git.deletePullRequestLabels(repo, pr, name, project);
     },
     async setDescription(description) {
-      await git.updatePullRequest({ description } as GitPullRequest, repo, pr, project);
+      await update({ description });
+    },
+    async complete(options, headCommit) {
+      if (!headCommit) throw new Error("The latest source commit is unknown. Refresh the pull request and try again.");
+      await update({ status: PR_STATUS_NUMBER.completed, lastMergeSourceCommit: { commitId: headCommit }, completionOptions: toCompletionOptionsJson(options, true) });
+    },
+    async setAutoComplete(options) {
+      if (!options) return void (await update({ autoCompleteSetBy: { id: NO_ONE } }));
+      if (!currentUser.id) throw new Error("The signed-in user could not be identified.");
+      await update({ autoCompleteSetBy: { id: currentUser.id }, completionOptions: toCompletionOptionsJson(options, false) });
+    },
+    async abandon() {
+      await update({ status: PR_STATUS_NUMBER.abandoned });
+    },
+    async reactivate() {
+      await update({ status: PR_STATUS_NUMBER.active });
+    },
+    async setDraft(isDraft) {
+      await update({ isDraft });
+    },
+    async allowedMergeStrategies(repositoryId, targetBranch) {
+      try {
+        return allowedStrategies(await reads.mergePolicies(), repositoryId, targetBranch);
+      } catch {
+        return [...MERGE_STRATEGIES]; // Azure DevOps still enforces the policy when completing.
+      }
     },
   };
 }
