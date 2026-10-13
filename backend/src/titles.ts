@@ -18,6 +18,7 @@ const settings = {
   /** Azure OpenAI resource endpoint, e.g. https://oai-semantic-pr-abc123.openai.azure.com/ */
   endpoint: process.env.OPENAI_ENDPOINT ?? "",
   deployment: process.env.OPENAI_DEPLOYMENT ?? "gpt-5-nano",
+  reasoningEffort: process.env.TITLES_REASONING_EFFORT ?? "minimal",
   /** Local development only; deployed apps use their managed identity (the resource has keys disabled). */
   apiKey: process.env.OPENAI_API_KEY ?? "",
   inputPerMillion: Number(process.env.TITLES_PRICE_INPUT_PER_M ?? 0.05),
@@ -25,6 +26,9 @@ const settings = {
 };
 
 export class BadRequest extends Error {}
+
+/** False when Terraform deployed no model (titles_model = null). */
+export const titlesConfigured = settings.endpoint !== "";
 
 export interface TitlesRequest {
   scope: Scope;
@@ -95,7 +99,8 @@ async function complete(prompt: string): Promise<{ text: string; inputTokens: nu
     body: JSON.stringify({
       model: settings.deployment,
       messages: [{ role: "user", content: prompt }],
-      reasoning_effort: "minimal",
+      // Reasoning models only (gpt-5 family); others reject the parameter.
+      ...(settings.reasoningEffort ? { reasoning_effort: settings.reasoningEffort } : {}),
       max_completion_tokens: MAX_OUTPUT_TOKENS,
     }),
     signal: AbortSignal.timeout(40_000),

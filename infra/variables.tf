@@ -16,9 +16,25 @@ variable "location" {
 }
 
 variable "openai_location" {
-  description = "Region for the Azure OpenAI resource; it must offer gpt-5-nano as a Global Standard deployment."
+  description = "Region for the Azure OpenAI resource; it must offer titles_model as a Global Standard deployment, with quota."
   type        = string
   default     = "eastus2"
+}
+
+variable "titles_model" {
+  description = <<-EOT
+    Azure OpenAI model for group titles (Global Standard deployment), or null to deploy no model: the page then keeps
+    rule-based titles. Check the region offers it and the subscription has quota:
+      az cognitiveservices usage list -l <openai_location> --query "[?contains(name.value, 'nano')]"
+    reasoning_effort is sent to reasoning models (gpt-5 family); use "" for models without it.
+    Update titles_price_per_million to match the model.
+  EOT
+  type = object({
+    name             = string
+    version          = string
+    reasoning_effort = optional(string, "minimal")
+  })
+  default = { name = "gpt-5-nano", version = "2025-08-07" }
 }
 
 variable "titles_daily_budget_usd" {
@@ -47,7 +63,7 @@ variable "titles_caps" {
 }
 
 variable "titles_price_per_million" {
-  description = "gpt-5-nano price per million tokens (USD), used to track the daily budget. Check the Azure OpenAI pricing page if it changes."
+  description = "titles_model price per million tokens (USD), used to track the spending caps. Defaults are gpt-5-nano's; check the Azure OpenAI pricing page."
   type        = object({ input = number, output = number })
   default     = { input = 0.05, output = 0.4 }
 }

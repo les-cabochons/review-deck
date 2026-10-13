@@ -1,5 +1,5 @@
 # The review page's backend: one Windows Consumption (Y1) Function App that embeds hunks (MiniLM, on its
-# own CPU) and titles groups (gpt-5-nano on Azure OpenAI, pay per token).
+# own CPU) and titles groups (a small Azure OpenAI model, titles_model, pay per token).
 #
 # Cost guards, all in this file:
 # - Consumption plan: billed per execution and GB-s, with a monthly free grant of 400,000 GB-s and
@@ -81,7 +81,9 @@ data "archive_file" "package" {
   output_path = "${path.module}/.build/backend-${local.package_version}.zip"
 }
 
+# Titles are optional: titles_model = null deploys no model, and the page keeps rule-based titles.
 resource "azurerm_cognitive_account" "openai" {
+  count                 = var.titles_model == null ? 0 : 1
   name                  = "oai-${local.name}"
   resource_group_name   = azurerm_resource_group.this.name
   location              = var.openai_location
@@ -92,13 +94,14 @@ resource "azurerm_cognitive_account" "openai" {
 }
 
 resource "azurerm_cognitive_deployment" "titles" {
-  name                 = "gpt-5-nano"
-  cognitive_account_id = azurerm_cognitive_account.openai.id
+  count                = var.titles_model == null ? 0 : 1
+  name                 = var.titles_model.name
+  cognitive_account_id = azurerm_cognitive_account.openai[0].id
 
   model {
     format  = "OpenAI"
-    name    = "gpt-5-nano"
-    version = "2025-08-07"
+    name    = var.titles_model.name
+    version = var.titles_model.version
   }
 
   sku {
@@ -109,7 +112,8 @@ resource "azurerm_cognitive_deployment" "titles" {
 }
 
 resource "azurerm_role_assignment" "titles" {
-  scope                = azurerm_cognitive_account.openai.id
+  count                = var.titles_model == null ? 0 : 1
+  scope                = azurerm_cognitive_account.openai[0].id
   role_definition_name = "Cognitive Services OpenAI User"
   principal_id         = azurerm_windows_function_app.this.identity[0].principal_id
 }
@@ -151,8 +155,9 @@ resource "azurerm_windows_function_app" "this" {
     # Checks the Bearer token the review page gets from SDK.getAppToken() (backend/src/auth.ts).
     EXTENSION_SECRET = var.extension_secret
     # backend/src/titles.ts
-    OPENAI_ENDPOINT           = azurerm_cognitive_account.openai.endpoint
-    OPENAI_DEPLOYMENT         = azurerm_cognitive_deployment.titles.name
+    OPENAI_ENDPOINT           = var.titles_model == null ? "" : azurerm_cognitive_account.openai[0].endpoint
+    OPENAI_DEPLOYMENT         = var.titles_model == null ? "" : azurerm_cognitive_deployment.titles[0].name
+    TITLES_REASONING_EFFORT   = var.titles_model == null ? "" : var.titles_model.reasoning_effort
     TITLES_DAILY_BUDGET_USD   = tostring(var.titles_daily_budget_usd)
     TITLES_CAPS               = jsonencode(var.titles_caps)
     TITLES_PRICE_INPUT_PER_M  = tostring(var.titles_price_per_million.input)

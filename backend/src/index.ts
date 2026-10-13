@@ -7,7 +7,7 @@ import { app, type HttpRequest, type HttpResponseInit } from "@azure/functions";
 import { verifyAppToken } from "./auth.js";
 import { embed, MODEL, warm } from "./embed.js";
 import { BudgetExceeded, usage } from "./budget.js";
-import { BadRequest, parseScope, titleGroups } from "./titles.js";
+import { BadRequest, parseScope, titleGroups, titlesConfigured } from "./titles.js";
 
 /** Bounds per request, so one call can't run for minutes. Bigger PRs fall back to structural grouping. */
 const MAX_TEXTS = 2000;
@@ -63,6 +63,7 @@ app.http("titles", {
   authLevel: "anonymous",
   handler: async (request, context) => {
     if (!authorized(request)) return error(401, "invalid token");
+    if (!titlesConfigured) return error(503, "AI titles aren't set up on this backend");
     if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return error(413, "body too large");
     let body: unknown;
     try {
