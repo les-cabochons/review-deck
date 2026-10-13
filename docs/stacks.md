@@ -9,7 +9,7 @@ main  ←  !1 feature/a  ←  !2 feature/b  ←  !3 feature/c
 ## Trunk branches
 
 Trunk branches are where stacks end. A PR into a trunk branch is the bottom of a stack, and
-auto-restack never rewrites a trunk branch. They're set per project in **Project settings → Semantic PR Review**
+auto-restack never rewrites a trunk branch. They're set per project in **Project settings → Review Deck**
 (**Edit**, project administrators only), one pattern per line:
 
 | Pattern | Matches |
@@ -84,7 +84,7 @@ Turning it off removes the hooks.
 4. **Read access to the extension's settings:** the identity reads the project's stack settings from
    extension data. I expect organization members to be able to read it, but haven't confirmed that
    for a managed identity. If the backend logs a 401 or 403 from `extmgmt.dev.azure.com`, this is why.
-5. A project administrator opens **Project settings → Semantic PR Review** and turns on **Auto-restack**.
+5. A project administrator opens **Project settings → Review Deck** and turns on **Auto-restack**.
 
 ### Limits
 
