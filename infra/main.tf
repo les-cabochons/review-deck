@@ -20,7 +20,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     archive = {
       source  = "hashicorp/archive"
@@ -36,6 +36,13 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+  # Only what this file creates; azurerm 5 registers nothing by default.
+  resource_providers_to_register = [
+    "Microsoft.CognitiveServices",
+    "Microsoft.Consumption",
+    "Microsoft.Storage",
+    "Microsoft.Web",
+  ]
 }
 
 resource "random_string" "suffix" {
