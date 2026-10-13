@@ -237,23 +237,21 @@ kbd {
   background: var(--surface);
 }
 
-/* local preview banners */
-.mock-notice {
-  padding: 6px var(--page-x);
-  background: var(--surface-2);
-  color: var(--fg2);
-  font-size: 12px;
-  border-bottom: 1px solid var(--line);
-}
+/* Floats over the page so saving status never shifts the layout. */
 .write-feedback {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
+  max-width: calc(100% - 32px);
 }
 .write-feedback:not(:empty) {
-  padding: 8px var(--page-x);
+  padding: 8px 12px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
   font-size: 13px;
 }
 .write-error {
@@ -1115,6 +1113,15 @@ kbd {
   padding: 2px 8px;
   min-height: 24px;
 }
+/* Current value in a picker menu, like Azure DevOps: blue marker bar on the left and a blue tint. */
+.bolt-menuitem-row.menu-item-selected {
+  background: rgba(0, 120, 212, 0.12);
+  box-shadow: inset 3px 0 0 var(--communication-background, #0078d4);
+}
+.bolt-menuitem-row.menu-item-selected .bolt-menuitem-cell-text {
+  color: var(--communication-foreground, #0078d4);
+  font-weight: 600;
+}
 .thread-status-button.ts-active,
 .thread-status-button.ts-pending {
   color: var(--accent);
@@ -1617,6 +1624,115 @@ kbd {
 }
 .nav-group {
   margin-bottom: 4px;
+}
+/* Graphite-style search + "Show" filter pinned above the file tree. */
+.nav-filter-bar {
+  position: sticky;
+  top: -6px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  margin: -6px -6px 6px;
+  padding: 6px;
+  background: inherit;
+}
+.nav-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--fg2);
+  cursor: text;
+}
+.nav-search:focus-within {
+  border-color: var(--accent);
+}
+.nav-search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  outline: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+}
+.file-filter {
+  position: relative;
+}
+.file-filter-button {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--fg2);
+  cursor: pointer;
+}
+.file-filter-button:hover,
+.file-filter-button[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--fg);
+}
+.file-filter-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.file-filter-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--callout-background-color, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow-callout);
+}
+.file-filter-heading {
+  padding: 2px 8px 6px;
+  font-size: 12px;
+  color: var(--fg2);
+}
+.file-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.file-filter-item:hover {
+  background: var(--hover);
+}
+.file-filter-item .label {
+  flex: 1;
+}
+.file-filter-item .check {
+  width: 16px;
+  color: var(--fg);
+}
+.nav-empty,
+.nav-hidden-note {
+  padding: 8px 6px;
+  font-size: 12px;
+  color: var(--fg2);
 }
 .nav-group-title,
 .nav-file {

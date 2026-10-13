@@ -12,6 +12,8 @@ export interface MenuOption {
   iconClassName?: string;
   secondaryText?: string;
   checked?: boolean;
+  /** The current value of a picker: a blue marker and highlight instead of a checkmark. */
+  selected?: boolean;
   disabled?: boolean;
   /** Renders a divider instead of an item. */
   divider?: boolean;
@@ -29,6 +31,7 @@ function toItems(options: MenuOption[]): IMenuItem[] {
       ? { id: o.id, itemType: MenuItemType.Divider }
       : {
           id: o.id,
+          className: o.selected ? "menu-item-selected" : undefined,
           text: o.text,
           secondaryText: o.secondaryText,
           iconProps: o.icon ? { iconName: o.icon, className: o.iconClassName } : undefined,
