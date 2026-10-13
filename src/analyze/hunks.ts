@@ -1,7 +1,9 @@
 import type { PipelineConfig } from "../core/config.js";
 import { dirname, isTestPath, join, stripExtension } from "../core/paths.js";
 import type { FileDiff, FileProvider, Hunk, HunkInfo, Side } from "../core/types.js";
-import { type Decl, declKey, extractSymbols, type FileSymbols, innermostDecl } from "../parse/symbols.js";
+import type { LanguageId } from "../parse/grammars.js";
+import { LANGUAGES, languageForPath } from "../parse/languages.js";
+import { type Decl, declKey, type FileSymbols, type ImportRef, innermostDecl } from "../parse/symbols.js";
 import type { SyntaxParsers } from "../parse/treesitter.js";
 import { detectMechanical, prHasLockfileChange } from "./mechanical.js";
 
@@ -20,25 +22,37 @@ export async function analyzeHunks(
   config: PipelineConfig,
   onProgress?: (progress: { stage: "parse"; done: number; total: number }) => void,
 ): Promise<Map<string, HunkInfo>> {
-  const stop = makeStopFilter(config.stopwords);
+  const stopFilters = new Map<string | null, (name: string) => boolean>();
+  const stopFor = (language: LanguageId | null) => {
+    let stop = stopFilters.get(language);
+    if (!stop) {
+      const extra = (language && LANGUAGES[language].stopwords) || [];
+      stopFilters.set(language, (stop = makeStopFilter([...config.stopwords, ...extra])));
+    }
+    return stop;
+  };
   const lockfileChanged = prHasLockfileChange(files);
-  const changedModules = files.flatMap((f) => [f.oldPath, f.newPath]).filter((p): p is string => !!p).map(stripExtension);
-  // Package imports resolve against every changed module; the same specifier recurs across files.
-  const packageImports = new Map<string, string[]>();
-  const resolvePackage = (spec: string) => {
-    let modules = packageImports.get(spec);
-    if (!modules) packageImports.set(spec, (modules = resolvePackageImport(spec, changedModules)));
+  const changedPaths = files.flatMap((f) => [f.oldPath, f.newPath]).filter((p): p is string => !!p);
+  const changedModules = changedPaths.map(stripExtension);
+  // Non-relative imports resolve against every changed module; the same import recurs across files.
+  const resolved = new Map<string, string[]>();
+  const resolveModule = (ref: ImportRef) => {
+    const key = `${ref.match}:${ref.path}`;
+    let modules = resolved.get(key);
+    if (!modules) resolved.set(key, (modules = resolveImport(ref, changedModules)));
     return modules;
   };
   const out = new Map<string, HunkInfo>();
+  await parsers.load(changedPaths);
 
   for (const [i, file] of files.entries()) {
     onProgress?.({ stage: "parse", done: i, total: files.length });
     const sides = await loadSides(file, provider, parsers);
     const head = (sides.content.new ?? sides.content.old ?? "").split("\n").slice(0, 5).join("\n");
-    const imports = resolveImports(file, sides, resolvePackage);
+    const imports = resolveImports(file, sides, resolveModule);
+    const language = languageForPath(file.path);
     for (const hunk of file.hunks) {
-      const info = analyzeHunk(file, hunk, sides, stop, imports, parsers.languageFor(file.path));
+      const info = analyzeHunk(file, hunk, sides, stopFor(language), imports, language);
       info.mechanical = detectMechanical(file, hunk, { lockfileChanged, head });
       out.set(hunk.id, info);
     }
@@ -49,29 +63,22 @@ export async function analyzeHunks(
 async function loadSides(file: FileDiff, provider: FileProvider, parsers: SyntaxParsers): Promise<FileSides> {
   const oldContent = file.oldPath && file.status !== "added" ? await provider.get(file.oldPath, "old") : null;
   const newContent = file.newPath && file.status !== "deleted" ? await provider.get(file.newPath, "new") : null;
-  const parse = (path: string | null, content: string | null) => {
-    if (!path || content === null) return null;
-    const tree = parsers.parse(path, content);
-    if (!tree) return null;
-    const symbols = extractSymbols(tree);
-    tree.delete();
-    return symbols;
-  };
+  const parse = (path: string | null, content: string | null) => (path && content !== null ? parsers.symbols(path, content) : null);
   return {
     content: { old: oldContent, new: newContent },
     symbols: { old: parse(file.oldPath, oldContent), new: parse(file.newPath, newContent) },
   };
 }
 
-function resolveImports(file: FileDiff, sides: FileSides, resolvePackage: (spec: string) => string[]): Set<string> {
+function resolveImports(file: FileDiff, sides: FileSides, resolveModule: (ref: ImportRef) => string[]): Set<string> {
   const out = new Set<string>();
   for (const side of ["old", "new"] as const) {
     const path = side === "old" ? file.oldPath : file.newPath;
     const syms = sides.symbols[side];
     if (!path || !syms) continue;
-    for (const spec of syms.imports) {
-      if (spec.startsWith(".")) out.add(stripExtension(join(dirname(path), spec)));
-      else for (const m of resolvePackage(spec)) out.add(m);
+    for (const ref of syms.imports) {
+      if (ref.path.startsWith(".")) out.add(stripExtension(join(dirname(path), ref.path)));
+      else for (const m of resolveModule(ref)) out.add(m);
     }
   }
   return out;
@@ -134,7 +141,7 @@ function analyzeHunk(
         if (decl.kind !== "test") {
           if (!stop(decl.name)) defines.add(declKey(decl));
           // Constructor changes stand for the class itself (`new Foo(...)` references Foo).
-          if (decl.name === "constructor") defines.add(decl.qualified.split(".").slice(-2, -1)[0] ?? "");
+          if (decl.constructs) defines.add(decl.constructs);
         }
         symbol ??= decl.qualified;
       } else if (facts?.isImport) {
@@ -199,6 +206,20 @@ function hunkText(file: FileDiff, hunk: Hunk, symbol: string | null): string {
 export function makeStopFilter(stopwords: string[]): (name: string) => boolean {
   const set = new Set(stopwords);
   return (name) => name.length < 3 || set.has(name) || /^(to|mock)[A-Z]/.test(name);
+}
+
+function resolveImport(ref: ImportRef, changedModules: string[]): string[] {
+  if (ref.match === "package") return resolvePackageImport(ref.path, changedModules);
+  const target = stripExtension(ref.path).toLowerCase();
+  if (!target) return [];
+  const endsWith = (m: string) => m === target || m.endsWith(`/${target}`);
+  if (ref.match === "suffix") return changedModules.filter((m) => endsWith(m.toLowerCase()));
+  // Directory imports name a package path (`github.com/acme/app/internal/util`, `Acme.App.Util`)
+  // whose repo-relative directory is a suffix of it, or ends in it.
+  return changedModules.filter((m) => {
+    const dir = dirname(m).toLowerCase();
+    return dir !== "" && (dir === target || target.endsWith(`/${dir}`) || dir.endsWith(`/${target}`));
+  });
 }
 
 /**

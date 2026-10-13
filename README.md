@@ -322,11 +322,12 @@ count submissions and diff analyses. The test page lives outside the packaged
   pending drafts to Pierre's line annotations without losing review context.
   Pierre's unused React bindings have scoped peer overrides to the host's
   React version. Import the package roots, not `/react`.
-- **Highlighting:** Shiki's JavaScript engine and selected grammar chunks ship
-  in the extension. TS/TSX, JS/JSX, JSON/JSONC, Markdown, CSS, HTML, YAML, and
-  shell scripts have syntax highlighting. Other files render as text.
-  Pierre loads when the Files tab opens. No highlighting assets use a CDN.
-  Highlighting still runs on the page, as each diff mounts.
+- **Highlighting:** Shiki's JavaScript engine and about 75 grammar chunks ship
+  in the extension (`extension/src/ui/pierre/languages.ts` maps file names to
+  them). A grammar chunk loads the first time a file of its language renders.
+  Unmapped files render as text. Pierre loads when the Files tab opens. No
+  highlighting assets use a CDN. Highlighting still runs on the page, as each
+  diff mounts.
 - **Theme:** colors come from the host's theme variables (`SDK.init({
   applyTheme: true })`), so dark mode follows Azure DevOps.
 
@@ -366,7 +367,7 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | Module | What it does |
 |---|---|
 | `src/diff/parse.ts` | Unified diff → files and hunks with stable `path#n` IDs; rebuilds per-hunk/per-file patches for rendering. |
-| `src/parse/treesitter.ts`, `symbols.ts` | web-tree-sitter (TS/TSX WASM grammars). Per file: declarations with spans, per-line identifiers (definition vs. use, plain `name` vs. member `.name`), string literals, comments, imports. |
+| `src/parse/treesitter.ts`, `symbols.ts`, `languages.ts` | web-tree-sitter with WASM grammars for TS/TSX/JS, Python, Go, Rust, Java, C#, Ruby, PHP and C/C++, loaded only for the languages a PR touches. `languages.ts` holds each language's rules (declaration nodes, member access, imports, tests); `symbols.ts` is the shared walker. Per file: declarations with spans, per-line identifiers (definition vs. use, plain `name` vs. member `.name`), string literals, comments, imports. |
 | `src/analyze/hunks.ts` | Expands each hunk to its innermost enclosing declaration (`symbol`, e.g. `HttpClient.request`). Records what it **defines** (decls added/removed/changed, members declared on changed lines), what it **references**, and one hop of **impact** (unchanged module-level functions in the same file that use something it changed). |
 | `src/analyze/mechanical.ts` | Lockfiles, generated files (path or `@generated`/`DO NOT EDIT` header), pure renames, binary, whitespace-only hunks, and dependency-only `package.json` edits that come with a lockfile change. |
 | `src/score/signals.ts`, `index.ts` | Pairwise signals, each 0..1 with evidence strings (see below). |
@@ -398,7 +399,7 @@ Everything under `src/` except `src/node/` is browser-safe (no `fs`,
 `child_process`, or `node:path`). In the extension you would:
 - Implement `FileProvider` with the Git REST API (item content at the source
   and target commits).
-- Pass grammar `.wasm` URLs to `SyntaxParsers.create`.
+- Pass `SyntaxParsers.create` a function that gives each grammar's `.wasm` URL.
 - Run transformers.js in the browser for the embedder.
 - Replace the CLI titler with whatever LLM endpoint is allowed, or keep the
   heuristic one.
@@ -443,8 +444,11 @@ To change a fixture, edit `files/` and rerun `npm run fixtures`, then fix any
 
 ## Known limitations
 
-- **TS/JS only.** Other languages fall back to a regex tokenizer (lexical
-  signal only).
+- **Structural languages.** TS/JS, Python, Go, Rust, Java, C#, Ruby, PHP and
+  C/C++ are parsed. TS/JS rules are the most tuned (and the only ones covered by
+  the eval fixtures). Other languages fall back to a regex tokenizer (lexical
+  signal only). Import resolution is by path convention, not by build
+  configuration.
 - **Hunks are the atom.** A hunk that mixes two concerns can't be split
   (pr5, pr6).
 - **Structural matching is name-based**, not type-resolved. Two unrelated
