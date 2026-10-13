@@ -47,6 +47,10 @@ async function main() {
     listSource: () => Promise.reject(new Error("No PR list in the write harness")),
     prSource: async () => source,
     setTitle: (title) => (document.title = title),
+    backendService: async () => null,
+    projectSettings: async () => ({ aiTitles: false }),
+    saveProjectSettings: async () => {},
+    canManageProject: async () => false,
     nativePrUrl: () => null,
   };
   ReactDOM.render(<PrPage host={host} route={route} source={source} />, document.getElementById("root"));

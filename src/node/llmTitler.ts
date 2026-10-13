@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { describeGroup } from "../title/heuristic.js";
+import { buildPrompt, matchTitles, parseTitles, type PromptContext, promptGroups } from "../title/prompt.js";
 import type { GroupTitle, TitleInput, Titler } from "../title/types.js";
 
 export type LlmCli = "claude" | "codex";
@@ -21,43 +21,13 @@ export class CliLlmTitler implements Titler {
     this.name = `llm:${cli}`;
   }
 
-  async title(inputs: TitleInput[], context: { prTitle: string; prDescription: string }): Promise<GroupTitle[]> {
-    const prompt = buildPrompt(inputs, context);
+  async title(inputs: TitleInput[], context: PromptContext): Promise<GroupTitle[]> {
+    const prompt = buildPrompt(promptGroups(inputs), context);
     const [cmd, ...args] = COMMANDS[this.cli];
     if (this.opts.model) args.push(this.cli === "claude" ? "--model" : "-m", this.opts.model);
     const output = await run(cmd, args, prompt, this.opts.timeoutMs ?? 180_000);
-    const parsed = extractJsonArray(output) as { id: string; title: string; rationale: string }[];
-    const byId = new Map(parsed.map((p) => [String(p.id), p]));
-    return inputs.map((i) => {
-      const t = byId.get(i.group.id);
-      return t?.title ? { title: t.title.trim(), rationale: (t.rationale ?? "").trim() } : describeGroup(i);
-    });
+    return matchTitles(inputs, parseTitles(output));
   }
-}
-
-export function buildPrompt(inputs: TitleInput[], context: { prTitle: string; prDescription: string }): string {
-  const sections = inputs.map(({ group, hunks }) => {
-    const budget = Math.max(12, Math.floor(160 / inputs.length));
-    const body: string[] = [];
-    for (const h of hunks) {
-      body.push(`--- ${h.hunk.id}${h.symbol ? ` (${h.symbol})` : ""}`);
-      const changed = h.hunk.lines.filter((l) => l.kind !== "ctx").map((l) => `${l.kind === "add" ? "+" : "-"}${l.text}`);
-      body.push(...changed.slice(0, Math.max(3, Math.floor(budget / hunks.length))));
-    }
-    return `### Group ${group.id}\n${body.join("\n")}`;
-  });
-  return [
-    "You are helping a code reviewer. A pull request's diff hunks have been clustered into groups of related changes.",
-    "For each group, write a short title (imperative mood, max 8 words, like a commit subject) and a one-sentence rationale",
-    "explaining why these hunks belong together. Do not use tools; answer from the text below.",
-    "",
-    `PR title: ${context.prTitle}`,
-    `PR description: ${context.prDescription}`,
-    "",
-    ...sections,
-    "",
-    'Respond with ONLY a JSON array, no prose, no code fences: [{"id": "<group id>", "title": "...", "rationale": "..."}]',
-  ].join("\n");
 }
 
 function run(cmd: string, args: string[], stdin: string, timeoutMs: number): Promise<string> {
@@ -86,13 +56,4 @@ function run(cmd: string, args: string[], stdin: string, timeoutMs: number): Pro
     });
     child.stdin.end(stdin);
   });
-}
-
-function extractJsonArray(text: string): unknown[] {
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start < 0 || end <= start) throw new Error(`no JSON array in LLM output: ${text.slice(0, 200)}`);
-  const value = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(value)) throw new Error("LLM output is not an array");
-  return value;
 }

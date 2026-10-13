@@ -8,3 +8,9 @@ extension/test-dist/
 .playwright-cli/
 *.vsix
 extension/assets/
+backend/.build/
+infra/.terraform/
+infra/.build/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/terraform.tfvars

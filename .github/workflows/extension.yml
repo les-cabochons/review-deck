@@ -26,6 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run ext:typecheck
       - run: npm run ext:test
+      - run: npm run backend:typecheck
       - run: npm run ext:build
 
   publish:
@@ -43,7 +44,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Repository variable from `terraform -chdir=infra output backend_url`; unset = structural grouping only.
       - run: npm run ext:build
+        env:
+          SEMANTIC_PR_BACKEND_URL: ${{ vars.SEMANTIC_PR_BACKEND_URL }}
       # The Marketplace needs a new version per upload: major.minor from the manifest, patch = run number.
       - name: Version
         id: version

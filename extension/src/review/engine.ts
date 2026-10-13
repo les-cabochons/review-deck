@@ -2,6 +2,7 @@ import type { ReviewResult } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
+import { type BackendService, warmBackend } from "./backend";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
 
@@ -26,11 +27,16 @@ export interface BuildOptions {
   /** Grouping progress, while the worker runs. */
   onProgress?: (progress: AnalysisProgress) => void;
   signal?: AbortSignal;
+  /** The Azure Function for embeddings (and LLM titles if `aiTitles`); without it, structural grouping and heuristic titles. */
+  backend?: BackendService | null;
+  /** The project allows sending changed lines to the LLM (ProjectSettings.aiTitles). */
+  aiTitles?: boolean;
 }
 
 /**
  * Loads both sides of every changed file, then diffs them and runs the semantic pipeline
- * (structural signals + heuristic titles; embeddings and LLM titles are Node-only for now).
+ * (structural signals and heuristic titles, plus embeddings from the Azure Function when configured, and its
+ * LLM titles when the project opted in).
  * Diffing and analysis run in a Web Worker so huge PRs don't freeze the page.
  */
 export async function buildReview(
@@ -41,6 +47,8 @@ export async function buildReview(
   options: BuildOptions = {},
 ): Promise<ReviewModel> {
   const started = performance.now();
+  const backend = options.backend ?? null;
+  if (backend) warmBackend(backend);
   const changes = await source.getChanges(iteration, compareTo);
   const contents = new Map<string, FileContents>();
   await forEachLimited(
@@ -60,11 +68,12 @@ export async function buildReview(
   const fetchMs = Math.round(performance.now() - started);
   const comparison = { iteration, compareTo };
 
-  const job: AnalysisJob = { ...meta, changes, contents, assetBase: new URL("../assets/", document.baseURI).toString() };
+  const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles: options.aiTitles === true, assetBase: new URL("../assets/", document.baseURI).toString() };
   const result = await runAnalysis(job, options.signal, (message) => {
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
+  for (const warning of result.warnings) console.warn("[semantic-pr]", warning);
   console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
   return { result, changes, contents, comparison, analyzed: true };
 }

@@ -51,7 +51,11 @@ const options = {
   loader: { ".woff": "file", ".woff2": "file", ".ttf": "file", ".svg": "file", ".png": "file" },
   // web-tree-sitter's Node code paths are never taken in the browser.
   external: ["fs", "fs/promises", "module", "path", "url"],
-  define: { "process.env.NODE_ENV": serve ? '"development"' : '"production"' },
+  define: {
+    "process.env.NODE_ENV": serve ? '"development"' : '"production"',
+    // The backend Azure Function (infra/ output backend_url); empty = structural grouping, heuristic titles.
+    __BACKEND_URL__: JSON.stringify(process.env.SEMANTIC_PR_BACKEND_URL ?? ""),
+  },
   logLevel: "info",
 };
 

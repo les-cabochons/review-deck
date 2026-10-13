@@ -340,6 +340,12 @@ kbd {
 .hub-nav-item [class*="ms-Icon"] {
   color: var(--fg2);
 }
+.hub-setting {
+  padding: 6px 0 0;
+}
+.hub-setting .bolt-toggle-button-container {
+  padding: 6px 10px 0;
+}
 .hub-sidebar-note {
   font-size: 11px;
   padding: 12px 10px 0;

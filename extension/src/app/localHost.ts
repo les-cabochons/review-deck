@@ -1,7 +1,10 @@
 import { MockPrListSource } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
-import { type AppHost, Listeners, parseRoute, type Route } from "./host";
+import type { BackendService } from "../review/backend";
+import { type AppHost, BACKEND_URL, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, type Route } from "./host";
+
+const SETTINGS_KEY = "semantic-pr.local.projectSettings";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -64,6 +67,30 @@ export class LocalHost implements AppHost {
 
   setTitle(title: string): void {
     document.title = title;
+  }
+
+  /** `?backend=http://localhost:7071` points at a local `func start` (which skips the token check). */
+  async backendService(): Promise<BackendService | null> {
+    const url = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "") || BACKEND_URL;
+    return url ? { url, token: "", scope: { organization: "local", projectId: "t3code", projectName: "t3code" } } : null;
+  }
+
+  /** Kept in localStorage; the local user may change them. */
+  async projectSettings(): Promise<ProjectSettings> {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") as Partial<ProjectSettings>;
+      return { aiTitles: saved.aiTitles === true };
+    } catch {
+      return DEFAULT_PROJECT_SETTINGS;
+    }
+  }
+
+  async saveProjectSettings(settings: ProjectSettings): Promise<void> {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }
+
+  async canManageProject(): Promise<boolean> {
+    return true;
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {

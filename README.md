@@ -121,7 +121,11 @@ The visual language is Graphite's layout and density in an Azure DevOps skin:
 - `azure-devops-ui` buttons, split buttons and menus.
 
 It reuses the pipeline above in the browser (tree-sitter WASM, structural
-signals, heuristic titles).
+signals, heuristic titles). When it's built with `SEMANTIC_PR_BACKEND_URL`, a
+small Azure Function (`backend/`, deployed by `infra/`, capped to stay under
+$1/month) adds hunk embeddings for grouping and, in projects that opt in,
+group titles from gpt-5-nano.
+See [docs/azure-backend.md](docs/azure-backend.md).
 
 ```sh
 npm run ext:mock        # mock PR list + full snapshots from real t3code PRs (uses gh + the blobless clone)
@@ -222,8 +226,8 @@ Run `just check` for both typechecks and the write regression tests.
   Back button doesn't notify the iframe; use the breadcrumb.
 - **Stack navigation:** later.
 - **Syntax highlighting and "expand context".**
-- **Embeddings and LLM titles in the browser** (structural + heuristic only
-  for now).
+- **LLM titles and embeddings without the Azure Function** (heuristic titles
+  and structural grouping only).
 - **Remaining live validation:** cross-update and renamed-file comment positions,
   group identities, another reviewer's vote preservation, and real permission denials.
 

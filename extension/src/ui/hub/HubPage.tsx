@@ -13,6 +13,7 @@ import {
   type SectionId,
 } from "../../data/list";
 import { DropdownButton } from "../controls";
+import { AiTitlesSetting } from "./AiTitlesSetting";
 import { readPreference, writePreference } from "../preferences";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
@@ -164,6 +165,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
           </p>
         )}
         {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
+        <AiTitlesSetting host={host} />
       </aside>
 
       <main className="hub-main">

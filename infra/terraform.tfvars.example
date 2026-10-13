@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+subscription_id  = "00000000-0000-0000-0000-000000000000"
+extension_secret = "<extension certificate secret>"
+alert_email      = "you@example.com"
+# location                = "canadacentral"
+# daily_gb_seconds_quota  = 2000
+# openai_location         = "eastus2"
+# titles_daily_budget_usd = 0.025
+# titles_caps = {
+#   org_monthly_usd     = 0.5
+#   project_monthly_usd = 0.25
+#   orgs = { cabochons = { monthly_usd = 1, projects = { Semantic_pr = 0.5 } } }
+# }

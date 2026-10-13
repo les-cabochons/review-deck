@@ -51,9 +51,19 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   const mechanical = all.filter((h) => h.mechanical);
   const reviewable = all.filter((h) => !h.mechanical);
 
-  const embedder = config.semantic.enabled ? (deps.embedder ?? null) : null;
+  let embedder = config.semantic.enabled ? (deps.embedder ?? null) : null;
   if (config.semantic.enabled && !embedder) warnings.push("semantic signal enabled but no embedder supplied; skipped");
-  const pairs = await time("score", () => scorePairs(reviewable, config, embedder, deps.onProgress));
+  const pairs = await time("score", async () => {
+    try {
+      return await scorePairs(reviewable, config, embedder, deps.onProgress);
+    } catch (e) {
+      // Embedding runs before any pair is scored, so retrying without it repeats no work.
+      if (!embedder) throw e;
+      warnings.push(`semantic signal skipped: ${e instanceof Error ? e.message : String(e)}`);
+      embedder = null;
+      return scorePairs(reviewable, config, null, deps.onProgress);
+    }
+  });
 
   deps.onProgress?.({ stage: "group", done: 0, total: 1 });
   const { communities, merges } = await time("cluster", () => {

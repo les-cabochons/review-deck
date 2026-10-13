@@ -6,6 +6,7 @@ import type { FileProvider, ReviewResult } from "../../../src/core/types";
 import { SyntaxParsers } from "../../../src/parse/treesitter";
 import { type PipelineProgress, runPipeline } from "../../../src/pipeline";
 import type { FileChange } from "../data/model";
+import { type BackendService, RemoteEmbedder, RemoteTitler } from "./backend";
 
 /** Old/new text for every changed file, keyed by repo path. `null` = absent on that side. */
 export interface FileContents {
@@ -22,6 +23,10 @@ export interface AnalysisJob {
   contents: Map<string, FileContents>;
   /** Absolute URL of the folder holding the tree-sitter .wasm files. */
   assetBase: string;
+  /** The Azure Function: adds the semantic signal (hunk embeddings, a model inside the function) when set. */
+  backend: BackendService | null;
+  /** Also send changed lines to the backend's LLM for group titles. The project must have opted in. */
+  aiTitles: boolean;
 }
 
 /** How far grouping is: `fraction` 0–1 across all stages, `label` for the UI. */
@@ -101,8 +106,13 @@ async function analyze(job: AnalysisJob, diff: string, onProgress: (p: PipelineP
   };
   const result = await runPipeline(
     { title: job.title, description: job.description, diff, files },
-    mergeConfig({ semantic: { enabled: false } }),
-    { parsers: await parsers(job.assetBase), onProgress },
+    mergeConfig({ semantic: { enabled: !!job.backend } }),
+    {
+      parsers: await parsers(job.assetBase),
+      embedder: job.backend && new RemoteEmbedder(job.backend),
+      titler: job.backend && job.aiTitles ? new RemoteTitler(job.backend) : undefined,
+      onProgress,
+    },
   );
   // The page never reads pair scores, and on a huge PR they are the bulk of the message.
   return { ...result, pairs: [] };
