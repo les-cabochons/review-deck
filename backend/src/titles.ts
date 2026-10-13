@@ -99,9 +99,10 @@ async function complete(prompt: string): Promise<{ text: string; inputTokens: nu
     body: JSON.stringify({
       model: settings.deployment,
       messages: [{ role: "user", content: prompt }],
-      // Reasoning models only (gpt-5 family); others reject the parameter.
-      ...(settings.reasoningEffort ? { reasoning_effort: settings.reasoningEffort } : {}),
-      max_completion_tokens: MAX_OUTPUT_TOKENS,
+      // Reasoning models (gpt-5 family) take an effort and max_completion_tokens; others (Phi, grok, ...) max_tokens.
+      ...(settings.reasoningEffort
+        ? { reasoning_effort: settings.reasoningEffort, max_completion_tokens: MAX_OUTPUT_TOKENS }
+        : { max_tokens: MAX_OUTPUT_TOKENS }),
     }),
     signal: AbortSignal.timeout(40_000),
   });

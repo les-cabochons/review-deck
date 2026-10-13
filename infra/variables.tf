@@ -23,15 +23,19 @@ variable "openai_location" {
 
 variable "titles_model" {
   description = <<-EOT
-    Azure OpenAI model for group titles (Global Standard deployment), or null to deploy no model: the page then keeps
-    rule-based titles. Check the region offers it and the subscription has quota:
-      az cognitiveservices usage list -l <openai_location> --query "[?contains(name.value, 'nano')]"
+    Model for group titles (Global Standard deployment in an AI Services resource), or null to deploy no model: the
+    page then keeps rule-based titles. Check the region offers it and the subscription has quota:
+      az cognitiveservices model list -l <openai_location>   (name, version, format)
+      az cognitiveservices usage list -l <openai_location>   (quota)
+    format is "OpenAI" for gpt models, "Microsoft" for Phi, "xAI" for grok, and so on.
     reasoning_effort is sent to reasoning models (gpt-5 family); use "" for models without it.
+    Example: { name = "Phi-4-mini-instruct", version = "1", format = "Microsoft", reasoning_effort = "" }
     Update titles_price_per_million to match the model.
   EOT
   type = object({
     name             = string
     version          = string
+    format           = optional(string, "OpenAI")
     reasoning_effort = optional(string, "minimal")
   })
   default = { name = "gpt-5-nano", version = "2025-08-07" }
