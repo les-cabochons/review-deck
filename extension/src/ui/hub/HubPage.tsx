@@ -29,6 +29,8 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [repo, setRepo] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
+  // Empty sections start closed; opening one only lasts until reload.
+  const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
   const [details, setDetails] = React.useState<Map<number, Partial<PrSummary>>>(new Map());
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
@@ -71,17 +73,19 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
 
   const me = host.currentUser;
   const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
-  const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query));
+  const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query)).map((p) => ({ ...p, ...details.get(p.id) }));
   const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
   const sections = inboxSections(visible, me, groupIds);
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
   const rows = shown.flatMap((s) => (collapsed.has(s.id) && filter === "inbox" ? [] : s.prs));
 
-  // Lazily enrich visible rows (checks, comment counts) where the host needs extra calls per PR.
+  // Lazily enrich visible rows (checks, comment counts) where the host needs extra calls per PR. Your open PRs
+  // come first even when collapsed: their reviewer policies decide between Approved and Waiting for review.
+  const enrich = [...new Map([...visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft), ...rows].map((p) => [p.id, p])).values()];
   React.useEffect(() => {
     if (!source?.details) return;
     let cancelled = false;
-    const todo = rows.filter((p) => !details.has(p.id)).slice(0, 24);
+    const todo = enrich.filter((p) => !details.has(p.id)).slice(0, 24);
     if (todo.length === 0) return;
     const queue = [...todo];
     const worker = async () => {
@@ -94,7 +98,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     return () => {
       cancelled = true;
     };
-  }, [source, rows.map((r) => r.id).join(",")]);
+  }, [source, enrich.map((r) => r.id).join(",")]);
 
   const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
 
@@ -132,10 +136,18 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     setFilter(f);
     writePreference("hub.filter", f);
   };
-  const toggle = (id: SectionId) => {
+  const isCollapsed = (s: { id: SectionId; prs: PrSummary[] }) => collapsed.has(s.id) || (s.prs.length === 0 && !openedEmpty.has(s.id));
+  const toggle = (s: { id: SectionId; prs: PrSummary[] }) => {
+    if (s.prs.length === 0 && !collapsed.has(s.id)) {
+      const next = new Set(openedEmpty);
+      if (next.has(s.id)) next.delete(s.id);
+      else next.add(s.id);
+      setOpenedEmpty(next);
+      return;
+    }
     const next = new Set(collapsed);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (next.has(s.id)) next.delete(s.id);
+    else next.add(s.id);
     setCollapsed(next);
     writePreference("hub.collapsed", JSON.stringify([...next]));
   };
@@ -213,15 +225,15 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
 
         {prs &&
           shown.map((s) => {
-            const isCollapsed = filter === "inbox" && collapsed.has(s.id);
+            const closed = filter === "inbox" && isCollapsed(s);
             return (
               <section key={s.id} className={cx("inbox-section", `section-${s.id}`)}>
-                <button className="inbox-section-header" onClick={() => (filter === "inbox" ? toggle(s.id) : undefined)} aria-expanded={!isCollapsed}>
-                  {filter === "inbox" && <Icon iconName={isCollapsed ? "ChevronRight" : "ChevronDown"} />}
+                <button className="inbox-section-header" onClick={() => (filter === "inbox" ? toggle(s) : undefined)} aria-expanded={!closed}>
+                  {filter === "inbox" && <Icon iconName={closed ? "ChevronRight" : "ChevronDown"} />}
                   <span className="title">{s.title}</span>
                   <span className="count-pill">{s.prs.length}</span>
                 </button>
-                {!isCollapsed &&
+                {!closed &&
                   (s.prs.length === 0 ? (
                     <p className="inbox-empty muted">{query ? "No matches." : s.empty}</p>
                   ) : (
@@ -231,7 +243,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                         return (
                           <PrRow
                             key={pr.id}
-                            pr={{ ...pr, ...details.get(pr.id) }}
+                            pr={pr}
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             stack={stacks.get(pr.id)}
