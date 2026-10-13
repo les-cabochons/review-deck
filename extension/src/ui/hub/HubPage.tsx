@@ -12,6 +12,7 @@ import {
   SECTION_META,
   type SectionId,
 } from "../../data/list";
+import { applyPatches, onHubPatch, readHubSnapshot, withRecentPatches, writeHubSnapshot } from "../../data/hubCache";
 import { DropdownButton } from "../controls";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
@@ -19,14 +20,23 @@ import { readPreference, writePreference } from "../preferences";
 import { StackDialog } from "../stack/StackDialog";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
+import { useRowDetails } from "./rowDetails";
+import { useSectionFlash } from "./sectionFlash";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
 
-/** The PR hub: a Graphite-style inbox of pull requests that involve you, in an Azure DevOps skin. */
-export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
+/**
+ * The PR hub: a Graphite-style inbox of pull requests that involve you, in an Azure DevOps skin. It paints the last
+ * list it saw (hubCache) at once and refreshes behind it; `active` is false while a PR page covers it.
+ */
+export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, active }) => {
+  const scope = host.cacheScope;
+  const [cached] = React.useState(() => readHubSnapshot(scope));
   const [source, setSource] = React.useState<PrListSource | null>(null);
-  const [prs, setPrs] = React.useState<PrSummary[] | null>(null);
+  const [prs, setPrs] = React.useState<PrSummary[] | null>(cached?.prs ?? null);
+  const [listedAt, setListedAt] = React.useState(cached?.listedAt ?? 0);
+  const [listLoading, setListLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [repo, setRepo] = React.useState<string | null>(null);
@@ -35,11 +45,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
   // Empty sections start closed; opening one only lasts until reload.
   const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
-  const [details, setDetails] = React.useState<Map<number, Partial<PrSummary>>>(new Map());
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
+  const main = React.useRef<HTMLElement>(null);
+  const { details, loading: detailsLoading, busy, merge, listLoaded, want } = useRowDetails({ source, active, container: main, initial: cached?.details });
 
-  const [groups, setGroups] = React.useState<MyGroup[]>([]);
+  const [groups, setGroups] = React.useState<MyGroup[]>(cached?.groups ?? []);
   const [trunks, setTrunks] = React.useState<string[] | null>(null);
   React.useEffect(() => {
     host.projectSettings().then((s) => setTrunks(s.trunkBranches));
@@ -55,38 +66,63 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   React.useEffect(() => {
     if (tag && tagsByKey.size && !tagsByKey.has(tagKey(tag))) setTag(null);
   }, [tag, tagsByKey]);
+  const latestLoad = React.useRef(0);
   const loadPrs = React.useCallback(() => {
+    const load = ++latestLoad.current;
+    const requestedAt = Date.now();
     setError(null);
+    setListLoading(true);
     host
       .listSource()
       .then(async (s) => {
         setSource(s);
-        // Teams only widen "Needs your review"; the list still works without them.
-        const [list] = await Promise.all([
-          s.list(),
-          s.myGroups().then(
-            (g) => {
-              setGroups(g);
-              setGroupError(null);
-            },
-            (e: Error) => setGroupError(e.message),
-          ),
-        ]);
-        setPrs(list);
+        // Teams only widen "Needs your review", so the list doesn't wait for them.
+        s.myGroups().then(
+          (g) => {
+            if (load !== latestLoad.current) return;
+            setGroups(g);
+            setGroupError(null);
+          },
+          (e: Error) => load === latestLoad.current && setGroupError(e.message),
+        );
+        const list = await s.list();
+        if (load !== latestLoad.current) return;
+        // First: React 16 renders (and may start fetching details) inside setPrs, and those belong to this list.
+        listLoaded(new Set(list.map((p) => p.id)));
+        setPrs(withRecentPatches(scope, list, requestedAt));
+        setListedAt(requestedAt);
       })
-      .catch((e: Error) => setError(e.message));
-  }, [host]);
+      .catch((e: Error) => load === latestLoad.current && setError(e.message))
+      .finally(() => load === latestLoad.current && setListLoading(false));
+  }, [host, scope, listLoaded]);
   const load = () => {
     reloadTags();
     loadPrs();
   };
-  // Also after a tag is renamed or deleted, so rows show the new names.
+  // On first show, after a tag is renamed or deleted (so rows show the new names), and on coming back from a PR.
   React.useEffect(() => {
-    loadPrs();
-  }, [loadPrs, tagRevision]);
+    if (active) loadPrs();
+  }, [loadPrs, tagRevision, active]);
   React.useEffect(() => {
-    host.setTitle("Pull requests");
-  }, [host]);
+    if (active) host.setTitle("Pull requests");
+  }, [host, active]);
+
+  // Changes made on a PR page (votes, reviewers, tags) apply here at once, even while the hub is hidden.
+  React.useEffect(
+    () =>
+      onHubPatch(scope, (patch) => {
+        setPrs((list) => list && applyPatches(list, [patch]));
+        merge(patch.id, patch.details);
+      }),
+    [scope, merge],
+  );
+
+  // Save what's shown for the next visit, once things settle.
+  React.useEffect(() => {
+    if (!prs) return;
+    const timer = setTimeout(() => writeHubSnapshot(scope, { prs, details, groups, listedAt }), 500);
+    return () => clearTimeout(timer);
+  }, [scope, prs, details, groups, listedAt]);
 
   const me = host.currentUser;
   const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
@@ -102,34 +138,29 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const sections = inboxSections(visible, me, groupIds);
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
   const rows = shown.flatMap((s) => (collapsed.has(s.id) && filter === "inbox" ? [] : s.prs));
+  want(
+    visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft),
+    rows,
+  );
 
-  // Lazily enrich visible rows (checks, comment counts) where the host needs extra calls per PR. Your open PRs
-  // come first even when collapsed: their reviewer policies decide between Approved and Waiting for review.
-  const enrich = [...new Map([...visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft), ...rows].map((p) => [p.id, p])).values()];
+  const refreshing = listLoading || detailsLoading;
+
+  // Rows that refreshed data moved to another section flash in place, so the change is easy to spot. Not while a
+  // first visit (nothing cached) is still filling in: those moves aren't changes the reader has seen before.
+  const [settled, setSettled] = React.useState(!!cached);
   React.useEffect(() => {
-    if (!source?.details) return;
-    let cancelled = false;
-    const todo = enrich.filter((p) => !details.has(p.id)).slice(0, 24);
-    if (todo.length === 0) return;
-    const queue = [...todo];
-    const worker = async () => {
-      for (let pr = queue.shift(); pr && !cancelled; pr = queue.shift()) {
-        const extra = await source.details!(pr).catch(() => ({}));
-        if (!cancelled) setDetails((m) => new Map(m).set(pr!.id, extra));
-      }
-    };
-    void Promise.all([worker(), worker(), worker(), worker()]);
-    return () => {
-      cancelled = true;
-    };
-  }, [source, enrich.map((r) => r.id).join(",")]);
+    if (!settled && prs && !listLoading && !busy()) setSettled(true);
+  });
+  const revisions = React.useRef(0);
+  const dataRevision = React.useMemo(() => ++revisions.current, [prs, details, groups]);
+  useSectionFlash(main, dataRevision, settled);
 
   const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
 
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (stackOpen) return;
+      if (!active || stackOpen) return;
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "/" && !typing) {
         e.preventDefault();
@@ -205,7 +236,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
         )}
       </aside>
 
-      <main className="hub-main">
+      <main className="hub-main" ref={main}>
         <div className="hub-toolbar">
           <div className="search-box">
             <Icon iconName="Search" />
@@ -227,17 +258,26 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
               ...repos.map(([id, name]) => ({ id, text: name, checked: repo === id, onSelect: () => setRepo(id) })),
             ]}
           />
-          <Button iconProps={{ iconName: "Refresh" }} subtle ariaLabel="Refresh" onClick={load} />
+          <Button
+            iconProps={{ iconName: "Refresh" }}
+            className={cx("hub-refresh", refreshing && "busy")}
+            subtle
+            ariaLabel={refreshing ? "Updating pull requests" : "Refresh"}
+            tooltipProps={{ text: refreshing ? "Updating…" : "Refresh" }}
+            onClick={load}
+          />
           <span className="spacer" />
           {source?.newPullRequestUrl && <Button text="New pull request" primary href={source.newPullRequestUrl} target="_top" />}
+          {/* Shown while the list or row details are loading; rows on screen may be from the last visit until then. */}
+          {refreshing && prs && <div className="hub-progress" role="progressbar" aria-label="Updating pull requests" />}
         </div>
 
         {error && (
           <div className="error-box" role="alert">
-            Could not load pull requests: {error}
+            {prs ? `Could not refresh pull requests, so these may be out of date: ${error}` : `Could not load pull requests: ${error}`}
           </div>
         )}
-        {!prs && !error && <div className="loading">Loading pull requests…</div>}
+        {!prs && !error && <SkeletonSection />}
 
         {prs &&
           shown.map((s) => {
@@ -260,6 +300,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
                           <PrRow
                             key={pr.id}
                             pr={pr}
+                            section={s.id}
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             stack={stacks.get(pr.id)}
@@ -310,6 +351,7 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
 
 const PrRow: React.FC<{
   pr: PrSummary;
+  section: SectionId;
   me: string;
   via: PrSummary["reviewers"];
   /** Position in a stack ("2 of 4"), if the PR is stacked. */
@@ -319,7 +361,7 @@ const PrRow: React.FC<{
   /** Show the whole stack, from the stack chip. */
   onStack: () => void;
   onHover: () => void;
-}> = ({ pr, me, via, stack, selected, onOpen, onStack, onHover }) => {
+}> = ({ pr, section, me, via, stack, selected, onOpen, onStack, onHover }) => {
   const state = STATE_ICON[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
@@ -340,6 +382,8 @@ const PrRow: React.FC<{
     <div
       role="listitem"
       tabIndex={-1}
+      data-pr={pr.id}
+      data-section={section}
       className={cx("pr-row", selected && "selected", !pr.openable && "not-openable")}
       onClick={onOpen}
       onMouseEnter={onHover}
@@ -454,6 +498,26 @@ const PrRow: React.FC<{
     </div>
   );
 };
+
+/** Placeholder rows for the very first load, before anything is cached. */
+const SkeletonSection: React.FC = () => (
+  <section className="inbox-section skeleton" aria-busy="true" aria-label="Loading pull requests">
+    <div className="inbox-section-header">
+      <span className="skeleton-bar" style={{ width: 140 }} />
+    </div>
+    <div className="pr-rows">
+      {[62, 48, 71, 55, 40, 66].map((w, i) => (
+        <div key={i} className="skeleton-row">
+          <span className="skeleton-dot" />
+          <span className="skeleton-lines">
+            <span className="skeleton-bar" style={{ width: `${w}%` }} />
+            <span className="skeleton-bar short" style={{ width: `${w / 2}%` }} />
+          </span>
+        </div>
+      ))}
+    </div>
+  </section>
+);
 
 const SizeBar: React.FC<{ files: number; adds: number; dels: number }> = ({ files, adds, dels }) => {
   const total = adds + dels;

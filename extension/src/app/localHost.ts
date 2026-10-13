@@ -14,6 +14,7 @@ const TAGS_KEY = "semantic-pr.local.tagStyles";
  */
 export class LocalHost implements AppHost {
   readonly kind = "local";
+  readonly cacheScope = "local";
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
 

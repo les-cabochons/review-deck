@@ -399,6 +399,97 @@ kbd {
   background: var(--canvas);
   padding: 8px 0;
 }
+/* Refresh in progress: a thin bar under the toolbar, after a short delay so quick refreshes don't flicker. */
+.hub-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  animation: hub-progress-in 0s 150ms forwards;
+}
+.hub-progress::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  background: var(--accent);
+  animation: hub-progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes hub-progress-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes hub-progress-slide {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+.hub-refresh.busy .fabric-icon {
+  animation: spin 1s linear infinite;
+}
+/* A row that refreshed data moved to another section (ui/hub/sectionFlash.ts). */
+.pr-row[data-moved] {
+  animation: row-moved 1.6s ease-out;
+}
+@keyframes row-moved {
+  from {
+    background: var(--selected);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+}
+/* First load with nothing cached. */
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+.skeleton-dot {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.skeleton-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skeleton-bar {
+  display: block;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.skeleton-bar.short {
+  height: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-progress::before {
+    animation-duration: 3s;
+  }
+  .hub-refresh.busy .fabric-icon,
+  .skeleton-dot,
+  .skeleton-bar {
+    animation: none;
+  }
+}
 .search-box {
   display: flex;
   align-items: center;

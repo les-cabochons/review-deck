@@ -1,6 +1,6 @@
 import { getClient } from "azure-devops-extension-api";
 import { type GitPullRequestCommentThread, GitRestClient } from "azure-devops-extension-api/Git";
-import { PolicyRestClient } from "azure-devops-extension-api/Policy";
+import { type PolicyEvaluationRecord, PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
 import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
@@ -13,6 +13,7 @@ import {
   type FileChange,
   type Identity,
   type PolicyState,
+  type PolicyStatus,
   type PrOverview,
   type PrSource,
   type PrStatus,
@@ -25,7 +26,19 @@ import type { ThreadJson } from "./snapshot";
 const ADD = 1;
 const DELETE = 16;
 const RENAME = 8;
+/** PolicyEvaluationStatus by number. */
 const POLICY_STATE: PolicyState[] = ["queued", "running", "approved", "rejected", "notApplicable", "broken"];
+
+/** A policy evaluation from the REST API, normalized; shared with the PR list's details. */
+export function policyStatus(p: PolicyEvaluationRecord): PolicyStatus {
+  return {
+    id: p.evaluationId,
+    name: p.configuration?.type?.displayName ?? "Policy",
+    detail: typeof p.configuration?.settings?.displayName === "string" ? p.configuration.settings.displayName : undefined,
+    state: POLICY_STATE[p.status] ?? "queued",
+    blocking: !!p.configuration?.isBlocking,
+  };
+}
 const PR_STATUS: Record<number, PrStatus> = { 1: "active", 2: "abandoned", 3: "completed" };
 
 interface IdentityLike {
@@ -115,13 +128,7 @@ export class AdoPrSource implements PrSource {
         authorEmail: c.author?.email ?? "",
         date: new Date(c.author?.date ?? Date.now()),
       })),
-      policies: policies.map((p) => ({
-        id: p.evaluationId,
-        name: p.configuration?.type?.displayName ?? "Policy",
-        detail: typeof p.configuration?.settings?.displayName === "string" ? p.configuration.settings.displayName : undefined,
-        state: POLICY_STATE[p.status] ?? "queued",
-        blocking: !!p.configuration?.isBlocking,
-      })),
+      policies: policies.map(policyStatus),
       workItems: workItems.map((w) => ({ id: w.id, url: w.url })),
     };
   }

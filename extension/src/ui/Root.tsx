@@ -14,13 +14,32 @@ export const Root: React.FC<{ host: AppHost }> = ({ host }) => {
       unsubscribe();
     };
   }, [host]);
+
+  // The hub stays mounted behind PR pages once shown, so going back keeps its rows and scroll position and only
+  // refreshes in the background. A link straight to a PR doesn't load the hub until you go to it.
+  const onHub = route.view === "hub";
+  const [hubShown, setHubShown] = React.useState(onHub);
+  if (onHub && !hubShown) setHubShown(true);
+  const hubScroll = React.useRef(0);
+  const onHubRef = React.useRef(onHub);
+  onHubRef.current = onHub;
   React.useEffect(() => {
-    window.scrollTo(0, 0);
+    const save = () => onHubRef.current && (hubScroll.current = window.scrollY);
+    window.addEventListener("scroll", save, { passive: true });
+    return () => window.removeEventListener("scroll", save);
+  }, []);
+  React.useEffect(() => {
+    window.scrollTo(0, onHub ? hubScroll.current : 0);
   }, [route]);
 
   return (
     <ProjectTagsProvider host={host}>
-      {route.view === "hub" ? <HubPage host={host} /> : <PrRoute key={`${route.repo}/${route.pr}`} host={host} route={route} />}
+      {hubShown && (
+        <div hidden={!onHub}>
+          <HubPage host={host} active={onHub} />
+        </div>
+      )}
+      {route.view === "pr" && <PrRoute key={`${route.repo}/${route.pr}`} host={host} route={route} />}
     </ProjectTagsProvider>
   );
 };

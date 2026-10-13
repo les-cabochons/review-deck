@@ -40,6 +40,7 @@ async function main() {
   const route = { view: "pr" as const, repo: "t3code", pr: 17901 };
   const host: AppHost = {
     kind: "local",
+    cacheScope: "write-test",
     currentUser: source.currentUser,
     route: () => route,
     navigate: () => {},

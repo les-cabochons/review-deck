@@ -1,4 +1,4 @@
-import { asVote, type Identity, type PrStatus, type Reviewer } from "./model";
+import { asVote, type Identity, type PolicyStatus, type PrStatus, type Reviewer, type Thread } from "./model";
 import type { PrListSnapshot } from "./listSnapshot";
 
 /** One row in the PR hub. Optional fields are filled lazily (`details`) where the host API needs extra calls. */
@@ -37,14 +37,46 @@ export interface MyGroup {
   name: string;
 }
 
+/** Hub row facts that come from the PR's policy evaluations; shared by the list (`details`) and the PR page. */
+export function policyFacts(policies: Pick<PolicyStatus, "name" | "blocking" | "state">[]): Pick<PrSummary, "checks" | "reviewPolicy"> {
+  const states = policies.filter((p) => /build/i.test(p.name)).map((p) => p.state);
+  const checks: PrSummary["checks"] =
+    states.length === 0
+      ? "none"
+      : states.some((s) => s === "rejected" || s === "broken")
+        ? "failing"
+        : states.some((s) => s === "queued" || s === "running")
+          ? "pending"
+          : "passing";
+  const reviews = policies.filter((p) => p.blocking && /minimum number of reviewers|required reviewers/i.test(p.name) && p.state !== "notApplicable");
+  const reviewPolicy: PrSummary["reviewPolicy"] = reviews.length === 0 ? "none" : reviews.every((p) => p.state === "approved") ? "met" : "unmet";
+  return { checks, reviewPolicy };
+}
+
+/** Active (unresolved) human discussion threads, as counted in the hub. */
+export function activeComments(threads: Pick<Thread, "status" | "kind">[]): number {
+  return threads.filter((t) => t.kind === "comment" && (t.status === "active" || t.status === "pending")).length;
+}
+
+/** A row's details merged into the map of fetched details, as a new map for React state. */
+export function withDetails(details: ReadonlyMap<number, Partial<PrSummary>>, id: number, extra: Partial<PrSummary>): Map<number, Partial<PrSummary>> {
+  return new Map(details).set(id, { ...details.get(id), ...extra });
+}
+
+/** "review": only what decides a PR's section (its policies). "full": also comment counts and restack status. */
+export type DetailScope = "review" | "full";
+
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;
   list(): Promise<PrSummary[]>;
   /** Teams the current user belongs to. */
   myGroups(): Promise<MyGroup[]>;
-  /** Extra per-PR facts that cost one or more API calls; called for visible rows only. */
-  details?(pr: PrSummary): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack" | "reviewPolicy">>>;
+  /**
+   * Extra per-PR facts that cost one or more API calls; called for visible rows only. "review" fetches only what
+   * decides the PR's section (reviewPolicy, and checks from the same call), for your PRs in collapsed sections.
+   */
+  details?(pr: PrSummary, scope?: DetailScope): Promise<Partial<Pick<PrSummary, "checks" | "comments" | "size" | "restack" | "reviewPolicy">>>;
   /** Link to the native Azure DevOps page for creating a pull request, when available. */
   newPullRequestUrl?: string;
 }
