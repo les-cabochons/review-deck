@@ -29,7 +29,7 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   minify: true,
   // Native runtime, copied below; the Functions worker provides @azure/functions-core.
   external: ["onnxruntime-node", "onnxruntime-common", "@azure/functions-core"],

@@ -26,7 +26,7 @@ Review Deck**. The toggle is disabled when the extension was built without a bac
   Treat the switch as a project policy setting, not a security boundary.
 
 Pieces:
-- `backend/`: one Azure Function (Node 22).
+- `backend/`: one Azure Function (Node 24).
   - `POST /api/titles {"context", "groups"}` returns `{"titles": [{id, title, rationale}], "cached"}`, in reading order.
     The function builds the prompt itself from the hunks' changed lines, with at most 40 groups and 200 hunks.
   - `POST /api/embed {"texts": [...]}` returns `{"vectors": [[...384 floats]]}` for at most 2,000 texts.
