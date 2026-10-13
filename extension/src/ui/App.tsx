@@ -294,7 +294,7 @@ const Breadcrumb: React.FC<{ onBack: () => void; repo?: string; id?: number; nat
     <span className="spacer" />
     {nativeUrl && (
       <a className="crumb-link" href={nativeUrl} target="_top">
-        Open in Azure DevOps <Icon iconName="NavigateExternalInline" />
+        Classic review <Icon iconName="NavigateExternalInline" />
       </a>
     )}
   </nav>
