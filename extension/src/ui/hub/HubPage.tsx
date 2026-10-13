@@ -4,6 +4,7 @@ import * as React from "react";
 import type { AppHost } from "../../app/host";
 import {
   inboxSections,
+  type ListScope,
   matchesQuery,
   type MyGroup,
   type PrListSource,
@@ -26,7 +27,10 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const [prs, setPrs] = React.useState<PrSummary[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
+  // The Repos breadcrumb's repository by default; null for every repository in `scope`.
   const [repo, setRepo] = React.useState<string | null>(null);
+  const [current, setCurrent] = React.useState<{ id: string; name: string } | null | undefined>(undefined);
+  const [scope, setScope] = React.useState<ListScope>("project");
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
   const [details, setDetails] = React.useState<Map<number, Partial<PrSummary>>>(new Map());
@@ -41,6 +45,16 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   const stacks = React.useMemo(() => (prs && trunks ? stackIndex(prs, trunks) : new Map()), [prs, trunks]);
   const [groupError, setGroupError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    host.currentRepository().then(
+      (r) => {
+        setCurrent(r);
+        setRepo(r?.id ?? null);
+      },
+      () => setCurrent(null),
+    );
+  }, [host]);
+
   const load = React.useCallback(() => {
     setError(null);
     host
@@ -49,7 +63,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
         setSource(s);
         // Teams only widen "Needs your review"; the list still works without them.
         const [list] = await Promise.all([
-          s.list(),
+          s.list(scope),
           s.myGroups().then(
             (g) => {
               setGroups(g);
@@ -61,7 +75,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
         setPrs(list);
       })
       .catch((e: Error) => setError(e.message));
-  }, [host]);
+  }, [host, scope]);
   React.useEffect(() => {
     load();
   }, [load]);
@@ -70,7 +84,14 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   }, [host]);
 
   const me = host.currentUser;
-  const repos = React.useMemo(() => [...new Map((prs ?? []).map((p) => [p.repository.id, p.repository.name])).entries()], [prs]);
+  const repos = React.useMemo(() => {
+    const byId = new Map((prs ?? []).map((p) => [p.repository.id, p.repository]));
+    const projects = new Set([...byId.values()].map((r) => r.projectId));
+    const named = [...byId.values()].map((r) => [r.id, projects.size > 1 ? `${r.projectName} / ${r.name}` : r.name] as const);
+    // The current repository has a place in the menu even with no pull requests.
+    if (current && !byId.has(current.id)) named.unshift([current.id, current.name]);
+    return named;
+  }, [prs, current]);
   const visible = (prs ?? []).filter((p) => (!repo || p.repository.id === repo) && matchesQuery(p, query));
   const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
   const sections = inboxSections(visible, me, groupIds);
@@ -96,7 +117,15 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [source, rows.map((r) => r.id).join(",")]);
 
-  const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
+  const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
+  const showAll = () => {
+    setRepo(null);
+    if (scope === "organization") return;
+    setPrs(null);
+    setDetails(new Map());
+    setScope("organization");
+  };
+  const everything = scope === "organization" ? "All projects" : "All repositories";
 
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
@@ -192,13 +221,16 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             {!query && <kbd>/</kbd>}
           </div>
           <DropdownButton
-            text={repo ? (repos.find(([id]) => id === repo)?.[1] ?? "Repository") : "All repositories"}
+            text={repo ? (repos.find(([id]) => id === repo)?.[1] ?? "Repository") : everything}
             icon="Repo"
             options={[
-              { id: "all", text: "All repositories", checked: !repo, onSelect: () => setRepo(null) },
+              { id: "all", text: everything, checked: !repo, onSelect: () => setRepo(null) },
               ...repos.map(([id, name]) => ({ id, text: name, checked: repo === id, onSelect: () => setRepo(id) })),
             ]}
           />
+          {(repo || scope === "project") && (
+            <Button text="All projects" iconProps={{ iconName: "Globe" }} subtle onClick={showAll} tooltipProps={{ text: "Clear the repository filter and show pull requests from every project" }} />
+          )}
           <Button iconProps={{ iconName: "Refresh" }} subtle ariaLabel="Refresh" onClick={load} />
           <span className="spacer" />
           {source?.newPullRequestUrl && <Button text="New pull request" primary href={source.newPullRequestUrl} target="_top" />}
@@ -209,9 +241,12 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
             Could not load pull requests: {error}
           </div>
         )}
-        {!prs && !error && <div className="loading">Loading pull requests…</div>}
+        {(!prs || current === undefined) && !error && (
+          <div className="loading">{scope === "organization" ? "Loading pull requests from every project…" : "Loading pull requests…"}</div>
+        )}
 
         {prs &&
+          current !== undefined &&
           shown.map((s) => {
             const isCollapsed = filter === "inbox" && collapsed.has(s.id);
             return (
@@ -246,7 +281,7 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
               </section>
             );
           })}
-        {prs && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
+        {prs && current !== undefined && <p className="hub-footer muted">{plural(visible.length, "pull request")} · j/k to move, Enter to open, / to search</p>}
       </main>
     </div>
   );

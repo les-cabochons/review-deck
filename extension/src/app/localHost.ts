@@ -52,6 +52,13 @@ export class LocalHost implements AppHost {
     return this.list;
   }
 
+  /** The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. */
+  async currentRepository(): Promise<{ id: string; name: string } | null> {
+    const id = new URLSearchParams(location.search).get("currentRepo");
+    const pr = id && (await this.list.list()).find((p) => p.repository.id === id);
+    return pr ? { id, name: pr.repository.name } : null;
+  }
+
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
     let source = this.prSources.get(route.pr);
     if (!source) {

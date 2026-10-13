@@ -11,7 +11,7 @@ function pr(id: number, overrides: Partial<PrSummary> = {}): PrSummary {
   return {
     id,
     title: `PR ${id}`,
-    repository: { id: "repo", name: "repo", projectName: "project" },
+    repository: { id: "repo", name: "repo", projectId: "project", projectName: "project" },
     createdBy: other,
     creationDate: new Date(2026, 0, id),
     status: "active",

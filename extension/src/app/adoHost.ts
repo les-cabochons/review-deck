@@ -1,5 +1,6 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
+import { GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
 import { AdoPrListSource } from "../data/adoList";
 import { AdoPrSource } from "../data/adoSource";
 import type { Identity, PrSource } from "../data/model";
@@ -46,6 +47,13 @@ export class AdoHost implements AppHost {
   }
 
   navigate(route: Route): void {
+    if (route.view === "pr" && route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) {
+      // Another project's PR: open it in that project's hub, so its settings and links apply.
+      const { publisherId, extensionId } = SDK.getExtensionContext();
+      const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
+      this.nav.navigate(`${this.hostUrl}${encodeURIComponent(route.project)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`);
+      return;
+    }
     this.current = route;
     this.nav.setQueryParams(route.view === "pr" ? { pr: String(route.pr), repo: route.repo } : { pr: "", repo: "" });
     this.listeners.emit(route);
@@ -57,6 +65,17 @@ export class AdoHost implements AppHost {
 
   async listSource() {
     return new AdoPrListSource(this.project.id, this.currentUser, this.hostUrl, `${this.projectUrl()}/_git/${encodeURIComponent(this.project.name)}/pullrequestcreate`);
+  }
+
+  async currentRepository(): Promise<{ id: string; name: string } | null> {
+    try {
+      const service = await SDK.getService<IVersionControlRepositoryService>(GitServiceIds.VersionControlRepositoryService);
+      const repo = await service.getCurrentGitRepository();
+      return repo && { id: repo.id, name: repo.name };
+    } catch (e) {
+      console.warn("[semantic-pr] no current repository:", e);
+      return null;
+    }
   }
 
   async prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
