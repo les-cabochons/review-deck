@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { startHostedPage, withTimeout } from "../src/startup";
-import { connectPreferences, readPreference, writePreference } from "../src/ui/preferences";
+import { connectPreferences, readLocal, readPreference, writeLocal, writePreference } from "../src/ui/preferences";
 
 function host() {
   const calls: string[] = [];
@@ -94,4 +94,15 @@ test("Given denied storage, then preferences from the user's account still apply
   const denied = () => { throw new DOMException("Storage access denied", "SecurityError"); };
   await connectPreferences({ load: async () => ({ fileView: "alpha" }), save: async () => {} }, 1500, denied);
   assert.equal(readPreference("fileView", "grouped", denied), "alpha");
+});
+
+test("Given pending-review drafts, then they stay in this browser and never reach the user's account", async () => {
+  const local = memoryStorage();
+  const saves: Record<string, string>[] = [];
+  await connectPreferences({ load: async () => ({}), save: async (values) => { saves.push(values); } }, 1500, local.storage);
+  writeLocal("pending.t3code.17901", '[{"id":"draft-1"}]', local.storage);
+  assert.equal(readLocal("pending.t3code.17901", local.storage), '[{"id":"draft-1"}]');
+  writePreference("diffMode", "split", local.storage);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.deepEqual(saves, [{ diffMode: "split" }]);
 });

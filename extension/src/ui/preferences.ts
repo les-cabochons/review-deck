@@ -19,22 +19,13 @@ interface Synced {
 let synced: Synced | null = null;
 
 export function readPreference<T extends string>(key: string, initial: T, storage: () => PreferenceStorage = browserStorage): T {
-  try {
-    const value = storage().getItem(`semantic-review.${key}`) as T | null;
-    if (synced && value) synced.seen[key] = value;
-    if (value) return value;
-  } catch {
-    // Denied storage: fall back to the synced copy.
-  }
-  return (synced?.values[key] as T | undefined) || initial;
+  const value = readLocal<T>(key, storage);
+  if (synced && value) synced.seen[key] = value;
+  return value || (synced?.values[key] as T | undefined) || initial;
 }
 
 export function writePreference(key: string, value: string, storage: () => PreferenceStorage = browserStorage): void {
-  try {
-    storage().setItem(`semantic-review.${key}`, value);
-  } catch {
-    // Preferences still apply for this page session when storage is denied or full.
-  }
+  writeLocal(key, value, storage);
   if (!synced) return;
   synced.values[key] = value;
   const state = synced;
@@ -45,6 +36,26 @@ export function writePreference(key: string, value: string, storage: () => Prefe
       .then(() => state.store.save({ ...state.seen, ...state.values }))
       .catch((e) => console.warn("[semantic-pr] could not save preferences:", e));
   }, 500);
+}
+
+/**
+ * This browser only, never synced to the user's account: for per-PR data that would grow the synced
+ * document without bound, like pending-review drafts.
+ */
+export function readLocal<T extends string>(key: string, storage: () => PreferenceStorage = browserStorage): T | null {
+  try {
+    return storage().getItem(`semantic-review.${key}`) as T | null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLocal(key: string, value: string, storage: () => PreferenceStorage = browserStorage): void {
+  try {
+    storage().setItem(`semantic-review.${key}`, value);
+  } catch {
+    // Still applies for this page session when storage is denied or full.
+  }
 }
 
 /**
