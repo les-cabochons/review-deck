@@ -7,6 +7,7 @@ import { SyntaxParsers } from "../../../src/parse/treesitter";
 import { type PipelineProgress, runPipeline } from "../../../src/pipeline";
 import type { FileChange } from "../data/model";
 import { type BackendService, RemoteEmbedder, RemoteTitler } from "./backend";
+import { restoreReview, reviewMode } from "./saved";
 
 /** Old/new text for every changed file, keyed by repo path. `null` = absent on that side. */
 export interface FileContents {
@@ -27,6 +28,8 @@ export interface AnalysisJob {
   backend: BackendService | null;
   /** Also send changed lines to the backend's LLM for group titles. The project must have opted in. */
   aiTitles: boolean;
+  /** A grouping saved for this comparison (saved.ts); used instead of the analysis if it still fits the diff. */
+  saved: unknown;
 }
 
 /** How far grouping is: `fraction` 0–1 across all stages, `label` for the UI. */
@@ -39,7 +42,7 @@ export interface AnalysisProgress {
 export type AnalysisMessage =
   | { type: "diff"; diff: string }
   | { type: "progress"; progress: AnalysisProgress }
-  | { type: "result"; result: ReviewResult }
+  | { type: "result"; result: ReviewResult; /** From the saved grouping, not a fresh analysis. */ restored: boolean }
   | { type: "error"; error: string };
 
 /** Rough share of the pipeline's time per stage, measured on large PRs (parsing dominates). */
@@ -74,7 +77,10 @@ export async function runJob(job: AnalysisJob, send: (message: AnalysisMessage) 
   try {
     const diff = buildDiff(job.changes, job.contents);
     send({ type: "diff", diff });
-    send({ type: "result", result: await analyze(job, diff, throttled(send)) });
+    const meta = { title: job.title, description: job.description };
+    const restored = job.saved ? restoreReview(job.saved, reviewMode(job.backend, job.aiTitles), meta, diff) : null;
+    if (restored) send({ type: "result", result: restored, restored: true });
+    else send({ type: "result", result: await analyze(job, diff, throttled(send)), restored: false });
   } catch (e) {
     send({ type: "error", error: e instanceof Error ? e.message : String(e) });
   }

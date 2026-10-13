@@ -51,6 +51,7 @@ async function main() {
     projectSettings: async () => ({ aiTitles: false }),
     saveProjectSettings: async () => {},
     canManageProject: async () => false,
+    savedReviews: () => ({ load: async () => null, save: async () => {} }),
     nativePrUrl: () => null,
     settingsUrl: () => null,
   };
