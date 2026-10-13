@@ -237,23 +237,21 @@ kbd {
   background: var(--surface);
 }
 
-/* local preview banners */
-.mock-notice {
-  padding: 6px var(--page-x);
-  background: var(--surface-2);
-  color: var(--fg2);
-  font-size: 12px;
-  border-bottom: 1px solid var(--line);
-}
+/* Floats over the page so saving status never shifts the layout. */
 .write-feedback {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
+  max-width: calc(100% - 32px);
 }
 .write-feedback:not(:empty) {
-  padding: 8px var(--page-x);
+  padding: 8px 12px;
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.16);
   font-size: 13px;
 }
 .write-error {
