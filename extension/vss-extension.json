@@ -9,6 +9,43 @@
   "icons": {
     "default": "images/logo.png"
   },
+  "content": {
+    "details": {
+      "path": "overview.md"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "uri": "https://github.com/alextrepa/semantic-pr"
+  },
+  "links": {
+    "getstarted": {
+      "uri": "https://github.com/alextrepa/semantic-pr#azure-devops-services-extension"
+    },
+    "repository": {
+      "uri": "https://github.com/alextrepa/semantic-pr"
+    },
+    "issues": {
+      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+    },
+    "support": {
+      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+    }
+  },
+  "CustomerQnASupport": {
+    "enablemarketplaceqna": true
+  },
+  "branding": {
+    "color": "rgb(0, 0, 0)",
+    "theme": "dark"
+  },
+  "tags": [
+    "Pull Request",
+    "Code Review",
+    "Diff",
+    "Stacked PRs",
+    "Git"
+  ],
   "categories": [
     "Azure Repos"
   ],
