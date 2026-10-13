@@ -9,7 +9,10 @@ import type { BackendService } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
 import { type AppHost, BACKEND_URL, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
 import { syncRestackHooks } from "./restackHooks";
+import type { PreferenceStore } from "../ui/preferences";
 
+/** User-scoped extension data value holding the user's view preferences (ui/preferences.ts). */
+const PREFERENCES_KEY = "preferences";
 /** Extension data collection holding one settings document per project, keyed by project ID. */
 const SETTINGS_COLLECTION = "project-settings";
 /** Extension data collection holding each pull request's latest finished grouping (review/saved.ts). */
@@ -143,6 +146,15 @@ export class AdoHost implements AppHost {
       console.warn("[semantic-pr] could not check project permissions:", e);
       return false;
     }
+  }
+
+  /** The user's view preferences, in user-scoped extension data so they follow them across browsers. */
+  preferences(): PreferenceStore {
+    const options = { scopeType: "User", defaultValue: {} };
+    return {
+      load: async () => ((await (await this.data()).getValue<Record<string, string> | null>(PREFERENCES_KEY, options)) ?? {}),
+      save: async (values) => void (await (await this.data()).setValue(PREFERENCES_KEY, values, { scopeType: "User" })),
+    };
   }
 
   /**

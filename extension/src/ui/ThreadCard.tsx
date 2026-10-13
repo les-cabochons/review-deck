@@ -54,7 +54,7 @@ export const ThreadCard: React.FC<{
           options={STATUS_ORDER.map((s) => ({
             id: s,
             text: THREAD_STATUS_LABEL[s],
-            checked: s === thread.status,
+            selected: s === thread.status,
             onSelect: () => s !== thread.status && void run(() => actions.setThreadStatus(thread.id, s)),
           }))}
         />

@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { FileAnchor, NewThread, PrActions, Vote } from "../../data/model";
-import { readPreference, writePreference } from "../preferences";
+import { readLocal, writeLocal } from "../preferences";
 
 /**
  * A GitHub-style review: comments and replies collect as drafts (kept in local storage, so a reload
@@ -39,7 +39,7 @@ export const PendingReviewProvider: React.FC<{ storageKey: string }> = ({ storag
   const key = `pending.${storageKey}`;
   const [drafts, setDrafts] = React.useState<Draft[]>(() => {
     try {
-      return JSON.parse(readPreference(key, "[]")) as Draft[];
+      return JSON.parse(readLocal(key) || "[]") as Draft[];
     } catch {
       return [];
     }
@@ -49,7 +49,7 @@ export const PendingReviewProvider: React.FC<{ storageKey: string }> = ({ storag
     (next: Draft[]) => {
       latest.current = next;
       setDrafts(next);
-      writePreference(key, JSON.stringify(next));
+      writeLocal(key, JSON.stringify(next));
     },
     [key],
   );

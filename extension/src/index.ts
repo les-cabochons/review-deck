@@ -28,11 +28,13 @@ function showError(error: Error) {
 }
 
 async function renderHosted() {
-  const [{ AdoHost }, { renderHost }] = await withTimeout(
-    Promise.all([import("./app/adoHost"), import("./page")]),
+  const [{ AdoHost }, { renderHost }, { connectPreferences }] = await withTimeout(
+    Promise.all([import("./app/adoHost"), import("./page"), import("./ui/preferences")]),
     "The review code could not finish loading. Check your connection and reload.",
   );
   const host = await withTimeout(AdoHost.create(), "Could not connect to Azure DevOps navigation. Reload to try again.");
+  // Bounded wait: if the user's saved preferences are slow, the page opens with this browser's.
+  await connectPreferences(host.preferences());
   renderHost(host);
 }
 
