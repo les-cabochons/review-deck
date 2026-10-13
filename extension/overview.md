@@ -4,7 +4,7 @@
 
 Azure DevOps lists a PR's changes alphabetically, so the schema change, the migration that uses it and the test that covers it end up far apart. Review Deck reads the diff, works out which hunks belong together, and shows each group as one concern with a title and a short explanation. You read the PR the way the author thought about it.
 
-It replaces the pull request pages with a full-width inbox and review page, in the Azure DevOps look you already know, with light and dark themes.
+It replaces the pull request pages with a full-width inbox and review page, in the Azure DevOps look you already know, with light and dark themes. A **Changelog** page lists each repository's tags and releases the way GitHub does, with generated changelogs and the artifacts your pipelines published.
 
 ![Files grouped by concern](images/marketplace/files-by-concern.png)
 
@@ -52,11 +52,29 @@ When a PR targets another PR's branch, Review Deck treats them as a stack. The P
 
 Project administrators choose the trunk branches that stacks start from (`main`, `dev`, `release/**`, …) in **Project settings › Review Deck**. With the backend, they can also turn on **auto-restack**: when a layer changes or merges, the layers above it are rebased and retargeted on the server, with no clone or pipeline.
 
+## Changelog: tags and releases
+
+Open **Repos › Changelog** to browse the git tags of the repository picked in Azure DevOps' repository picker, like GitHub's releases page.
+
+- **Releases and Tags.** A Release is a tag whose latest publishing pipeline run succeeded and produced artifacts. Switch to **Tags** to see every tag that follows your tag convention, with a badge when its run failed. Find one by name, or page through the release list.
+- **Generated changelogs.** Each tag lists the commits since the previous tag, grouped by conventional-commit type: breaking changes, features, bug fixes, performance, refactoring, documentation, tests, build & CI, chores, and other changes. Each entry links to its commit and pull request, and a link at the end compares the two tags.
+- **Prereleases handled.** A stable version's changelog starts from the previous stable version, so it includes everything its release candidates shipped.
+- **Release descriptions.** Write a description above the changelog in Markdown. Without one, the annotated tag's message is shown.
+
+![A release with its generated changelog](images/marketplace/changelog.png)
+
+- **Artifacts.** Each artifact of the publishing pipeline run is listed with its files, sizes and download links, plus a zip of the whole artifact. When the run publishes a `SHA256SUMS` file, each file shows its sha256 with a copy button.
+
+![Release artifacts with sha256 digests](images/marketplace/artifacts.png)
+
+Project administrators set the tag convention (`v*` by default) and choose each repository's publishing pipeline in **Project settings › Review Deck**. Without a publishing pipeline, a run of any pipeline on the tag counts.
+
 ## Getting started
 
 1. Install the extension in your organization.
 2. Open **Repos › Deck** for your inbox, or open any pull request and choose **⋯ › Open in Review Deck**.
-3. The classic Azure DevOps page is always one click away through **Classic review** in the top right.
+3. Open **Repos › Changelog** for the selected repository's tags and releases.
+4. The classic Azure DevOps page is always one click away through **Classic review** in the top right.
 
 ## FAQ
 
@@ -67,15 +85,19 @@ Grouping runs in your browser. Review Deck reads files through the Azure DevOps 
 A build with the Review Deck backend adds two things. Sentence embeddings make the grouping more accurate; they run on the backend's own CPU, not an external AI service. **AI group titles** are written by a small language model from the PR description and the changed lines. AI titles are **off by default** in every project, and only a project administrator can turn them on. Without them, groups get rule-based titles.
 
 **Why does it need these permissions?**
-- *Code (read and write):* to read diffs, to post comments, votes, reviewers, tags and description edits that you make, and to complete or abandon a PR when you choose to.
+- *Code (read and write):* to read diffs, tags and commits, to post comments, votes, reviewers, tags and description edits that you make, and to complete or abandon a PR when you choose to.
+- *Build (read):* used only by the Changelog, to find each tag's pipeline runs and list their artifacts.
 - *Work items (read):* to show the work items linked to a PR.
 - *Project and team (read):* to list your projects and repositories.
 - *Service hooks (read and write):* used only by auto-restack, to hear when a PR in a stack changes.
 
-Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
+Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, writing a release description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
 
 **Which languages are supported?**
 Every file shows up and gets a diff. Structural grouping understands TypeScript, JavaScript (including TSX/JSX), Python, Go, Rust, Java, C#, Ruby, PHP, C and C++. For these languages it links a change to the code that uses it and pairs tests with the code they test. Syntax highlighting covers about 75 languages and formats, including Kotlin, Swift, Scala, Dart, SQL, Terraform, Dockerfiles, Vue and Svelte. Other files are grouped by their paths and shared names.
+
+**What does the Changelog need from my repository?**
+Git tags that follow your tag convention, ideally with semantic versions (`v1.2.0`, `v1.3.0-rc.1`) so they sort by version. Commit messages that follow [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix(api):`, `feat!:`) are grouped by type; anything else goes under *Other changes*. For a tag to show as a Release, a pipeline has to run on the tag (for example a `tags` trigger) and publish artifacts.
 
 **Can I still use the normal pull request page?**
 Yes. Review Deck adds pages; it doesn't remove or change the built-in ones. Use **Classic review** to switch at any time.
