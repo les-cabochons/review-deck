@@ -3,7 +3,8 @@
 The review page groups hunks in its browser worker. With this backend it gets two more things:
 
 - **Group titles from a small LLM** (`titles_model`, gpt-5-nano by default), **opt-in per project**. The model reads
-  each group's changed lines and writes a commit-style title and a one-sentence rationale. This uses the
+  the PR description and each group's changed lines, puts the groups in the order that tells the PR's story, and
+  gives each a commit-style title and a one-sentence rationale. This uses the
   same prompt as `npm run review -- --llm claude` (`src/title/prompt.ts`). Otherwise titles come from heuristics.
 - **Sentence embeddings for grouping** (MiniLM, int8, run on the function's own CPU). This is the semantic
   signal from `--embeddings`, which raised mean grouping ARI from 0.931 to 0.948 on the synthetic PRs.
@@ -26,7 +27,7 @@ Semantic PR Review**. The toggle is disabled when the extension was built withou
 
 Pieces:
 - `backend/`: one Azure Function (Node 22).
-  - `POST /api/titles {"context", "groups"}` returns `{"titles": [{id, title, rationale}], "cached"}`.
+  - `POST /api/titles {"context", "groups"}` returns `{"titles": [{id, title, rationale}], "cached"}`, in reading order.
     The function builds the prompt itself from the hunks' changed lines, with at most 40 groups and 200 hunks.
   - `POST /api/embed {"texts": [...]}` returns `{"vectors": [[...384 floats]]}` for at most 2,000 texts.
   - `GET /api/warm` loads the embedding model. The page calls it first, so the cold start overlaps fetching files.
