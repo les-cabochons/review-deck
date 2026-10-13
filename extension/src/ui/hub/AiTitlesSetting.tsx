@@ -8,13 +8,14 @@ interface State {
   canManage: boolean;
   /** Null until loaded, or if the backend can't report it. */
   usage: Usage | null;
+  hasBackend: boolean;
 }
 
 /**
  * The project's opt-in for LLM group titles, at the bottom of the hub sidebar. Shown only when the
  * extension was built with a backend; only project administrators can switch it.
  */
-export const AiTitlesSetting: React.FC<{ host: AppHost }> = ({ host }) => {
+export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even without a backend, as on the settings page. */ alwaysShow?: boolean }> = ({ host, alwaysShow }) => {
   const [state, setState] = React.useState<State | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -22,8 +23,9 @@ export const AiTitlesSetting: React.FC<{ host: AppHost }> = ({ host }) => {
   React.useEffect(() => {
     let cancelled = false;
     Promise.all([host.backendService(), host.projectSettings(), host.canManageProject()]).then(([backend, settings, canManage]) => {
-      if (cancelled || !backend) return;
-      setState({ settings, canManage, usage: null });
+      if (cancelled || (!backend && !alwaysShow)) return;
+      setState({ settings, canManage, usage: null, hasBackend: !!backend });
+      if (!backend) return;
       fetchUsage(backend).then(
         (usage) => !cancelled && setState((s) => s && { ...s, usage }),
         (e) => console.warn("[semantic-pr] AI title usage unavailable:", e),
@@ -51,9 +53,11 @@ export const AiTitlesSetting: React.FC<{ host: AppHost }> = ({ host }) => {
   return (
     <div className="hub-setting">
       <div className="hub-sidebar-sep" />
-      <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving} onChange={(_, checked) => change(checked)} />
+      <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving || !state.hasBackend} onChange={(_, checked) => change(checked)} />
       <p className="hub-sidebar-note muted">
-        {on
+        {!state.hasBackend
+          ? "Needs the backend, and this build has none: groups get rule-based titles."
+          : on
           ? "This project sends each group's changed lines to gpt-5-nano (Azure OpenAI) to name the groups."
           : "Off for this project: groups get rule-based titles and no code is sent to an LLM."}{" "}
         {!state.canManage && "Project administrators can change this."}

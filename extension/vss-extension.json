@@ -35,6 +35,19 @@
       }
     },
     {
+      "id": "settings-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Project settings for Semantic PR Review: stacked PRs, auto-restack, AI group titles.",
+      "targets": [
+        "ms.vss-web.project-admin-hub-group"
+      ],
+      "properties": {
+        "name": "Semantic PR Review",
+        "uri": "dist/settings.html",
+        "order": 100
+      }
+    },
+    {
       "id": "open-review-action",
       "type": "ms.vss-web.action",
       "description": "Opens the current pull request in the semantic review page.",

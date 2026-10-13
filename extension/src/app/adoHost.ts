@@ -128,6 +128,11 @@ export class AdoHost implements AppHost {
     return this.dataManager;
   }
 
+  settingsUrl(): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    return `${this.projectUrl()}/_settings/${publisherId}.${extensionId}.settings-hub`;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequest/${route.pr}`;
   }

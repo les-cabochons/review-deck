@@ -13,10 +13,8 @@ import {
   type SectionId,
 } from "../../data/list";
 import { DropdownButton } from "../controls";
-import { AiTitlesSetting } from "./AiTitlesSetting";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackIndex } from "../../../../src/stack/stacks";
-import { StackSettings } from "./StackSettings";
 import { readPreference, writePreference } from "../preferences";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
@@ -146,7 +144,6 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
   return (
     <div className="hub">
       <aside className="hub-sidebar">
-        <div className="hub-sidebar-title">Pull requests</div>
         <nav aria-label="Inbox sections">
           <SidebarItem icon="Inbox" text="Inbox" count={sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)} active={filter === "inbox"} onClick={() => choose("inbox")} />
           <div className="hub-sidebar-sep" />
@@ -173,8 +170,11 @@ export const HubPage: React.FC<{ host: AppHost }> = ({ host }) => {
           </p>
         )}
         {host.kind === "local" && <p className="hub-sidebar-note muted">Local preview as {me.displayName}. Some reviewer votes and teams are synthetic.</p>}
-        <StackSettings host={host} onTrunksChange={setTrunks} />
-        <AiTitlesSetting host={host} />
+        {host.settingsUrl() && (
+          <a className="hub-settings-link" href={host.settingsUrl()!} target={host.kind === "ado" ? "_top" : undefined}>
+            <Icon iconName="Settings" /> Project settings
+          </a>
+        )}
       </aside>
 
       <main className="hub-main">
@@ -261,7 +261,7 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
   onClick,
 }) => (
   <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined}>
-    <Icon iconName={icon} />
+    <Icon iconName={icon} className="hub-nav-icon" />
     <span className="text">{text}</span>
     {count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
   </button>
@@ -310,7 +310,7 @@ const PrRow: React.FC<{
       <span className={cx("pr-state", state.className)} title={state.label}>
         <Icon iconName={state.icon} />
       </span>
-      <Avatar who={pr.createdBy} size={24} />
+      <Avatar who={pr.createdBy} size={32} />
       <div className="pr-main">
         <div className="pr-title">
           <a
@@ -324,14 +324,15 @@ const PrRow: React.FC<{
             {pr.title}
           </a>
         </div>
+        {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
         <div className="pr-sub muted">
-          <span>!{pr.id}</span>
-          {stackChip}
-          <span>{pr.repository.name}</span>
-          <span className="branch-inline">
-            {pr.sourceBranch} → {pr.targetBranch}
+          <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
+            {pr.createdBy.id === me ? "You" : pr.createdBy.displayName} requested !{pr.id} into{" "}
+            <Icon iconName="OpenSource" className="branch-icon" />
+            <span className="branch-inline">{pr.targetBranch}</span>
           </span>
-          <span>{pr.createdBy.id === me ? "you" : pr.createdBy.displayName}</span>
+          <span className="pr-repo">{pr.repository.name}</span>
+          {stackChip}
           {via.length > 0 && !pr.reviewers.some((r) => r.id === me) && (
             <span className="via-team" title={`Review requested from ${via.map((v) => v.displayName).join(", ")}`}>
               via {via[0].displayName}
@@ -370,7 +371,7 @@ const PrRow: React.FC<{
       </span>
       <span className="pr-size">{pr.size ? <SizeBar {...pr.size} /> : null}</span>
       <span className="pr-time muted" title={when.toLocaleString()}>
-        {shortAgo(when)}
+        {pr.status === "completed" ? "Completed" : pr.status === "abandoned" ? "Abandoned" : "Updated"} {shortAgoPhrase(when)}
       </span>
       {/* Phone layout (styles.css, max-width 700px), like T3 Code's PR list: who and where, the full title, then tags and size. */}
       <div className="pr-mobile">
@@ -432,6 +433,12 @@ const SizeBar: React.FC<{ files: number; adds: number; dels: number }> = ({ file
 };
 
 const compact = (n: number) => (n >= 10_000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+/** "20h ago", or the long form when there's no short one ("just now"). */
+function shortAgoPhrase(date: Date): string {
+  const short = shortAgo(date);
+  return /^[0-9]/.test(short) ? `${short} ago` : short;
+}
 
 function shortAgo(date: Date): string {
   const text = ago(date);

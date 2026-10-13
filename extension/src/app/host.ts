@@ -63,6 +63,8 @@ export interface AppHost {
    * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
    */
   syncRestackHooks(on: boolean): Promise<void>;
+  /** Project settings → Semantic PR Review (the settings-hub contribution), or null if there's none. */
+  settingsUrl(): string | null;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
 }

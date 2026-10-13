@@ -95,6 +95,11 @@ export class LocalHost implements AppHost {
   /** No Azure DevOps here: the setting is saved, and nothing calls the backend. */
   async syncRestackHooks(): Promise<void> {}
 
+  /** The same bundle, as the dev shell's "Project settings" page. */
+  settingsUrl(): string {
+    return `settings.html${location.search}`;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `https://github.com/pingdotgg/t3code/pull/${route.pr}`;
   }

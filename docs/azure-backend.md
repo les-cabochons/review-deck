@@ -11,8 +11,8 @@ The review page groups hunks in its browser worker. With this backend it gets tw
 ## Per-project AI opt-in
 
 Some projects have policies against sending code to AI services, so LLM titles are **off by default** in
-every project. A project administrator turns them on with the **AI group titles** toggle at the bottom of
-the PR hub sidebar. The toggle appears only when the extension was built with a backend URL.
+every project. A project administrator turns them on with the **AI group titles** toggle in **Project settings →
+Semantic PR Review**. The toggle is disabled when the extension was built without a backend URL.
 
 - The page calls `/api/titles` only when its project's setting is on. If the setting can't be read, the page treats it as off.
 - Embeddings are not covered by the switch. They stay on wherever the backend is configured, because the
