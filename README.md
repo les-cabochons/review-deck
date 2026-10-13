@@ -367,9 +367,9 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
 | `src/score/signals.ts`, `index.ts` | Pairwise signals, each 0..1 with evidence strings (see below). |
 | `src/cluster/louvain.ts`, `refine.ts` | graphology + Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. Refine step: a small community (≤ 4 hunks) whose newly added symbols are used by exactly one other community is absorbed into it, with no chaining. A new private helper belongs with its caller. Singletons go to **misc**. |
 | `src/order/topo.ts` | Kahn's algorithm: definitions before usages, code before tests. Groups are ordered the same way; misc and mechanical come last. |
-| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR to `claude -p` / `codex exec` and parses a JSON array. It falls back to heuristics per group on any failure. |
+| `src/title/` | `Titler` interface. `HeuristicTitler` (default) recognizes renames (`X → Y` substitution in most hunks), moves (decl removed in one file, added in another), and doc-only groups. Otherwise it names the group's hub symbol, i.e. the non-test hunk with the most link weight. `src/node/llmTitler.ts` sends one prompt per PR, with its title and description, to `claude -p` / `codex exec`. The model orders the groups as a story for the reviewer and names each step. It returns a JSON array in reading order. The titler falls back to heuristics per group on any failure. |
 | `src/render/html.ts` | Self-contained page; diff2html renders the diffs (server-side, so the page needs no diff JS). |
-| `src/pipeline.ts` | Orchestration. |
+| `src/pipeline.ts` | Orchestration. When an LLM titler picks a reading order, the semantic groups follow it. |
 | `src/eval/ari.ts`, `scripts/eval.ts` | Adjusted Rand Index and the comparison table. |
 | `src/node/*` | Node-only adapters: fixture and git loading (`FileProvider` via `git show`), WASM paths, embedder with disk cache, LLM CLI, the `review` CLI. |
 

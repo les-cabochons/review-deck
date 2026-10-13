@@ -44,16 +44,29 @@ export function buildPrompt(groups: PromptGroup[], context: PromptContext): stri
     return `### Group ${id}\n${body.join("\n")}`;
   });
   return [
-    "You are helping a code reviewer. A pull request's diff hunks have been clustered into groups of related changes.",
-    "For each group, write a short title (imperative mood, max 8 words, like a commit subject) and a one-sentence rationale",
-    "explaining why these hunks belong together. Do not use tools; answer from the text below.",
+    "You are helping a code reviewer read a pull request. Its diff hunks have been clustered into groups of related",
+    "changes; each hunk is headed by its id (file path#index) and, when known, the symbol it changes.",
+    "",
+    "Present the groups as a story: the steps a reviewer should read, in order, to understand what the PR does and why.",
+    "Use the PR title and description for the author's intent. The groups below are in dependency order (definitions",
+    "before their uses); keep that unless another order makes the story clearer, e.g. starting from the change that",
+    "motivates the rest. Tests and docs usually belong right after the change they cover.",
+    "",
+    "For each group write:",
+    "- title: what this step accomplishes for the PR, in imperative mood, max 8 words, like a good commit subject.",
+    '  Name the behavior or concept, not the files or symbols touched. Good: "Cache titles per organization".',
+    '  Bad: "Update titles.ts", "Change buildPrompt and parseTitles", "Misc fixes". Titles should read as a sequence.',
+    "- rationale: one sentence on what the step changes and how it fits the story, e.g. what it builds on or enables.",
+    "",
+    "Do not use tools; answer from the text below.",
     "",
     `PR title: ${context.prTitle}`,
-    `PR description: ${context.prDescription}`,
+    `PR description: ${context.prDescription || "(none)"}`,
     "",
     ...sections,
     "",
-    'Respond with ONLY a JSON array, no prose, no code fences: [{"id": "<group id>", "title": "...", "rationale": "..."}]',
+    "Respond with ONLY a JSON array, no prose, no code fences, with one entry per group in the order a reviewer should",
+    'read them: [{"id": "<group id>", "title": "...", "rationale": "..."}]',
   ].join("\n");
 }
 
@@ -69,11 +82,18 @@ export function parseTitles(text: string): LlmTitle[] {
     .map((v) => ({ id: String(v.id), title: String(v.title ?? "").trim(), rationale: String(v.rationale ?? "").trim() }));
 }
 
-/** LLM titles in input order; groups the LLM skipped keep their heuristic title. */
+/**
+ * LLM titles in input order, each with its place in the LLM's reading order (the order of its answer).
+ * Groups the LLM skipped keep their heuristic title and get no position; groups it left untitled keep their position.
+ */
 export function matchTitles(inputs: TitleInput[], titles: LlmTitle[]): GroupTitle[] {
-  const byId = new Map(titles.map((t) => [t.id, t]));
+  const byId = new Map<string, LlmTitle & { position: number }>();
+  titles.forEach((t, position) => {
+    if (!byId.has(t.id)) byId.set(t.id, { ...t, position });
+  });
   return inputs.map((i) => {
-    const t = byId.get(i.group.id);
-    return t?.title ? { title: t.title, rationale: t.rationale } : describeGroup(i);
+    const match = byId.get(i.group.id);
+    if (!match) return describeGroup(i);
+    return { ...(match.title ? { title: match.title, rationale: match.rationale } : describeGroup(i)), position: match.position };
   });
 }

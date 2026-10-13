@@ -74,7 +74,8 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   groups = await time("order", () => orderGroups(groups, hunks));
 
   const titler = deps.titler ?? new HeuristicTitler();
-  await time("title", () => applyTitles(groups, hunks, pairs, titler, input, warnings));
+  const storyPositions = await time("title", () => applyTitles(groups, hunks, pairs, titler, input, warnings));
+  groups = orderByStory(groups, storyPositions);
 
   return {
     title: input.title,
@@ -111,7 +112,7 @@ async function applyTitles(
   titler: Titler,
   input: PrInput,
   warnings: string[],
-): Promise<void> {
+): Promise<Map<Group, number>> {
   const inputs: TitleInput[] = groups.map((group) => {
     const ids = new Set(group.hunkIds);
     return {
@@ -130,6 +131,22 @@ async function applyTitles(
       warnings.push(`${titler.name} titler failed, fell back to heuristic: ${(err as Error).message}`);
     }
   }
-  semantic.forEach((i, k) => Object.assign(i.group, titles[k]));
+  const storyPositions = new Map<Group, number>();
+  semantic.forEach((i, k) => {
+    const { title, rationale, position } = titles[k];
+    Object.assign(i.group, { title, rationale });
+    if (position !== undefined) storyPositions.set(i.group, position);
+  });
   for (const i of inputs) if (i.group.kind !== "semantic") Object.assign(i.group, describeGroup(i));
+  return storyPositions;
+}
+
+/**
+ * Semantic groups in the titler's reading order; groups without a position follow in their dependency order
+ * (the sort is stable). Misc and mechanical keep their places at the end.
+ */
+function orderByStory(groups: Group[], positions: Map<Group, number>): Group[] {
+  const rank = (g: Group) => positions.get(g) ?? Number.MAX_SAFE_INTEGER;
+  const semantic = groups.filter((g) => g.kind === "semantic").sort((a, b) => rank(a) - rank(b));
+  return [...semantic, ...groups.filter((g) => g.kind !== "semantic")];
 }
