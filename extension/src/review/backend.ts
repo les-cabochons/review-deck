@@ -18,8 +18,10 @@ export interface Scope {
   projectName: string;
 }
 
-/** This month's LLM title spend against the caps, in USD (GET /api/usage). */
+/** The backend's titles model and this month's spend against the caps, in USD (GET /api/usage). */
 export interface Usage {
+  /** Deployment name, e.g. "gpt-5-nano"; null when the backend has no model (titles unavailable). */
+  model: string | null;
   organization: { spentUsd: number; capUsd: number };
   project: { spentUsd: number; capUsd: number };
 }
@@ -54,7 +56,7 @@ export class RemoteEmbedder implements Embedder {
 }
 
 /**
- * Titles groups with the backend's small hosted model (gpt-5-nano). Any failure throws, and the pipeline
+ * Titles groups with the backend's small hosted model (titles_model). Any failure throws, and the pipeline
  * keeps heuristic titles; groups past the request limits, or skipped by the model, keep theirs too.
  */
 export class RemoteTitler implements Titler {

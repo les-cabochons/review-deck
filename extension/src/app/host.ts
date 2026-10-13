@@ -13,7 +13,7 @@ export const BACKEND_URL = typeof __BACKEND_URL__ === "string" ? __BACKEND_URL__
  * default: some projects have policies against sending code to AI services.
  */
 export interface ProjectSettings {
-  /** Send each group's changed lines to the backend's LLM (gpt-5-nano) for titles. */
+  /** Send each group's changed lines to the backend's LLM (Terraform's titles_model) for titles. */
   aiTitles: boolean;
   /** Branch patterns where stacks end (see src/stack/branches.ts), e.g. main, dev, uat, release-style 00- branches. */
   trunkBranches: string[];

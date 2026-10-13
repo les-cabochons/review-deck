@@ -1,4 +1,4 @@
-// Group titles from a small hosted model (gpt-5-nano on Azure OpenAI), with two cost guards: identical
+// Group titles from a small hosted model (Terraform's titles_model, e.g. gpt-5-nano), with two cost guards: identical
 // prompts are answered from a Table storage cache, and spending caps (budget.ts) stop calls.
 import { createHash } from "node:crypto";
 import { identityToken } from "./identity.js";
@@ -31,6 +31,18 @@ export class BadRequest extends Error {}
 /** False when Terraform deployed no model (titles_model = null). */
 export const titlesConfigured = settings.endpoint !== "";
 
+/** The deployed model's name, for the settings page to tell admins where code goes; null when none. */
+export const titlesModel = titlesConfigured ? settings.deployment : null;
+
+/** Model calls run one at a time, so checking a cap and recording the spend can't interleave (the app runs one instance). */
+let modelQueue: Promise<unknown> = Promise.resolve();
+
+function oneAtATime<T>(fn: () => Promise<T>): Promise<T> {
+  const run = modelQueue.then(fn);
+  modelQueue = run.catch(() => {});
+  return run;
+}
+
 export interface TitlesRequest {
   scope: Scope;
   context: PromptContext;
@@ -49,10 +61,14 @@ export async function titleGroups(body: unknown, log: (message: string) => void)
   if (hit) return { titles: JSON.parse(hit.titles), cached: true };
 
   const limits = limitsFor(scope);
-  await checkLimits(limits);
-  const { text, inputTokens, outputTokens } = await complete(prompt);
-  const cost = (inputTokens * settings.inputPerMillion + outputTokens * settings.outputPerMillion) / 1e6;
-  await recordSpend(limits, cost);
+  const { text, inputTokens, outputTokens, cost } = await oneAtATime(async () => {
+    await checkLimits(limits);
+    const answer = await complete(prompt);
+    const cost = (answer.inputTokens * settings.inputPerMillion + answer.outputTokens * settings.outputPerMillion) / 1e6;
+    // The titles are paid for either way; a failed write is logged, not turned into an error for the page.
+    await recordSpend(limits, cost).catch((e) => log(`could not record $${cost.toFixed(6)} of title spend: ${e instanceof Error ? e.message : e}`));
+    return { ...answer, cost };
+  });
   log(`titled ${scope.organization}/${scope.projectName}, ${prompt.length} chars: ${inputTokens} in / ${outputTokens} out tokens, $${cost.toFixed(6)}`);
 
   const titles = parseTitles(text);

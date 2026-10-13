@@ -96,6 +96,7 @@ async function add(limit: Limit, usd: number): Promise<void> {
       if (status !== 409 && status !== 412) throw e;
     }
   }
+  throw new Error(`spend row ${limit.partition}/${limit.row} kept changing; gave up after 5 attempts`);
 }
 
 function lookup<T>(map: Record<string, T>, name: string): T | undefined {

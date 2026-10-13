@@ -8,6 +8,8 @@ interface State {
   canManage: boolean;
   /** Null until loaded, or if the backend can't report it. */
   usage: Usage | null;
+  /** The backend didn't answer, so whether it has a model is unknown. */
+  usageFailed: boolean;
   hasBackend: boolean;
 }
 
@@ -24,11 +26,14 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
     let cancelled = false;
     Promise.all([host.backendService(), host.projectSettings(), host.canManageProject()]).then(([backend, settings, canManage]) => {
       if (cancelled || (!backend && !alwaysShow)) return;
-      setState({ settings, canManage, usage: null, hasBackend: !!backend });
+      setState({ settings, canManage, usage: null, usageFailed: false, hasBackend: !!backend });
       if (!backend) return;
       fetchUsage(backend).then(
         (usage) => !cancelled && setState((s) => s && { ...s, usage }),
-        (e) => console.warn("[semantic-pr] AI title usage unavailable:", e),
+        (e) => {
+          console.warn("[semantic-pr] AI title usage unavailable:", e);
+          if (!cancelled) setState((s) => s && { ...s, usageFailed: true });
+        },
       );
     });
     return () => {
@@ -38,6 +43,9 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 
   if (!state) return null;
   const on = state.settings.aiTitles;
+  // Turning titles on needs the backend to confirm a model; turning them off is always allowed.
+  const model = state.usage?.model ?? null;
+  const canTurnOn = state.hasBackend && model !== null;
 
   const change = (aiTitles: boolean) => {
     const settings = { ...state.settings, aiTitles };
@@ -53,16 +61,11 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
   return (
     <div className="hub-setting">
       <div className="hub-sidebar-sep" />
-      <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving || !state.hasBackend} onChange={(_, checked) => change(checked)} />
+      <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving || (!on && !canTurnOn)} onChange={(_, checked) => change(checked)} />
       <p className="hub-sidebar-note muted">
-        {!state.hasBackend
-          ? "Needs the backend, and this build has none: groups get rule-based titles."
-          : on
-          ? "This project sends each group's changed lines to gpt-5-nano (Azure OpenAI) to name the groups."
-          : "Off for this project: groups get rule-based titles and no code is sent to an LLM."}{" "}
-        {!state.canManage && "Project administrators can change this."}
+        {describe(state, on, model)} {!state.canManage && "Project administrators can change this."}
       </p>
-      {state.usage && <UsageNote usage={state.usage} />}
+      {state.usage && model !== null && <UsageNote usage={state.usage} />}
       {error && (
         <p className="hub-sidebar-note tone-warning" role="alert">
           {error}
@@ -71,6 +74,16 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
     </div>
   );
 };
+
+function describe(state: State, on: boolean, model: string | null): string {
+  if (!state.hasBackend) return "Needs the backend, and this build has none: groups get rule-based titles.";
+  if (state.usageFailed) return "Couldn't reach the backend to check its AI model, so titles can't be turned on right now.";
+  if (!state.usage) return "Checking the backend's AI model…";
+  if (model === null) return "The backend has no AI model set up: groups get rule-based titles and no code is sent to an LLM.";
+  return on
+    ? `This project sends each group's changed lines to ${model} (on the backend's Azure AI resource) to name the groups.`
+    : `Off for this project: groups get rule-based titles and no code is sent to an LLM. Turning it on sends them to ${model}.`;
+}
 
 /** "This month: $0.03 of $0.25 for this project, $0.10 of $0.50 for the organization." */
 const UsageNote: React.FC<{ usage: Usage }> = ({ usage }) => {

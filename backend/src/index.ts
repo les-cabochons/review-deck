@@ -1,7 +1,7 @@
 // Azure Function backing the review page:
 //   POST /api/embed   {"texts": string[]}  ->  {"model": string, "vectors": number[][]}  (semantic grouping signal)
-//   POST /api/titles  {"scope", "context", "groups"} -> {"titles": [{id, title, rationale}]}  (group titles, gpt-5-nano)
-//   GET  /api/usage?organization=&projectId=&projectName=  ->  this month's title spend and caps
+//   POST /api/titles  {"scope", "context", "groups"} -> {"titles": [{id, title, rationale}]}  (group titles, titles_model)
+//   GET  /api/usage?organization=&projectId=&projectName=  ->  the titles model (or null) and this month's spend and caps
 //   GET  /api/warm    loads the embedding model; the page calls it first so the cold start overlaps blob fetching.
 //   GET  /api/stacks/hook?organization=  ->  {url, header, secret} for the auto-restack service hooks
 //   POST /api/hooks/ado?org=  Azure DevOps service hook (git.push, git.pullrequest.updated) -> restack queue
@@ -10,7 +10,7 @@ import { app, type HttpRequest, type HttpResponseInit, output } from "@azure/fun
 import { verifyAppToken } from "./auth.js";
 import { embed, MODEL, warm } from "./embed.js";
 import { BudgetExceeded, usage } from "./budget.js";
-import { BadRequest, parseScope, titleGroups, titlesConfigured } from "./titles.js";
+import { BadRequest, parseScope, titleGroups, titlesConfigured, titlesModel } from "./titles.js";
 import { HOOK_HEADER, hookSecret, jobsFromHook, type RestackJob, verifyHookSecret } from "./stacks/hooks.js";
 import { runRestackJob } from "./stacks/run.js";
 
@@ -94,7 +94,8 @@ app.http("usage", {
     if (!authorized(request)) return error(401, "invalid token");
     try {
       const q = request.query;
-      return { jsonBody: await usage(parseScope({ organization: q.get("organization"), projectId: q.get("projectId"), projectName: q.get("projectName") })) };
+      const scope = parseScope({ organization: q.get("organization"), projectId: q.get("projectId"), projectName: q.get("projectName") });
+      return { jsonBody: { model: titlesModel, ...(await usage(scope)) } };
     } catch (e) {
       if (e instanceof BadRequest) return error(400, e.message);
       context.error(e);

@@ -2,7 +2,7 @@
 
 The review page groups hunks in its browser worker. With this backend it gets two more things:
 
-- **Group titles from a small LLM** (gpt-5-nano on Azure OpenAI), **opt-in per project**. The model reads
+- **Group titles from a small LLM** (`titles_model`, gpt-5-nano by default), **opt-in per project**. The model reads
   each group's changed lines and writes a commit-style title and a one-sentence rationale. This uses the
   same prompt as `npm run review -- --llm claude` (`src/title/prompt.ts`). Otherwise titles come from heuristics.
 - **Sentence embeddings for grouping** (MiniLM, int8, run on the function's own CPU). This is the semantic
@@ -33,7 +33,7 @@ Pieces:
   - Every call needs `Authorization: Bearer <SDK.getAppToken()>`, an HS256 token signed with the
     extension's certificate secret. Only users of organizations with the extension installed can call it.
 - `infra/`: Terraform for the resource group, storage account, Windows Consumption plan, Function App,
-  Azure OpenAI resource with a gpt-5-nano deployment, and a $1 budget alert.
+  an AI Services resource with the titles model deployment (or none), and a $1 budget alert.
 
 If anything fails, the page falls back and logs `[semantic-pr] …` to the console. That covers a missing
 backend, a timeout, a spent budget (429), or a PR too large for the limits. Failed titles fall back to
@@ -60,7 +60,7 @@ titles_caps = {
 
 - Org and project keys are names and are case-insensitive. A project can also be keyed by its ID.
 - Spend is tracked per organization name and project ID, in the `usage` table.
-- The hub's AI toggle shows this month's spend against the project and organization caps, and says when a cap is used up.
+- The settings toggle names the backend's model and shows this month's spend against the project and organization caps, and says when a cap is used up.
 - Cache hits cost nothing and don't count against any cap.
 - Cached answers are kept per organization, so one organization never gets another's.
 - **Limit:** the organization and project come from the page. The token proves the caller uses the
@@ -82,7 +82,9 @@ Estimates are for 1,000 PRs a month, each viewed about 5 times over about 2 iter
 Expected total: **~$0.50/month**. The budget alert emails you at 50% of $1 (actual) and 100% (forecast).
 
 Notes on the limits:
-- Title caps are checked before each call, so each one can be exceeded by at most one call (~$0.001).
+- Model calls run one at a time (one instance), and caps are checked before each, so a cap can be exceeded by at most one call (~$0.001).
+- A model call that fails after Azure billed it isn't recorded; this is rare and small.
+- The budget alert is created only when `alert_email` is set.
 - The compute quota is a backstop. Without the free grant, its ceiling alone would be ~$0.99/month. With the grant, compute is free.
 - Requests with an invalid token get a quick 401 but still count as executions ($0.20 per million beyond 1M).
 
@@ -112,7 +114,22 @@ just deploy-backend        # npm run backend:build, then terraform init + apply
 terraform -chdir=infra output backend_url
 ```
 
-`openai_location` (default `eastus2`) must offer gpt-5-nano as a Global Standard deployment. The
+`openai_location` (default `eastus2`) must offer `titles_model` as a Global Standard deployment, and the
+subscription needs quota for it. Check with `az cognitiveservices model list` and `az cognitiveservices usage list -l
+<region>`. gpt-5-nano isn't in every region (Canada Central offers gpt-5.4-nano instead). Any model in an AI Services
+resource works, including Foundry models:
+
+```hcl
+openai_location          = "canadacentral"
+titles_model             = { name = "Phi-4-mini-instruct", version = "1", format = "Microsoft", reasoning_effort = "" }
+titles_price_per_million = { input = 0.075, output = 0.3 }   # keep in sync with the model, or the caps miscount
+```
+
+Set `titles_model = null` to deploy no model: titles then stay rule-based and the settings toggle can't be turned on.
+Azure requires MFA for changes: if `apply` fails with `RequestDisallowedByAzure`, sign in again with
+`az login --use-device-code` in a private browser window and complete the second step.
+
+The
 package (~92 MB unzipped) contains the bundled code, the embedding model, and only the Windows x64 ONNX
 binaries. Terraform names the zip after its content hash, so `apply` redeploys only on change. State is
 local (`infra/terraform.tfstate`, git-ignored).
