@@ -1859,6 +1859,10 @@ kbd {
   --trees-bg-override: var(--card-bg);
   --trees-fg-override: var(--fg);
   --trees-fg-muted-override: var(--fg2);
+  /* Modified files read as plain text, a shade off the folders; added/deleted keep a muted hue. */
+  --trees-status-modified-override: color-mix(in srgb, var(--fg) 75%, var(--fg2));
+  --trees-status-added-override: color-mix(in srgb, var(--ok) 65%, var(--fg2));
+  --trees-status-deleted-override: color-mix(in srgb, var(--err) 65%, var(--fg2));
   --trees-font-family: "Segoe UI", sans-serif;
   --trees-font-size: 12px;
 }
