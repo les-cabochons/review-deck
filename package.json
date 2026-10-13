@@ -12,6 +12,7 @@
     "debug": "tsx scripts/debug-pr.ts",
     "typecheck": "tsc --noEmit",
     "ext:mock": "tsx scripts/build-ado-mock.ts && tsx scripts/build-ado-mock-list.ts",
+    "ext:demo": "tsx scripts/build-demo-mock.ts",
     "ext:dev": "node extension/build.mjs --serve",
     "ext:build": "node extension/build.mjs",
     "ext:typecheck": "tsc --noEmit -p extension",

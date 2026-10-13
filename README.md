@@ -129,6 +129,7 @@ See [docs/azure-backend.md](docs/azure-backend.md).
 
 ```sh
 npm run ext:mock        # mock PR list + full snapshots from real t3code PRs (uses gh + the blobless clone)
+npm run ext:demo        # replace the mock with a fictional demo (Marketplace screenshots); ext:mock restores it
 npm run ext:dev         # http://127.0.0.1:5173/dev/ : fake Azure DevOps frame, live reload, light/dark
 npm run ext:build       # production bundle -> extension/dist + extension/assets
 npm run ext:package     # private .vsix using publisher Cabochonio
