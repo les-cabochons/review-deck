@@ -90,6 +90,8 @@ module.exports = {
     // typescript@7 (the native compiler) has no JS API yet, so parse with swc instead. Until
     // dependency-cruiser supports it, every run prints a harmless missing-typescript-transpiler warning.
     parser: "swc",
+    // Check `import type` edges too: a type-only deep import still couples to package internals.
+    tsPreCompilationDeps: true,
     doNotFollow: { path: "node_modules" },
     // Gitignored build output under the cruised folders.
     exclude: { path: "^(extension/(dist|test-dist|dev-data|assets)|backend/\\.build)/" },
