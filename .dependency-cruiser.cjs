@@ -91,6 +91,8 @@ module.exports = {
     // dependency-cruiser supports it, every run prints a harmless missing-typescript-transpiler warning.
     parser: "swc",
     doNotFollow: { path: "node_modules" },
+    // Gitignored build output under the cruised folders.
+    exclude: { path: "^(extension/(dist|test-dist|dev-data|assets)|backend/\\.build)/" },
     tsConfig: { fileName: "tsconfig.json" },
     enhancedResolveOptions: {
       extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],

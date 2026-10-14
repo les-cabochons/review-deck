@@ -20,7 +20,7 @@ src/
 
 Enforced by [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) in `.dependency-cruiser.cjs`. All are errors.
 
-1. **Entry-point boundary.** Code outside a package (`src/pipeline.ts`, `extension/`, `backend/`, `scripts/`, or another package) may import only that package's root files, never anything in its subfolders.
+1. **Entry-point boundary.** Code outside a package (`src/pipeline.ts`, anything in `extension/`, `backend/` or `scripts/`, or another package) may import only that package's root files, never anything in its subfolders.
 2. **Intra-package freedom.** A package's own files import each other freely, subfolders included.
 3. **Tests through the entry points.** Files under `<name>/tests/` may import any package's entry points and their own `tests/` fixtures, but no package's subfolder internals, not even their own. Nothing outside `tests/` may import a test fixture.
 4. **No cycles.** No dependency cycles inside `src/`.
@@ -31,5 +31,5 @@ Packages are flat: a package's internals may nest as deep as you like, but a pac
 
 ```sh
 npm run lint:boundaries   # also part of `just check` and CI
-npm test                  # runs src/*/tests/*.test.ts
+npm test                  # runs src/*/tests/**/*.test.ts
 ```
