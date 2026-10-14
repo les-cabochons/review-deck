@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Packages are deep modules: see [src/README.md](./src/README.md) before adding or importing one.
+
 ## Agent skills
 
 ### Issue tracker
