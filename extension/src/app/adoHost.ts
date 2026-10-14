@@ -2,11 +2,12 @@ import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
 import { GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
 import { AdoPrListSource } from "../data/adoList";
+import type { PrSummary } from "../data/list";
 import { AdoPrSource } from "../data/adoSource";
 import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
 import type { ReleaseCatalog } from "../data/releases";
-import type { BackendService } from "../review/backend";
+import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
 import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { syncRestackHooks } from "./restackHooks";
@@ -170,7 +171,25 @@ export class AdoHost implements AppHost {
   async syncRestackHooks(on: boolean): Promise<void> {
     const backend = await this.backendService();
     if (!backend) throw new Error("No backend is set up for this organization, so it can't restack automatically.");
-    await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken() }, on);
+    await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken(), extensionId: this.extensionId() }, on);
+  }
+
+  async restack(pr: PrSummary): Promise<RestackOutcome[]> {
+    const backend = await this.backendService();
+    if (!backend) throw new Error("No backend is set up for this organization, so it can't restack.");
+    return restackPr(backend, {
+      projectId: pr.repository.projectId,
+      repositoryId: pr.repository.id,
+      pullRequestId: pr.id,
+      extensionId: this.extensionId(),
+      adoToken: await SDK.getAccessToken(),
+    });
+  }
+
+  /** publisher.extension, where the backend reads this project's settings. */
+  private extensionId(): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    return `${publisherId}.${extensionId}`;
   }
 
   async canManageProject(): Promise<boolean> {

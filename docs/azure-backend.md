@@ -31,6 +31,8 @@ Pieces:
     The function builds the prompt itself from the hunks' changed lines, with at most 40 groups and 200 hunks.
   - `POST /api/embed {"texts": [...]}` returns `{"vectors": [[...384 floats]]}` for at most 2,000 texts.
   - `GET /api/warm` loads the embedding model. The page calls it first, so the cold start overlaps fetching files.
+  - `GET /api/stacks/hook`, `POST /api/hooks/ado` and `POST /api/stacks/restack` run auto-restack and the
+    Restack action; see [stacks.md](stacks.md).
   - Every call needs `Authorization: Bearer <token>`, where the token is either:
     - **The backend's API key** (`API_KEY`, Terraform output `api_key`). An organization administrator saves it with
       the URL in **Project settings → Review Deck → Backend**. This is how a self-hosted backend works with the

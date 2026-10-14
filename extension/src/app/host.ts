@@ -1,9 +1,9 @@
 import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
-import type { PrListSource } from "../data/list";
+import type { PrListSource, PrSummary } from "../data/list";
 import { DEFAULT_RELEASE_SETTINGS, type ReleaseCatalog, readReleaseSettings, type ReleaseSettings } from "../data/releases";
 import type { Identity, PrSource } from "../data/model";
 import type { TagStore } from "../data/tags";
-import type { BackendService } from "../review/backend";
+import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReviews } from "../review/saved";
 
 /**
@@ -117,6 +117,11 @@ export interface AppHost {
    * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
    */
   syncRestackHooks(on: boolean): Promise<void>;
+  /**
+   * Has the backend restack `pr` now: onto the layer below, or where it merged. Works with auto-restack
+   * off. Rejects with a readable message (no backend, the restack identity's errors, …).
+   */
+  restack(pr: PrSummary): Promise<RestackOutcome[]>;
   /** Finished groupings, so reopening a pull request shows them without re-running the analysis. */
   savedReviews(): SavedReviews;
   /** This project's tags, with their colors and descriptions. */

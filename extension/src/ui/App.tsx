@@ -254,7 +254,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                     <OverviewTab
                       data={data}
                       review={review}
-                      sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} />}
+                      sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
                       onOpenFiles={() => selectTab("files")}
                       onOpenGroup={(id) => {
                         setView("grouped");
