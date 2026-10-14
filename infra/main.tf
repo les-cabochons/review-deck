@@ -174,11 +174,9 @@ resource "azurerm_windows_function_app" "this" {
 
   app_settings = {
     WEBSITE_RUN_FROM_PACKAGE = "1"
-    # The Bearer token the page sends (backend/src/auth.ts): this API key, saved with the backend URL in
-    # Project settings → Review Deck, or, for builds that bake in this URL, an app token signed with the
-    # publisher's certificate secret (optional).
-    API_KEY          = random_password.api_key.result
-    EXTENSION_SECRET = var.extension_secret
+    # The Bearer token the page sends (backend/src/auth.ts), saved with the backend URL in
+    # Project settings → Review Deck.
+    API_KEY = random_password.api_key.result
     # backend/src/titles.ts
     # The OpenAI-compatible v1 API, which serves every model in an AI Services resource.
     OPENAI_ENDPOINT           = var.titles_model == null ? "" : "https://${azurerm_cognitive_account.openai[0].custom_subdomain_name}.openai.azure.com/"

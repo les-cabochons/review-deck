@@ -44,10 +44,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      # Repository variable from `terraform -chdir=infra output backend_url`; unset = structural grouping only.
       - run: npm run ext:build
-        env:
-          REVIEW_DECK_BACKEND_URL: ${{ vars.REVIEW_DECK_BACKEND_URL }}
       # The Marketplace needs a new version per upload: major.minor from the manifest, patch = run number.
       - name: Version
         id: version

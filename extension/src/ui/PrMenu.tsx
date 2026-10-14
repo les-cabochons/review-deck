@@ -30,10 +30,10 @@ export const PrMenu: React.FC<{ pr: PullRequest; links: PrMenuLinks; onToast: (m
   const [following, setFollowing] = React.useState<boolean | null>(null);
   const [favorite, setFavorite] = React.useState<boolean | null>(null);
   React.useEffect(() => {
-    actions.isFollowing().then(setFollowing, (e: Error) => console.warn("[semantic-pr] follow state unavailable:", e));
+    actions.isFollowing().then(setFollowing, (e: Error) => console.warn("[review-deck] follow state unavailable:", e));
   }, [actions]);
   React.useEffect(() => {
-    actions.isFavoriteBranch(pr.sourceBranch).then(setFavorite, (e: Error) => console.warn("[semantic-pr] favorite branches unavailable:", e));
+    actions.isFavoriteBranch(pr.sourceBranch).then(setFavorite, (e: Error) => console.warn("[review-deck] favorite branches unavailable:", e));
   }, [actions, pr.sourceBranch]);
 
   const copy = (url: string, what: string) =>

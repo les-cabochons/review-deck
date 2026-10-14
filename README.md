@@ -276,8 +276,9 @@ The weights were tuned on everything except #17826, so treat these as a smoke te
 
 ### Known limitations
 
-- **Languages:** TS/JS rules are the most tuned and the only ones covered by the fixtures. Other languages
-  fall back to a regex tokenizer, which gives the lexical signal only. Imports are resolved by path
+- **Languages:** TS/JS, Python, Go, Rust, Java, C#, Ruby, PHP and C/C++ are parsed, but TS/JS rules are the
+  most tuned and the only ones covered by the fixtures. Languages outside that set fall back to a regex
+  tokenizer, which gives the lexical signal only. Imports are resolved by path
   convention, not build configuration.
 - **Hunks are the atom:** a hunk that mixes two concerns can't be split.
 - **Name-based matching:** structural links use names, not types, so two unrelated members with the same

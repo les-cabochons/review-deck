@@ -7,14 +7,6 @@ import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReviews } from "../review/saved";
 
 /**
- * Backend (Azure Function) base URL baked in at build time from REVIEW_DECK_BACKEND_URL (extension/build.mjs), for
- * private builds. The published extension has none: each organization points it at its own backend (BackendSettings).
- */
-declare const __BACKEND_URL__: string;
-// typeof: unbundled runs (tsx tests) have no define.
-export const BACKEND_URL = typeof __BACKEND_URL__ === "string" ? __BACKEND_URL__.replace(/\/+$/, "") : "";
-
-/**
  * Per-project choices, stored with the extension (Azure DevOps extension data). Everything is off by
  * default: some projects have policies against sending code to AI services.
  */
@@ -43,8 +35,8 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
 }
 
 /**
- * The organization's own backend, saved in Project settings → Review Deck by an organization administrator.
- * It overrides the build's BACKEND_URL. `key` is the backend's API_KEY (Terraform output api_key).
+ * The organization's own backend (backend/, deployed by infra/), saved in Project settings → Review Deck by an
+ * organization administrator. There is no built-in one. `key` is the backend's API_KEY (Terraform output api_key).
  */
 export interface BackendSettings {
   url: string;
@@ -97,7 +89,7 @@ export interface AppHost {
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
   backendService(): Promise<BackendService | null>;
-  /** The organization's own backend, or null when it uses the build's (or none). Never rejects. */
+  /** The organization's backend, or null when it has none. Never rejects. */
   backendSettings(): Promise<BackendSettings | null>;
   /** Saves (or, with null, clears) the organization's backend; the UI offers it to organization administrators only. */
   saveBackendSettings(settings: BackendSettings | null): Promise<void>;

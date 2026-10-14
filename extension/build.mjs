@@ -57,8 +57,6 @@ const options = {
   external: ["fs", "fs/promises", "module", "path", "url"],
   define: {
     "process.env.NODE_ENV": serve ? '"development"' : '"production"',
-    // The backend Azure Function (infra/ output backend_url); empty = structural grouping, heuristic titles.
-    __BACKEND_URL__: JSON.stringify(process.env.REVIEW_DECK_BACKEND_URL ?? ""),
   },
   logLevel: "info",
 };
