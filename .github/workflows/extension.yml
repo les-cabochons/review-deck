@@ -24,6 +24,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint:boundaries
+      - run: npm test
       - run: npm run ext:typecheck
       - run: npm run ext:test
       - run: npm run backend:typecheck

@@ -6,6 +6,8 @@ dev:
 
 check:
     npm run typecheck
+    npm run lint:boundaries
+    npm test
     npm run ext:typecheck
     npm run ext:test
     npm run backend:typecheck
