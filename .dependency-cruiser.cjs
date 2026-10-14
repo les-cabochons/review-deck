@@ -31,7 +31,7 @@ module.exports = {
       comment:
         "App/root code may import a package's entry points (its root files), but nothing inside its subfolders.",
       severity: "error",
-      from: { pathNot: `^${R}/` }, // importer is NOT inside any package
+      from: { pathNot: `^${R}/[^/]+/` }, // importer is NOT inside any package (root files like src/pipeline.ts count as app code)
       to: { path: PACKAGE_INTERNALS },
     },
     {
