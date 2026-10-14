@@ -29,10 +29,25 @@ export interface CommitInfo {
 
 export type CherryPickResult = { ok: true; commit: string } | { ok: false; conflict: boolean; message: string };
 
+/** The PR a layer sits on: the one whose source is the layer's target branch. */
+export interface ParentPr extends RestackPr {
+  status: "active" | "completed" | "abandoned";
+  /** Where its source branch was when it last merged (completed PRs). */
+  lastSourceCommit: string | null;
+}
+
 /** Azure DevOps Git operations on one repository (backend/src/stacks/adoRepo.ts implements them over REST). */
 export interface RestackRepo {
   /** Active PRs whose target is `branch`. */
   activePrsInto(branch: string): Promise<RestackPr[]>;
+  /** The active PR from `branch`, else the most recent closed one, else null. */
+  prFrom(branch: string): Promise<ParentPr | null>;
+  /**
+   * The commit `prId`'s source was based on at its last push (the merge base Azure DevOps recorded then),
+   * or null. Unlike a merge base taken now, it still points into the parent's old history after the
+   * parent was rewritten, so only the layer's own commits get replayed.
+   */
+  pushedBase(prId: number): Promise<string | null>;
   /** Commit the branch points at, or null if it doesn't exist. */
   branchTip(branch: string): Promise<string | null>;
   mergeBase(a: string, b: string): Promise<string | null>;
@@ -91,6 +106,56 @@ export class Restacker {
     }
     // Layers above now belong on the branch the merged layer went into.
     await this.restackChildren(shortBranch(pr.sourceBranch), lastSourceCommit, ontoTip, onto, 0);
+    return this.outcomes;
+  }
+
+  /**
+   * Someone asked to restack `pr` (a retry, or a stack auto-restack missed): rebases it on the current
+   * tip of the layer below, or, when that layer merged, onto where it merged and retargets it. The
+   * layers above follow. An up-to-date PR gets a succeeded status, clearing an earlier failure.
+   */
+  async restackPr(pr: RestackPr): Promise<RestackOutcome[]> {
+    const target = shortBranch(pr.targetBranch);
+    /** Ends without restacking: records the outcome and posts it as the PR's status. */
+    const settle = async (state: "succeeded" | "failed", description: string) => {
+      if (state === "failed") return this.fail(pr, description).then(() => this.outcomes);
+      this.outcomes.push({ pr: pr.id, result: "up-to-date" });
+      await this.repo.report(pr.id, state, truncate(description));
+      return this.outcomes;
+    };
+    if (isTrunk(target, this.options.trunkPatterns)) return settle("succeeded", `Bottom of the stack: it targets ${target}, which is never restacked.`);
+
+    const parent = await this.repo.prFrom(target);
+    if (parent?.status === "abandoned") {
+      return settle("failed", `The PR below (!${parent.id}) was abandoned. Retarget this PR to the branch it should go on.`);
+    }
+    let onto: string;
+    let ontoTip: string | null;
+    let oldParentTip: string | null;
+    let retargetTo: string | null = null;
+    if (parent?.status === "completed") {
+      onto = retargetTo = shortBranch(parent.targetBranch);
+      ontoTip = await this.repo.branchTip(onto);
+      if (!ontoTip) return settle("failed", `The PR below (!${parent.id}) merged into ${onto}, which no longer exists. Retarget this PR.`);
+      oldParentTip = parent.lastSourceCommit ?? (await this.repo.branchTip(target));
+      if (!oldParentTip) return settle("failed", `Couldn't tell where ${target} was when !${parent.id} merged. Restack it locally.`);
+    } else {
+      // The layer below is open (or a branch without a PR): follow its current tip.
+      onto = target;
+      ontoTip = await this.repo.branchTip(target);
+      if (!ontoTip) return settle("failed", `Couldn't restack: ${target} no longer exists and no merged PR came from it. Retarget this PR.`);
+      const childTip = await this.repo.branchTip(shortBranch(pr.sourceBranch));
+      oldParentTip = childTip && ((await this.onBranch(childTip, await this.repo.pushedBase(pr.id))) ?? (await this.repo.mergeBase(childTip, ontoTip)));
+      if (!oldParentTip) return settle("failed", `Couldn't restack onto ${target}: this branch shares no history with it. Restack it locally.`);
+    }
+    try {
+      await this.restackOne(pr, target, oldParentTip, ontoTip, retargetTo, 0);
+    } catch (e) {
+      await this.fail(pr, `Couldn't restack onto ${onto}: ${errorMessage(e)}`);
+    }
+    if (this.outcomes.some((o) => o.pr === pr.id && o.result === "up-to-date")) {
+      await this.repo.report(pr.id, "succeeded", truncate(`Up to date with ${target}`));
+    }
     return this.outcomes;
   }
 
@@ -206,6 +271,11 @@ export class Restacker {
     this.outcomes.push({ pr: child.id, result: "failed", reason });
     this.log(`!${child.id}: ${reason}`);
     await this.repo.report(child.id, "failed", truncate(reason)).catch((e: unknown) => this.log(`couldn't report on !${child.id}: ${errorMessage(e)}`));
+  }
+
+  /** `commit` if `tip` contains it, else null. */
+  private async onBranch(tip: string, commit: string | null): Promise<string | null> {
+    return commit && (await this.repo.mergeBase(tip, commit)) === commit ? commit : null;
   }
 
   private log(message: string): void {

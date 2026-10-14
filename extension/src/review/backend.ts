@@ -1,6 +1,7 @@
 import type { Embedder } from "../../../src/score/index";
 import { type LlmTitle, matchTitles, type PromptContext, promptGroups } from "../../../src/title/prompt";
 import type { GroupTitle, TitleInput, Titler } from "../../../src/title/types";
+import type { RestackOutcome } from "../../../src/stack/restack";
 
 /** The Azure Function (backend/, deployed by infra/) and a token it accepts. */
 export interface BackendService {
@@ -95,6 +96,29 @@ async function errorMessage(response: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+export type { RestackOutcome };
+
+/**
+ * Asks the backend to restack one PR now (POST /api/stacks/restack). `adoToken` is the user's Azure DevOps
+ * token: the backend checks it can read the PR. Rejects with the backend's message.
+ */
+export async function restackPr(
+  service: BackendService,
+  request: { projectId: string; repositoryId: string; pullRequestId: number; extensionId: string; adoToken: string },
+): Promise<RestackOutcome[]> {
+  const response = await fetch(`${service.url}/api/stacks/restack`, {
+    method: "POST",
+    headers: { ...authorization(service), "content-type": "application/json" },
+    body: JSON.stringify({ organization: service.scope.organization, ...request }),
+    // Cherry-picks run on the server and can take a minute on a deep stack.
+    signal: AbortSignal.timeout(200_000),
+  });
+  if (response.status === 404) throw new Error("This backend doesn't support restacking on request yet. Redeploy it.");
+  if (!response.ok) throw new Error((await errorMessage(response)) || `The backend returned ${response.status}.`);
+  const { outcomes } = (await response.json()) as { outcomes?: RestackOutcome[] };
+  return outcomes ?? [];
 }
 
 /** Starts the function's cold start (instance + model load) while the page is still fetching files. */

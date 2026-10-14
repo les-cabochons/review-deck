@@ -53,13 +53,28 @@ the layer below. It uses Azure DevOps' server-side Git operations, with no clone
 
 Every PR it touches gets a `review-deck/restack` status, shown with the PR's checks.
 
+### Restacking on request
+
+The Stack section of a PR's Overview has a **Restack** action (for any layer that doesn't target a
+trunk branch), whether or not auto-restack is on. Use it to retry after fixing a failure, or when a
+hook was missed. It calls `POST /api/stacks/restack`, which runs synchronously and answers with what
+happened, including the restack identity's own errors (not added to the organization, missing Force
+push), which the queued jobs only log. The caller's Azure DevOps token must be able to read the PR.
+
+- The layer below is open: the PR is rebased from where it was last pushed onto the layer's current
+  tip, so a rewritten parent's old commits aren't replayed.
+- The layer below merged: the PR moves onto the branch it merged into and is retargeted.
+- Already up to date: the PR gets a succeeded status, clearing an earlier failure.
+
+The layers above follow, as with auto-restack.
+
 ### How events reach the backend
 
 Turning the toggle on registers two service hooks for the project (`git.push` and
 `git.pullrequest.updated`), signed in as the admin who flips it, so they need "Edit subscriptions"
 on the project:
 
-1. The hooks POST to `/api/hooks/ado?org=<org>` with an `X-Review-Deck-Hook` secret
+1. The hooks POST to `/api/hooks/ado?org=<org>&ext=<publisher.extension>` with an `X-Review-Deck-Hook` secret
    (HMAC of `HOOK_KEY` and the organization). The function only queues the job and answers at once.
 2. The `restack` queue runs jobs one at a time. Each job re-reads the project's settings and the
    repository state, so a replayed or forged event can't restack anything that isn't behind.

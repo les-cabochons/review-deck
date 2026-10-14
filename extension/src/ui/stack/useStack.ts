@@ -9,6 +9,8 @@ export interface StackView {
   details: Map<number, Partial<PrSummary>>;
   autoRestack: boolean;
   trunkBranches: string[];
+  /** Re-reads the stack (after a restack), keeping the current view until the new one is in. */
+  reload: () => void;
 }
 
 /**
@@ -17,16 +19,21 @@ export interface StackView {
  */
 export function useStack(host: AppHost, prId: number): StackView | null {
   const [view, setView] = React.useState<StackView | null>(null);
+  const [version, setVersion] = React.useState(0);
+  const reload = React.useCallback(() => setVersion((v) => v + 1), []);
+  const shownPr = React.useRef(prId);
   React.useEffect(() => {
     let cancelled = false;
-    setView(null);
+    if (shownPr.current !== prId) setView(null);
+    shownPr.current = prId;
     (async () => {
       const [source, settings] = await Promise.all([host.listSource(), host.projectSettings()]);
       const prs = await source.list();
       const pr = prs.find((p) => p.id === prId);
       const position = pr && stackFor(pr, prs, settings.trunkBranches);
-      if (cancelled || !position) return;
-      const base: StackView = { position, details: new Map(), autoRestack: settings.autoRestack, trunkBranches: settings.trunkBranches };
+      if (cancelled) return;
+      if (!position) return setView(null);
+      const base: StackView = { position, details: new Map(), autoRestack: settings.autoRestack, trunkBranches: settings.trunkBranches, reload };
       setView(base);
       if (!source.details) return;
       const layers = [...position.layers, ...position.children.filter((c) => !position.layers.includes(c))];
@@ -40,7 +47,7 @@ export function useStack(host: AppHost, prId: number): StackView | null {
     return () => {
       cancelled = true;
     };
-  }, [host, prId]);
+  }, [host, prId, version, reload]);
   return view;
 }
 

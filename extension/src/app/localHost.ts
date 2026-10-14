@@ -1,9 +1,9 @@
-import { MockPrListSource } from "../data/list";
+import { MockPrListSource, type PrSummary } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
 import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
-import type { BackendService } from "../review/backend";
+import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
 import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 
@@ -152,6 +152,12 @@ export class LocalHost implements AppHost {
 
   /** No Azure DevOps here: the setting is saved, and nothing calls the backend. */
   async syncRestackHooks(): Promise<void> {}
+
+  /** No backend here: pretends the PR was already up to date. */
+  async restack(pr: PrSummary): Promise<RestackOutcome[]> {
+    await new Promise((r) => setTimeout(r, 600));
+    return [{ pr: pr.id, result: "up-to-date" }];
+  }
 
   /** Styles in localStorage; renames and deletions change the demo's pull requests in memory. */
   tags(): TagStore {

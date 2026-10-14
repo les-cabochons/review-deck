@@ -8,10 +8,12 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * Hooks only say *that* something happened; the job re-reads everything from Azure DevOps.
  */
 export const HOOK_HEADER = "x-review-deck-hook";
+/** What hooks subscribed under the extension's old name still send, until auto-restack is turned off and on. */
+export const LEGACY_HOOK_HEADER = "x-semantic-pr-hook";
 
-export type RestackJob =
-  | { kind: "push"; organization: string; projectId: string; repositoryId: string; branch: string; oldTip: string; newTip: string }
-  | { kind: "completed"; organization: string; projectId: string; repositoryId: string; pullRequestId: number };
+/** `extensionId`: the installed extension whose project settings apply (the hook URL's `ext`), if it said. */
+export type JobBase = { organization: string; projectId: string; repositoryId: string; extensionId?: string };
+export type RestackJob = JobBase & ({ kind: "push"; branch: string; oldTip: string; newTip: string } | { kind: "completed"; pullRequestId: number });
 
 /** The per-organization secret the hook subscription sends: HMAC(HOOK_KEY, organization). */
 export function hookSecret(key: string, organization: string): string {
@@ -36,12 +38,12 @@ interface HookPayload {
 }
 
 /** Restack jobs for one hook delivery; [] for events that don't concern stacks. */
-export function jobsFromHook(organization: string, payload: unknown): RestackJob[] {
+export function jobsFromHook(organization: string, payload: unknown, extensionId?: string): RestackJob[] {
   const p = (payload ?? {}) as HookPayload;
   const repositoryId = p.resource?.repository?.id;
   const projectId = p.resource?.repository?.project?.id ?? p.resourceContainers?.project?.id;
   if (!repositoryId || !projectId) return [];
-  const base = { organization, projectId, repositoryId };
+  const base: JobBase = { organization, projectId, repositoryId, ...(extensionId ? { extensionId } : {}) };
   if (p.eventType === "git.push") {
     return (p.resource?.refUpdates ?? [])
       .filter((u) => u.name?.startsWith("refs/heads/") && u.oldObjectId && u.newObjectId)

@@ -2793,6 +2793,19 @@ kbd {
   border-top: 1px solid var(--line-soft);
   font-size: 12px;
 }
+.stack-restack-action {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.stack-restack-action .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .pr-state-inline.state-active {
   color: var(--ok);
 }

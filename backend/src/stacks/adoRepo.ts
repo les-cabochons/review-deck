@@ -1,4 +1,4 @@
-import type { CherryPickResult, CommitInfo, RestackPr, RestackRepo } from "../../../src/stack/restack.js";
+import type { CherryPickResult, CommitInfo, ParentPr, RestackPr, RestackRepo } from "../../../src/stack/restack.js";
 import { shortBranch } from "../../../src/stack/branches.js";
 import type { AdoClient } from "./ado.js";
 
@@ -8,12 +8,27 @@ const MAX_LAYER_COMMITS = 200;
 const CHERRY_PICK_TIMEOUT_MS = 90_000;
 /** PR status context: one "restack" check per PR, updated in place. */
 export const STATUS_CONTEXT = { genre: "review-deck", name: "restack" };
+/** The same check under the extension's old name; cleared once a restack succeeds, so it doesn't stay red. */
+const LEGACY_STATUS_GENRE = "semantic-pr";
 
 interface AdoPr {
   pullRequestId: number;
   title: string;
   sourceRefName: string;
   targetRefName: string;
+  status: string;
+  lastMergeSourceCommit?: { commitId: string };
+}
+
+function toParentPr(p: AdoPr): ParentPr {
+  return {
+    id: p.pullRequestId,
+    title: p.title,
+    sourceBranch: p.sourceRefName,
+    targetBranch: p.targetRefName,
+    status: p.status as ParentPr["status"],
+    lastSourceCommit: p.lastMergeSourceCommit?.commitId ?? null,
+  };
 }
 
 /** RestackRepo over Azure DevOps REST (Git refs, commits, merge bases, cherry-picks, PRs). */
@@ -37,9 +52,25 @@ export class AdoRepo implements RestackRepo {
     return value.map((p) => ({ id: p.pullRequestId, title: p.title, sourceBranch: p.sourceRefName, targetBranch: p.targetRefName }));
   }
 
-  async getPr(id: number): Promise<RestackPr & { status: string; lastSourceCommit: string | null }> {
-    const p = await this.ado.get<AdoPr & { status: string; lastMergeSourceCommit?: { commitId: string } }>(`${this.root}pullrequests/${id}`);
-    return { id, title: p.title, sourceBranch: p.sourceRefName, targetBranch: p.targetRefName, status: p.status, lastSourceCommit: p.lastMergeSourceCommit?.commitId ?? null };
+  async prFrom(branch: string): Promise<ParentPr | null> {
+    const { value } = await this.ado.get<{ value: AdoPr[] }>(`${this.root}pullrequests`, {
+      "searchCriteria.sourceRefName": ref(branch),
+      "searchCriteria.status": "all",
+      $top: "20",
+    });
+    // A reused branch name can have an old merged PR and a new open one; of closed ones, take the latest.
+    const closed = value.filter((v) => v.status === "completed" || v.status === "abandoned").sort((a, b) => b.pullRequestId - a.pullRequestId);
+    const p = value.find((v) => v.status === "active") ?? closed[0];
+    return p ? toParentPr(p) : null;
+  }
+
+  async getPr(id: number): Promise<ParentPr> {
+    return toParentPr(await this.ado.get<AdoPr>(`${this.root}pullrequests/${id}`));
+  }
+
+  async pushedBase(prId: number): Promise<string | null> {
+    const { value } = await this.ado.get<{ value: { commonRefCommit?: { commitId: string } }[] }>(`${this.root}pullRequests/${prId}/iterations`);
+    return value.at(-1)?.commonRefCommit?.commitId ?? null;
   }
 
   async branchTip(branch: string): Promise<string | null> {
@@ -112,6 +143,16 @@ export class AdoRepo implements RestackRepo {
 
   async report(prId: number, state: "pending" | "succeeded" | "failed", description: string): Promise<void> {
     await this.ado.post(`${this.root}pullRequests/${prId}/statuses`, { state, description, context: STATUS_CONTEXT });
+    if (state === "succeeded") await this.clearLegacyStatuses(prId).catch(() => {});
+  }
+
+  private async clearLegacyStatuses(prId: number): Promise<void> {
+    const { value } = await this.ado.get<{ value: { id: number; context?: { genre?: string; name?: string } }[] }>(`${this.root}pullRequests/${prId}/statuses`);
+    for (const s of value) {
+      if (s.context?.genre === LEGACY_STATUS_GENRE && s.context.name === STATUS_CONTEXT.name) {
+        await this.ado.request("DELETE", `${this.root}pullRequests/${prId}/statuses/${s.id}`);
+      }
+    }
   }
 
   async comment(prId: number, text: string): Promise<void> {
