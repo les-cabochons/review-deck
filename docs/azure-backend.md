@@ -33,12 +33,8 @@ Pieces:
   - `GET /api/warm` loads the embedding model. The page calls it first, so the cold start overlaps fetching files.
   - `GET /api/stacks/hook`, `POST /api/hooks/ado` and `POST /api/stacks/restack` run auto-restack and the
     Restack action; see [stacks.md](stacks.md).
-  - Every call needs `Authorization: Bearer <token>`, where the token is either:
-    - **The backend's API key** (`API_KEY`, Terraform output `api_key`). An organization administrator saves it with
-      the URL in **Project settings → Review Deck → Backend**. This is how a self-hosted backend works with the
-      published extension.
-    - **An app token** (`SDK.getAppToken()`), an HS256 token signed with the publisher's certificate secret
-      (`EXTENSION_SECRET`). Only for a private build of the extension with `REVIEW_DECK_BACKEND_URL` baked in.
+  - Every call needs `Authorization: Bearer <API_KEY>`: the backend's key (Terraform output `api_key`), which an
+    organization administrator saves with the URL in **Project settings → Review Deck → Backend**.
 - `infra/`: Terraform for the resource group, storage account, Windows Consumption plan, Function App,
   an AI Services resource with the titles model deployment (or none), and a $1 budget alert.
 
@@ -153,11 +149,7 @@ organization, and **Disconnect** turns the backend off again.
 - **CORS:** the function only answers browsers on `allowed_origins`. The default covers the published extension
   (`https://cabochonio.gallerycdn.vsassets.io`) and the local dev server. If you publish your own copy under
   another publisher, add `https://<publisher>.gallerycdn.vsassets.io`.
-- **Private builds:** a build made with `REVIEW_DECK_BACKEND_URL` set (locally, or from the CI repository
-  variable) uses that backend wherever no organization backend is saved. It authenticates with an app token, so
-  the backend then needs `extension_secret`: in [Marketplace › Manage publishers](https://marketplace.visualstudio.com/manage/publishers/),
-  open the ⋯ menu on your extension and choose **Certificate**.
 - **Local backend:** add `?backend=http://localhost:7071` to the dev server URL to use a local `func start` in
-  `backend/.build/app`, with Azurite for storage. With neither `API_KEY` nor `EXTENSION_SECRET`, a local run skips
+  `backend/.build/app`, with Azurite for storage. Without `API_KEY`, a local run skips
   the token check (a deployed app rejects every request). Set `OPENAI_ENDPOINT` and `OPENAI_API_KEY` to try titles
   locally.

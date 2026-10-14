@@ -7,7 +7,7 @@ import type { RestackOutcome } from "../../../src/stack/restack";
 export interface BackendService {
   /** Function App base URL, without /api. */
   url: string;
-  /** Azure DevOps app token (SDK.getAppToken()); empty against a local `func start`. */
+  /** The backend's API key (BackendSettings); empty against a local `func start`. */
   token: string;
   /** Which organization and project LLM spend counts against (backend/src/budget.ts). */
   scope: Scope;

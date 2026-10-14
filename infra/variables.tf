@@ -72,13 +72,6 @@ variable "titles_price_per_million" {
   default     = { input = 0.05, output = 0.4 }
 }
 
-variable "extension_secret" {
-  description = "Optional. The extension publisher's certificate secret (Marketplace > Manage publishers > the extension > ... > Certificate), only for a private build with REVIEW_DECK_BACKEND_URL baked in. Self-hosters leave it empty and use api_key."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 variable "allowed_origins" {
   description = "Origins allowed to call the function from a browser: the published extension's CDN (https://<publisher>.gallerycdn.vsassets.io), plus the local dev server."
   type        = list(string)

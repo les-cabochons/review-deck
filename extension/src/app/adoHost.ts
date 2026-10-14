@@ -9,7 +9,7 @@ import type { Identity, PrSource } from "../data/model";
 import type { ReleaseCatalog } from "../data/releases";
 import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -110,19 +110,10 @@ export class AdoHost implements AppHost {
     return this.backend;
   }
 
-  /** The organization's own backend with its API key, else the build's with an app token, else none. */
   private async resolveBackend(): Promise<BackendService | null> {
-    const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
     const own = await this.backendSettings();
-    if (own) return { url: own.url, token: own.key, scope };
-    if (!BACKEND_URL) return null;
-    try {
-      // Signed with the extension's secret; the function checks it (backend/src/auth.ts).
-      return { url: BACKEND_URL, token: await SDK.getAppToken(), scope };
-    } catch (e) {
-      console.warn("[review-deck] no app token, grouping without the backend:", e);
-      return null;
-    }
+    const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
+    return own && { url: own.url, token: own.key, scope };
   }
 
   async backendSettings(): Promise<BackendSettings | null> {

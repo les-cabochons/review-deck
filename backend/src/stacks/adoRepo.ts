@@ -8,8 +8,6 @@ const MAX_LAYER_COMMITS = 200;
 const CHERRY_PICK_TIMEOUT_MS = 90_000;
 /** PR status context: one "restack" check per PR, updated in place. */
 export const STATUS_CONTEXT = { genre: "review-deck", name: "restack" };
-/** The same check under the extension's old name; cleared once a restack succeeds, so it doesn't stay red. */
-const LEGACY_STATUS_GENRE = "semantic-pr";
 
 interface AdoPr {
   pullRequestId: number;
@@ -143,16 +141,6 @@ export class AdoRepo implements RestackRepo {
 
   async report(prId: number, state: "pending" | "succeeded" | "failed", description: string): Promise<void> {
     await this.ado.post(`${this.root}pullRequests/${prId}/statuses`, { state, description, context: STATUS_CONTEXT });
-    if (state === "succeeded") await this.clearLegacyStatuses(prId).catch(() => {});
-  }
-
-  private async clearLegacyStatuses(prId: number): Promise<void> {
-    const { value } = await this.ado.get<{ value: { id: number; context?: { genre?: string; name?: string } }[] }>(`${this.root}pullRequests/${prId}/statuses`);
-    for (const s of value) {
-      if (s.context?.genre === LEGACY_STATUS_GENRE && s.context.name === STATUS_CONTEXT.name) {
-        await this.ado.request("DELETE", `${this.root}pullRequests/${prId}/statuses/${s.id}`);
-      }
-    }
   }
 
   async comment(prId: number, text: string): Promise<void> {

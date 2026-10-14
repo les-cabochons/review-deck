@@ -10,7 +10,7 @@ Implement the requested Files tab changes locally, then verify the actual mock r
 - Add a GitHub-style Viewed checkbox to file headers and concern headers. Concern controls mark all unique files in the concern, with a mixed state when only some are viewed. Shared files use one viewed state across concerns.
 - Replace the existing toolbar file counter with viewed / total viewed, followed by the existing added and removed line counts. Always show it, even at zero, independent of filters.
 - Show a check and Viewed tooltip beside viewed files in both file trees.
-- Save viewed state locally per repository, PR, user and comparison. Invalidate a file's check when either blob changes. Keep collapse independent from viewed state.
+- Save viewed state locally per repository, PR, user and comparison. Invalidate a file's check when either blob changes.
 - Add a Comment button to every file header for comments on the whole file (Azure DevOps file threads: a file path with no line positions). In the concern view, a file's comments show on its first card. Drafts join the pending review like line comments.
 - Add a ⋯ menu to every file header with "View file", which opens the file at the compared update's head commit (the compared-from commit for deleted files).
 - Add a separate chevron to collapse each concern's sidebar file tree. Keep the title's diff jump and retain collapse choices during search, filtering, view switches and sidebar visibility changes.

@@ -1,7 +1,7 @@
 import { Button } from "azure-devops-ui/Button";
 import { TextField, TextFieldWidth } from "azure-devops-ui/TextField";
 import * as React from "react";
-import { type AppHost, BACKEND_URL, type BackendSettings, normalizeBackendUrl } from "../../app/host";
+import { type AppHost, type BackendSettings, normalizeBackendUrl } from "../../app/host";
 import { fetchUsage } from "../../review/backend";
 import { SaveStatus } from "./SaveStatus";
 
@@ -141,7 +141,6 @@ export const BackendSetting: React.FC<{ host: AppHost; /** After a save, so the 
 
 function describe(saved: BackendSettings | null): string {
   if (saved) return `Connected to ${new URL(saved.url).host}.`;
-  if (BACKEND_URL) return `Using the backend built into this extension (${new URL(BACKEND_URL).host}).`;
   return "No backend: hunks are grouped by code structure in the browser, and groups get rule-based titles.";
 }
 

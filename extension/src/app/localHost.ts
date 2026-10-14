@@ -5,7 +5,7 @@ import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "review-deck.local.projectSettings";
 const TAGS_KEY = "review-deck.local.tagStyles";
@@ -94,15 +94,14 @@ export class LocalHost implements AppHost {
 
   /**
    * `?backend=http://localhost:7071` points at a local `func start` (which skips the token check without
-   * API_KEY); otherwise the backend saved in the dev shell's Project settings → Review Deck, then the build's.
+   * API_KEY); otherwise the backend saved in the dev shell's Project settings → Review Deck.
    */
   async backendService(): Promise<BackendService | null> {
     const scope = { organization: "local", projectId: "t3code", projectName: "t3code" };
     const query = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "");
     if (query) return { url: query, token: "", scope };
     const own = await this.backendSettings();
-    if (own) return { url: own.url, token: own.key, scope };
-    return BACKEND_URL ? { url: BACKEND_URL, token: "", scope } : null;
+    return own && { url: own.url, token: own.key, scope };
   }
 
   async backendSettings(): Promise<BackendSettings | null> {

@@ -8,8 +8,6 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * Hooks only say *that* something happened; the job re-reads everything from Azure DevOps.
  */
 export const HOOK_HEADER = "x-review-deck-hook";
-/** What hooks subscribed under the extension's old name still send, until auto-restack is turned off and on. */
-export const LEGACY_HOOK_HEADER = "x-semantic-pr-hook";
 
 /** `extensionId`: the installed extension whose project settings apply (the hook URL's `ext`), if it said. */
 export type JobBase = { organization: string; projectId: string; repositoryId: string; extensionId?: string };

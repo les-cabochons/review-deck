@@ -8,11 +8,11 @@
 //   POST /api/stacks/restack  {organization, projectId, repositoryId, pullRequestId, extensionId, adoToken} -> {outcomes, log}
 //   queue "restack"   runs restack jobs one at a time (src/stack/restack.ts)
 import { app, type HttpRequest, type HttpResponseInit, output } from "@azure/functions";
-import { verifyApiKey, verifyAppToken } from "./auth.js";
+import { verifyApiKey } from "./auth.js";
 import { embed, MODEL, warm } from "./embed.js";
 import { BudgetExceeded, usage } from "./budget.js";
 import { BadRequest, parseScope, titleGroups, titlesConfigured, titlesModel } from "./titles.js";
-import { HOOK_HEADER, LEGACY_HOOK_HEADER, hookSecret, jobsFromHook, type RestackJob, verifyHookSecret } from "./stacks/hooks.js";
+import { HOOK_HEADER, hookSecret, jobsFromHook, type RestackJob, verifyHookSecret } from "./stacks/hooks.js";
 import { ManualRestackError, runManualRestack, runRestackJob } from "./stacks/run.js";
 import { AdoError } from "./stacks/ado.js";
 import { parseExtensionId } from "./stacks/settings.js";
@@ -23,19 +23,15 @@ const MAX_TEXTS = 2000;
 const MAX_CHARS = 1500;
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
-/** The publisher's certificate secret, for builds that bake in this backend's URL (they send an app token). */
-const secret = process.env.EXTENSION_SECRET ?? "";
 /** The key organizations save with this backend's URL in Project settings → Review Deck. */
 const apiKey = process.env.API_KEY ?? "";
 const development = process.env.AZURE_FUNCTIONS_ENVIRONMENT === "Development";
 
 function authorized(request: HttpRequest): boolean {
-  // Local `func start` with neither accepts anything; a deployed app with neither accepts nothing.
-  if (!secret && !apiKey) return development;
+  // Local `func start` without a key accepts anything; a deployed app without one accepts nothing.
+  if (!apiKey) return development;
   const header = request.headers.get("authorization") ?? "";
-  if (!header.startsWith("Bearer ")) return false;
-  const token = header.slice(7);
-  return (apiKey !== "" && verifyApiKey(token, apiKey)) || (secret !== "" && verifyAppToken(token, secret));
+  return header.startsWith("Bearer ") && verifyApiKey(header.slice(7), apiKey);
 }
 
 const error = (status: number, message: string): HttpResponseInit => ({ status, jsonBody: { error: message } });
@@ -142,7 +138,7 @@ app.http("adoHook", {
   extraOutputs: [restackQueue],
   handler: async (request, context) => {
     const organization = request.query.get("org") ?? "";
-    if (!hookKey || !ORGANIZATION.test(organization) || !verifyHookSecret(hookKey, organization, request.headers.get(HOOK_HEADER) ?? request.headers.get(LEGACY_HOOK_HEADER) ?? "")) {
+    if (!hookKey || !ORGANIZATION.test(organization) || !verifyHookSecret(hookKey, organization, request.headers.get(HOOK_HEADER) ?? "")) {
       return error(401, "invalid hook secret");
     }
     if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return error(413, "body too large");
