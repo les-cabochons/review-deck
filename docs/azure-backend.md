@@ -34,7 +34,7 @@ Pieces:
   - `GET /api/stacks/hook`, `POST /api/hooks/ado` and `POST /api/stacks/restack` run auto-restack and the
     Restack action; see [stacks.md](stacks.md).
   - Every call needs `Authorization: Bearer <API_KEY>`: the backend's key (Terraform output `api_key`), which an
-    organization administrator saves with the URL in **Project settings → Review Deck → Backend**.
+    organization administrator saves with the URL in **Organization settings → Review Deck → Backend**.
 - `infra/`: Terraform for the resource group, storage account, Windows Consumption plan, Function App,
   an AI Services resource with the titles model deployment (or none), and a $1 budget alert.
 

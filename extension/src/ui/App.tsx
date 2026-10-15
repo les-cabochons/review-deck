@@ -120,15 +120,15 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setReviewError(null);
     setProgress(null);
     setHoldPreview(false);
-    Promise.all([import("../review/engine"), host.backendService(), host.projectSettings()])
-      .then(([{ buildReview }, backend, settings]) => {
+    Promise.all([import("../review/engine"), host.backendService(), host.projectSettings(), host.organizationSettings()])
+      .then(([{ buildReview }, backend, settings, organization]) => {
         if (cancelled) return null;
         // The preview (diff only) shows at once; grouping replaces it when the worker finishes.
         return buildReview(source, meta, selection.iteration, selection.compareTo, {
           signal: abort.signal,
           fresh,
           backend,
-          aiTitles: settings.aiTitles,
+          aiTitles: settings.aiTitles && organization.aiTitles,
           saved: { store: host.savedReviews(), key: { repo: route.repo, pr: route.pr, iteration: selection.iteration, compareTo: selection.compareTo } },
           onPreview: (preview) => {
             if (cancelled) return;

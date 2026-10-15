@@ -88,7 +88,7 @@ The function writes its logs to `LogFiles/Application/Functions/Function/restack
 ### Setup
 
 1. **Deploy the backend** with Terraform (`infra/`). That generates `HOOK_KEY`. An organization
-   administrator connects it in **Project settings → Review Deck → Backend** (see `docs/azure-backend.md`).
+   administrator connects it in **Organization settings → Review Deck → Backend** (see `docs/azure-backend.md`).
 2. **Give the backend an Azure DevOps identity.** Choose one:
    - **Managed identity:** your organization must be connected to Microsoft Entra ID. Add the Function
      App's identity (`terraform output restack_identity`) as a user in **Organization settings →
