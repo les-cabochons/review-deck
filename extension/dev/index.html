@@ -83,6 +83,8 @@
       <div class="item"><i style="background:#c239b3"></i><span class="label">Artifacts</span></div>
       <div class="item link" id="settings-link" style="margin-top:12px"><i style="background:#8a8886"></i><span class="label">Project settings</span></div>
       <div class="sub link" id="settings-sub">Review Deck</div>
+      <div class="item link" id="org-settings-link"><i style="background:#605e5c"></i><span class="label">Organization settings</span></div>
+      <div class="sub link" id="org-settings-sub">Review Deck</div>
     </nav>
     <main><iframe id="frame" title="Deck"></iframe></main>
     <script>
@@ -123,6 +125,10 @@
       for (const id of ["settings-link", "settings-sub"]) document.getElementById(id).addEventListener("click", () => {
         activate("settings-sub", "Review Deck");
         frame.src = `/dist/settings.html?local=1&theme=${theme.value}`;
+      });
+      for (const id of ["org-settings-link", "org-settings-sub"]) document.getElementById(id).addEventListener("click", () => {
+        activate("org-settings-sub", "Review Deck");
+        frame.src = `/dist/org-settings.html?local=1&theme=${theme.value}`;
       });
       /** Marks the nav item of the page shown, and names it in the breadcrumb. */
       function activate(id, name) {

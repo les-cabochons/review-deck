@@ -10,7 +10,7 @@ import { SaveStatus } from "./SaveStatus";
  * organization, so only organization administrators can change it. Saving first checks that the backend
  * answers and accepts the key, so a typo can't silently turn the backend off for everyone.
  */
-export const BackendSetting: React.FC<{ host: AppHost; /** After a save, so the other sections re-read the backend. */ onChange(): void }> = ({ host, onChange }) => {
+export const BackendSetting: React.FC<{ host: AppHost }> = ({ host }) => {
   const [saved, setSaved] = React.useState<BackendSettings | null | undefined>(undefined);
   const [canManage, setCanManage] = React.useState(false);
   const [url, setUrl] = React.useState("");
@@ -38,7 +38,6 @@ export const BackendSetting: React.FC<{ host: AppHost; /** After a save, so the 
     await host.saveBackendSettings(settings);
     setSaved(settings);
     setStatus("saved");
-    onChange();
   };
 
   const connect = async () => {

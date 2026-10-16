@@ -162,7 +162,7 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
         />
         <p className="settings-help muted">
           {!hasBackend
-            ? "Needs a backend: an organization administrator can connect one above."
+            ? "Needs a backend: an organization administrator can connect one in Organization settings → Review Deck."
             : settings.autoRestack
               ? "When a layer gets new commits or merges, the layers above are rebased on the server and retargeted. Conflicts are left alone, with a comment on the PR."
               : "Off: layers above a changed or merged PR stay where they are until someone rebases them."}

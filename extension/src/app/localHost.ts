@@ -1,3 +1,4 @@
+import { type Feature, type OrganizationSettings, readOrganizationSettings } from "../data/access";
 import { MockPrListSource, type PrSummary } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
@@ -11,6 +12,7 @@ const SETTINGS_KEY = "review-deck.local.projectSettings";
 const TAGS_KEY = "review-deck.local.tagStyles";
 const FAVORITES_KEY = "review-deck.local.favoriteRepos";
 const BACKEND_KEY = "review-deck.local.backend";
+const ORGANIZATION_KEY = "review-deck.local.organizationSettings";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -38,6 +40,10 @@ export class LocalHost implements AppHost {
       if (id) history.replaceState(null, "", host.href({ view: "pr", repo: "t3code", pr: id }));
     }
     return host;
+  }
+
+  get projectId(): string {
+    return this.list.currentProjectId;
   }
 
   get currentUser(): Identity {
@@ -94,7 +100,7 @@ export class LocalHost implements AppHost {
 
   /**
    * `?backend=http://localhost:7071` points at a local `func start` (which skips the token check without
-   * API_KEY); otherwise the backend saved in the dev shell's Project settings → Review Deck.
+   * API_KEY); otherwise the backend saved in the dev shell's Organization settings → Review Deck.
    */
   async backendService(): Promise<BackendService | null> {
     const scope = { organization: "local", projectId: "t3code", projectName: "t3code" };
@@ -119,6 +125,28 @@ export class LocalHost implements AppHost {
 
   async canManageOrganization(): Promise<boolean> {
     return true;
+  }
+
+  async organizationSettings(): Promise<OrganizationSettings> {
+    try {
+      return readOrganizationSettings(JSON.parse(localStorage.getItem(ORGANIZATION_KEY) ?? "null"));
+    } catch {
+      return { ...readOrganizationSettings(null), aiTitles: false };
+    }
+  }
+
+  async updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings> {
+    const settings = change(await this.organizationSettings());
+    localStorage.setItem(ORGANIZATION_KEY, JSON.stringify(settings));
+    return settings;
+  }
+
+  /** No Azure DevOps navigation here: the hub shows, and says when it's off. */
+  async syncFeatureVisibility(_feature: Feature): Promise<void> {}
+
+  /** The demo's projects. */
+  async organizationProjects(): Promise<{ id: string; name: string }[]> {
+    return (await this.list.catalog()).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** In memory, so a reload analyzes again with the code being worked on. */

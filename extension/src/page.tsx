@@ -1,19 +1,39 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import type { AppHost } from "./app/host";
+import { enabledFor, type Feature } from "./data/access";
+import { FeatureOff } from "./ui/FeatureOff";
 import { Root } from "./ui/Root";
 import { SettingsPage } from "./ui/settings/SettingsPage";
 
 const root = document.getElementById("root")!;
 
-/** settings.html (Project settings → Review Deck), changelog.html (Repos → Changelog) and review.html share this bundle. */
+/**
+ * settings.html (Project settings → Review Deck), org-settings.html (Organization settings → Review Deck),
+ * changelog.html (Repos → Changelog) and review.html share this bundle.
+ */
 const page = document.body.dataset.page;
 
+/** The feature a hub page belongs to; settings pages always open. */
+const FEATURE_PAGES: Record<string, Feature> = { review: "deck", changelog: "changelog" };
+
 export async function renderHost(host: AppHost) {
+  const feature = FEATURE_PAGES[page ?? "review"];
+  if (feature) {
+    // Azure DevOps normally hides a turned-off hub; this covers links to it, and a hub its feature state didn't hide.
+    const policy = (await host.organizationSettings())[feature];
+    if (!enabledFor(policy, host.projectId)) {
+      ReactDOM.render(<FeatureOff feature={feature} policy={policy} />, root);
+      return;
+    }
+  }
   if (page === "changelog") {
     // Its own chunk, so the review page doesn't load it.
     const { ChangelogPage } = await import("./ui/changelog/ChangelogPage");
     ReactDOM.render(<ChangelogPage host={host} />, root);
+  } else if (page === "org-settings") {
+    const { OrganizationSettingsPage } = await import("./ui/settings/OrganizationSettingsPage");
+    ReactDOM.render(<OrganizationSettingsPage host={host} />, root);
   } else {
     ReactDOM.render(page === "settings" ? <SettingsPage host={host} /> : <Root host={host} />, root);
   }

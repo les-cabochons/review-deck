@@ -38,10 +38,19 @@ Created in [T3 Code](https://t3.codes).
 
 It works right away, without a backend: hunks are grouped by code structure and get rule-based titles.
 
-The settings are in **Project settings → Review Deck**:
-- **Trunk branches** (project administrators): where stacks end (`main`, `dev`, `release/*`…).
-- **Changelog** (project administrators): the tag convention and publishing pipeline per repository.
-- **Backend** (organization administrators): see [Optional: run your own backend](#optional-run-your-own-backend).
+Organization administrators set what applies to every project in **Organization settings → Review Deck**:
+- **Deck and Changelog**: for each, either on or off for every project, or on or off by default with each
+  project choosing. The project list switches a feature for one project. A turned-off hub disappears from
+  the Repos menu.
+- **AI group titles**: turning them off overrides every project's choice. The switch is kept by the extension in
+  the browser; to make sure no code can reach a model, deploy the backend with `titles_model = null`.
+- **Backend**: see [Optional: run your own backend](#optional-run-your-own-backend).
+
+Project administrators set the rest in **Project settings → Review Deck**:
+- **Deck and Changelog**: switch them for the project, unless the organization set them for every project.
+- **Trunk branches**: where stacks end (`main`, `dev`, `release/*`…).
+- **Changelog**: the tag convention and publishing pipeline per repository.
+- **AI group titles**: whether this project sends changed lines to the backend's model.
 
 ### Your own private copy
 
@@ -77,7 +86,7 @@ npm run ext:dev      # build, watch and serve
 
 Then open <http://127.0.0.1:5173/dev/>:
 - **Repos → Deck** is the PR hub. Open any PR to see the review page.
-- **Project settings → Review Deck** is the settings page.
+- **Project settings → Review Deck** and **Organization settings → Review Deck** are the settings pages.
 - The theme menu switches between the light and dark Azure DevOps themes.
 - The page reloads on every rebuild. The URL follows the page (`?pr=…&repo=…`), so reloads keep your place.
 - Comments, votes and other writes stay in memory. Reloading resets them.
@@ -175,8 +184,8 @@ run the same build and `apply` again. To remove it, run `terraform -chdir=infra 
 
 ### 2. Connect the extension to it
 
-1. In any project, open **Project settings → Review Deck**.
-2. Under **Backend (organization)**, enter `backend_url` and `api_key`, then choose **Connect**.
+1. Open **Organization settings → Review Deck**.
+2. Under **Backend**, enter `backend_url` and `api_key`, then choose **Connect**.
 
 Only organization administrators (Project Collection Administrators) can do this, and it applies to every
 project in the organization. The page checks that the backend answers and accepts the key before saving.

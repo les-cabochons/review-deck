@@ -11,6 +11,8 @@ interface State {
   /** The backend didn't answer, so whether it has a model is unknown. */
   usageFailed: boolean;
   hasBackend: boolean;
+  /** The organization allows AI titles at all (OrganizationSettings.aiTitles). */
+  allowed: boolean;
 }
 
 /**
@@ -24,10 +26,10 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 
   React.useEffect(() => {
     let cancelled = false;
-    Promise.all([host.backendService(), host.projectSettings(), host.canManageProject()]).then(([backend, settings, canManage]) => {
+    Promise.all([host.backendService(), host.projectSettings(), host.canManageProject(), host.organizationSettings()]).then(([backend, settings, canManage, organization]) => {
       if (cancelled || (!backend && !alwaysShow)) return;
-      setState({ settings, canManage, usage: null, usageFailed: false, hasBackend: !!backend });
-      if (!backend) return;
+      setState({ settings, canManage, usage: null, usageFailed: false, hasBackend: !!backend, allowed: organization.aiTitles });
+      if (!backend || !organization.aiTitles) return;
       fetchUsage(backend).then(
         (usage) => !cancelled && setState((s) => s && { ...s, usage }),
         (e) => {
@@ -42,10 +44,10 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
   }, [host]);
 
   if (!state) return null;
-  const on = state.settings.aiTitles;
+  const on = state.allowed && state.settings.aiTitles;
   // Turning titles on needs the backend to confirm a model; turning them off is always allowed.
   const model = state.usage?.model ?? null;
-  const canTurnOn = state.hasBackend && model !== null;
+  const canTurnOn = state.allowed && state.hasBackend && model !== null;
 
   const change = (aiTitles: boolean) => {
     setSaving(true);
@@ -62,7 +64,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
       <div className="hub-sidebar-sep" />
       <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving || (!on && !canTurnOn)} onChange={(_, checked) => change(checked)} />
       <p className="hub-sidebar-note muted">
-        {describe(state, on, model)} {!state.canManage && "Project administrators can change this."}
+        {describe(state, on, model)} {state.allowed && !state.canManage && "Project administrators can change this."}
       </p>
       {state.usage && model !== null && <UsageNote usage={state.usage} />}
       {error && (
@@ -75,6 +77,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 };
 
 function describe(state: State, on: boolean, model: string | null): string {
+  if (!state.allowed) return "Your organization has turned off AI group titles: groups get rule-based titles and no code is sent to an LLM.";
   if (!state.hasBackend) return "Needs a backend, and this organization has none connected: groups get rule-based titles.";
   if (state.usageFailed) return "Couldn't reach the backend to check its AI model, so titles can't be turned on right now.";
   if (!state.usage) return "Checking the backend's AI model…";

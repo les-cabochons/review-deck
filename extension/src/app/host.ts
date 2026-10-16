@@ -1,4 +1,5 @@
 import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
+import type { Feature, OrganizationSettings } from "../data/access";
 import type { PrListSource, PrSummary } from "../data/list";
 import { DEFAULT_RELEASE_SETTINGS, type ReleaseCatalog, readReleaseSettings, type ReleaseSettings } from "../data/releases";
 import type { Identity, PrSource } from "../data/model";
@@ -35,7 +36,7 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
 }
 
 /**
- * The organization's own backend (backend/, deployed by infra/), saved in Project settings → Review Deck by an
+ * The organization's own backend (backend/, deployed by infra/), saved in Organization settings → Review Deck by an
  * organization administrator. There is no built-in one. `key` is the backend's API_KEY (Terraform output api_key).
  */
 export interface BackendSettings {
@@ -76,6 +77,8 @@ export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number; pr
 export interface AppHost {
   readonly kind: "ado" | "local";
   readonly currentUser: Identity;
+  /** The project the page is in; empty on the organization's settings page. */
+  readonly projectId: string;
   /** Separates cached hub data between organizations, projects and users that share a browser tab's storage. */
   readonly cacheScope: string;
   route(): Route;
@@ -95,6 +98,23 @@ export interface AppHost {
   saveBackendSettings(settings: BackendSettings | null): Promise<void>;
   /** Whether the user may change organization-wide settings (Azure DevOps: "Edit instance-level information"). False if unknown. */
   canManageOrganization(): Promise<boolean>;
+  /**
+   * Which projects get the Deck and Changelog, and whether AI titles are allowed. Re-read every so often, so an open page
+   * follows changes. Unreadable, it resolves to the defaults with AI titles off, so a failure never sends code to an LLM.
+   */
+  organizationSettings(): Promise<OrganizationSettings>;
+  /**
+   * Applies `change` to the organization's settings as stored now, saves and resolves to the result. The UI offers it
+   * to organization administrators, and to project administrators for their own project's features.
+   */
+  updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings>;
+  /**
+   * Shows or hides the feature's hub (and menu entries) in Azure DevOps to match the saved settings: for the given
+   * projects, or every project. Rejects with a readable message; the hub then explains it's off instead.
+   */
+  syncFeatureVisibility(feature: Feature, projectIds?: string[]): Promise<void>;
+  /** Every project in the organization you can see, by name. */
+  organizationProjects(): Promise<{ id: string; name: string }[]>;
   /** This project's settings. Resolves to the defaults (all off) when they can't be read, so a failure never turns AI on. */
   projectSettings(): Promise<ProjectSettings>;
   /**

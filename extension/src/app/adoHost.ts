@@ -1,6 +1,9 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
+import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
+import { getClient } from "azure-devops-extension-api";
+import { type Feature, type OrganizationSettings, readOrganizationSettings } from "../data/access";
 import { AdoPrListSource } from "../data/adoList";
 import type { PrSummary } from "../data/list";
 import { AdoPrSource } from "../data/adoSource";
@@ -10,6 +13,7 @@ import type { ReleaseCatalog } from "../data/releases";
 import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
+import { featureContributionId, syncFeatureStates } from "./featureStates";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -26,6 +30,15 @@ const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
 const EDIT_PROJECT = 2;
 /** Organization-wide (Default scope) extension data value holding the organization's own backend. */
 const BACKEND_KEY = "backend";
+/** Organization-wide extension data collection holding the organization's settings (data/access.ts), as one document. */
+const ORGANIZATION_COLLECTION = "organization-settings";
+const ORGANIZATION_DOCUMENT = "settings";
+/** How long a page reuses the organization's settings before reading them again, so an open page picks up changes. */
+const ORGANIZATION_REUSE_MS = 30_000;
+/** Saves tried when another administrator saved in between. */
+const SAVE_ATTEMPTS = 3;
+/** Projects per page when listing the organization's. */
+const PROJECT_PAGE = 100;
 /** The "Collection" security namespace and its GENERIC_WRITE bit ("Edit instance-level information"), held by Project Collection Administrators. */
 const COLLECTION_NAMESPACE = "3e65f728-f8bc-4ecd-8764-7e378b19bfa7";
 const EDIT_COLLECTION = 2;
@@ -38,6 +51,7 @@ export class AdoHost implements AppHost {
   readonly kind = "ado";
   readonly currentUser: Identity;
   readonly cacheScope: string;
+  readonly projectId: string;
   private current: Route;
   private readonly listeners = new Listeners<Route>();
   private readonly project = SDK.getWebContext().project;
@@ -46,6 +60,7 @@ export class AdoHost implements AppHost {
   private tagStore: AdoTagStore | null = null;
   private backend: Promise<BackendService | null> | null = null;
   private releaseCatalog: Promise<ReleaseCatalog> | null = null;
+  private organization: { read: number; settings: Promise<OrganizationSettings> } | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
@@ -55,7 +70,9 @@ export class AdoHost implements AppHost {
     this.currentUser = { id: user.id, displayName: user.displayName, uniqueName: user.name, imageUrl: user.imageUrl };
     this.current = parseRoute(query);
     this.hostUrl = `https://dev.azure.com/${encodeURIComponent(SDK.getHost().name)}/`;
-    this.cacheScope = `${SDK.getHost().id}/${this.project.id}/${user.id}`;
+    // No project on Organization settings pages.
+    this.projectId = this.project?.id ?? "";
+    this.cacheScope = `${SDK.getHost().id}/${this.projectId}/${user.id}`;
   }
 
   static async create(): Promise<AdoHost> {
@@ -132,6 +149,61 @@ export class AdoHost implements AppHost {
 
   async canManageOrganization(): Promise<boolean> {
     return this.hasPermission(COLLECTION_NAMESPACE, "NAMESPACE:", EDIT_COLLECTION, "organization");
+  }
+
+  organizationSettings(): Promise<OrganizationSettings> {
+    // Shared for a short while: the hub's startup check, the review and the settings sections read it together.
+    if (this.organization && Date.now() - this.organization.read < ORGANIZATION_REUSE_MS) return this.organization.settings;
+    const settings = this.data()
+      .then(storedOrganizationSettings)
+      .then(
+        (stored) => stored.settings,
+        (e) => {
+          console.warn("[review-deck] organization settings unavailable, using defaults without AI titles:", e);
+          this.organization = null;
+          // The hubs stay usable, but code isn't sent to an LLM the organization may have turned off.
+          return { ...readOrganizationSettings(null), aiTitles: false };
+        },
+      );
+    this.organization = { read: Date.now(), settings };
+    return settings;
+  }
+
+  async updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings> {
+    const data = await this.data();
+    for (let attempt = 1; ; attempt++) {
+      // Unlike organizationSettings(), a failed read rejects: saving on top of the defaults could undo others' choices.
+      const stored = await storedOrganizationSettings(data);
+      const settings = change(stored.settings);
+      const doc = { id: ORGANIZATION_DOCUMENT, ...settings };
+      try {
+        // The etag makes a save fail if someone else saved since the read, instead of overwriting their change.
+        if (stored.etag === undefined) await data.createDocument(ORGANIZATION_COLLECTION, doc);
+        else await data.setDocument(ORGANIZATION_COLLECTION, { ...doc, __etag: stored.etag });
+        this.organization = { read: Date.now(), settings: Promise.resolve(settings) };
+        return settings;
+      } catch (e) {
+        // Lost the race: apply the change again on top of theirs.
+        if (attempt >= SAVE_ATTEMPTS || !isConflict(e)) throw e;
+      }
+    }
+  }
+
+  async syncFeatureVisibility(feature: Feature, projectIds?: string[]): Promise<void> {
+    // Fresh, not the copy read on load: another administrator may have changed it since.
+    const { settings } = await storedOrganizationSettings(await this.data());
+    const ids = projectIds ?? (await this.organizationProjects()).map((p) => p.id);
+    await syncFeatureStates(featureContributionId(SDK.getExtensionContext().id, feature), settings[feature], ids, !projectIds);
+  }
+
+  async organizationProjects(): Promise<{ id: string; name: string }[]> {
+    const core = getClient(CoreRestClient);
+    const all: { id: string; name: string }[] = [];
+    for (;;) {
+      const page = await core.getProjects(undefined, PROJECT_PAGE, all.length);
+      all.push(...page.map((p) => ({ id: p.id, name: p.name })));
+      if (page.length < PROJECT_PAGE) return all.sort((a, b) => a.name.localeCompare(b.name));
+    }
   }
 
   async projectSettings(): Promise<ProjectSettings> {
@@ -312,4 +384,22 @@ export class AdoHost implements AppHost {
   private projectUrl(): string {
     return `${this.hostUrl}${encodeURIComponent(this.project.name)}`;
   }
+}
+
+/** The organization's settings as saved, with the version a save must match (none if never saved). */
+async function storedOrganizationSettings(data: IExtensionDataManager): Promise<{ settings: OrganizationSettings; etag?: number }> {
+  try {
+    const doc = (await data.getDocument(ORGANIZATION_COLLECTION, ORGANIZATION_DOCUMENT)) as { __etag?: number };
+    return { settings: readOrganizationSettings(doc), etag: doc.__etag };
+  } catch (e) {
+    // Never saved: the defaults.
+    if ((e as { status?: number }).status === 404) return { settings: readOrganizationSettings(null) };
+    throw e;
+  }
+}
+
+/** A document save refused because another save changed (or created) the document since it was read. */
+function isConflict(e: unknown): boolean {
+  const { status, message } = e as { status?: number; message?: string };
+  return status === 409 || status === 412 || /etag|version|already exists/i.test(message ?? "");
 }

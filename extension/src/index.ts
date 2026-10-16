@@ -33,6 +33,8 @@ async function renderHosted() {
     "The review code could not finish loading. Check your connection and reload.",
   );
   const host = await withTimeout(AdoHost.create(), "Could not connect to Azure DevOps navigation. Reload to try again.");
+  // Started now so the hub's on/off check (page.tsx) doesn't wait behind the preferences.
+  void host.organizationSettings();
   // Bounded wait: if the user's saved preferences are slow, the page opens with this browser's.
   await connectPreferences(host.preferences());
   await renderHost(host);

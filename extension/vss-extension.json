@@ -82,7 +82,15 @@
           "dark": "images/deck-dark.png"
         },
         "order": 100
-      }
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.deck-feature"
+          }
+        }
+      ]
     },
     {
       "id": "changelog-hub",
@@ -99,7 +107,15 @@
           "dark": "images/changelog-dark.png"
         },
         "order": 101
-      }
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.changelog-feature"
+          }
+        }
+      ]
     },
     {
       "id": "settings-hub",
@@ -111,6 +127,19 @@
       "properties": {
         "name": "Review Deck",
         "uri": "dist/settings.html",
+        "order": 100
+      }
+    },
+    {
+      "id": "org-settings-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Organization settings for Review Deck: which projects get the Deck and Changelog, AI group titles, and the backend.",
+      "targets": [
+        "ms.vss-web.collection-admin-hub-group"
+      ],
+      "properties": {
+        "name": "Review Deck",
+        "uri": "dist/org-settings.html",
         "order": 100
       }
     },
@@ -127,6 +156,50 @@
         "icon": "images/logo.png",
         "uri": "dist/action.html",
         "registeredObjectId": "open-review-action"
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.deck-feature"
+          }
+        }
+      ]
+    },
+    {
+      "id": "deck-feature",
+      "type": "ms.vss-web.feature",
+      "description": "Shows the Deck hub under Repos. Set in Organization settings → Review Deck.",
+      "targets": [
+        "ms.vss-web.managed-features"
+      ],
+      "properties": {
+        "name": "Review Deck: Deck",
+        "userConfigurable": false,
+        "hostConfigurable": true,
+        "hostScopes": [
+          null,
+          "project"
+        ],
+        "defaultState": true
+      }
+    },
+    {
+      "id": "changelog-feature",
+      "type": "ms.vss-web.feature",
+      "description": "Shows the Changelog hub under Repos. Set in Organization settings → Review Deck.",
+      "targets": [
+        "ms.vss-web.managed-features"
+      ],
+      "properties": {
+        "name": "Review Deck: Changelog",
+        "userConfigurable": false,
+        "hostConfigurable": true,
+        "hostScopes": [
+          null,
+          "project"
+        ],
+        "defaultState": true
       }
     }
   ],

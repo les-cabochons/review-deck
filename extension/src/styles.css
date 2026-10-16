@@ -4004,3 +4004,46 @@ span.artifact-toggle {
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Organization settings → Review Deck: who gets the Deck and Changelog */
+.feature-modes {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0 8px;
+}
+.feature-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.feature-mode .settings-help {
+  margin: 2px 0 0;
+}
+.feature-projects-search {
+  max-width: 320px;
+  margin-bottom: 8px;
+}
+.feature-projects {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.feature-projects th,
+.feature-projects td {
+  text-align: left;
+  padding: 4px 12px 4px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.feature-projects thead th {
+  font-weight: 600;
+  color: var(--fg2);
+}
+.feature-projects tbody th {
+  font-weight: normal;
+}
+.feature-projects .bolt-toggle-button-container {
+  padding: 0;
+}
