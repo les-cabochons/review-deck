@@ -12,8 +12,9 @@ import type { Identity, PrSource } from "../data/model";
 import type { ReleaseCatalog } from "../data/releases";
 import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { featureContributionId, syncFeatureStates } from "./featureStates";
+import { HashRouter } from "./hashRoute";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -44,15 +45,15 @@ const COLLECTION_NAMESPACE = "3e65f728-f8bc-4ecd-8764-7e378b19bfa7";
 const EDIT_COLLECTION = 2;
 
 /**
- * Runs inside the Azure DevOps hub iframe. The route lives in the host page's query string
- * (`?pr=<id>&repo=<id>`), so links to a review are shareable; navigation updates it in place.
+ * Runs inside the Azure DevOps hub iframe. The route lives in the host page's hash (`#pr=<id>&repo=<id>`, see
+ * app/hashRoute.ts), so links to a review are shareable and the browser's back and forward move between pages.
  */
 export class AdoHost implements AppHost {
   readonly kind = "ado";
   readonly currentUser: Identity;
   readonly cacheScope: string;
   readonly projectId: string;
-  private current: Route;
+  private router!: HashRouter;
   private readonly listeners = new Listeners<Route>();
   private readonly project = SDK.getWebContext().project;
   private readonly hostUrl: string;
@@ -64,11 +65,9 @@ export class AdoHost implements AppHost {
 
   private constructor(
     private readonly nav: IHostNavigationService,
-    query: Record<string, string>,
   ) {
     const user = SDK.getUser();
     this.currentUser = { id: user.id, displayName: user.displayName, uniqueName: user.name, imageUrl: user.imageUrl };
-    this.current = parseRoute(query);
     this.hostUrl = `https://dev.azure.com/${encodeURIComponent(SDK.getHost().name)}/`;
     // No project on Organization settings pages.
     this.projectId = this.project?.id ?? "";
@@ -77,11 +76,13 @@ export class AdoHost implements AppHost {
 
   static async create(): Promise<AdoHost> {
     const nav = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-    return new AdoHost(nav, await nav.getQueryParams());
+    const host = new AdoHost(nav);
+    host.router = await HashRouter.connect(nav, (route) => host.listeners.emit(route));
+    return host;
   }
 
   route(): Route {
-    return this.current;
+    return this.router.route();
   }
 
   navigate(route: Route): void {
@@ -90,8 +91,7 @@ export class AdoHost implements AppHost {
       this.nav.navigate(this.reviewUrl(route));
       return;
     }
-    this.current = route;
-    this.nav.setQueryParams(route.view === "pr" ? { pr: String(route.pr), repo: route.repo } : { pr: "", repo: "" });
+    this.router.navigate(route);
     this.listeners.emit(route);
   }
 
