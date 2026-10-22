@@ -18,9 +18,11 @@ async page => {
           initialConfig:{},contributionId:'test.review.hub'};
         else if(m.methodName==='getService') {
           if('${scenario}'==='navigation-error') error={message:'Navigation unavailable'};
-          else result={getQueryParams:{__proxyFunctionId:1}};
+          else result={getQueryParams:{__proxyFunctionId:1},getHash:{__proxyFunctionId:2},onHashChanged:{__proxyFunctionId:3},setHash:{__proxyFunctionId:3},replaceHash:{__proxyFunctionId:3},setQueryParams:{__proxyFunctionId:3}};
         }
         else if(m.methodName==='proxy1') result={};
+        else if(m.methodName==='proxy2') result='';
+        else if(m.methodName==='proxy3') result=null;
         else if(m.methodName==='notifyLoadSucceeded'||m.methodName==='notifyLoadFailed') document.getElementById('state').textContent=m.methodName;
         event.source.postMessage(JSON.stringify({id:m.id,result,error,handshakeToken:m.handshakeToken}),event.origin);
       });
