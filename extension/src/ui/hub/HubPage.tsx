@@ -493,10 +493,11 @@ const PrRow: React.FC<{
       </div>
       {/* A line of its own under the title, as wide as the row: the columns beside the title don't narrow it. */}
       {/* Azure DevOps' wording with the branches: "Alex Trépanier requested feature/x into main". */}
-      {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
+      {/* The stack chip and the number lead, so a narrow row clips the end of the line rather than those. */}
       <div className="pr-sub-line">
         <div className="pr-sub muted">
           {stackChip}
+          <span className="pr-number">!{pr.id}</span>
           <span className="pr-request" title={`!${pr.id}: ${pr.sourceBranch} → ${pr.targetBranch}`}>
             <span className="who">{pr.createdBy.id === me ? "You" : pr.createdBy.displayName}</span>
             <span className="requested">requested</span>

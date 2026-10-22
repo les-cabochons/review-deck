@@ -2577,6 +2577,17 @@ kbd {
 .pr-sub > .stack-chip {
   flex: none;
 }
+/* "!485 · Alex requested …", like Azure DevOps' own pull request list. Never shrinks. */
+.pr-sub > .pr-number {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-right: -4px;
+}
+.pr-sub > .pr-number::after {
+  content: " ·";
+  font-family: "Segoe UI", sans-serif;
+}
 .via-team {
   flex: 0 1 auto;
   min-width: 0;
