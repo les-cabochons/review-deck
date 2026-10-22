@@ -1,9 +1,11 @@
 import { activeComments, type MyGroup, policyFacts, type PrSummary, withDetails } from "./list";
 import type { PrOverview } from "./model";
+import type { PrSkeletonHint } from "../skeletons";
 
 /**
- * What the hub last showed, so coming back to it (or reloading the tab) paints at once while it refreshes.
- * Kept in memory and in sessionStorage, per host scope (organization, project and user).
+ * What the hub last showed, so coming back to it, reloading, or opening it in a new tab paints at once while it
+ * refreshes. Kept in memory and in localStorage, per host scope (organization, project and user), and ignored
+ * once it is many hours old.
  */
 export interface HubSnapshot {
   prs: PrSummary[];
@@ -27,15 +29,15 @@ export interface HubPatch {
 type SnapshotStorage = Pick<Storage, "getItem" | "setItem">;
 
 const KEY = "review-deck.hub.v1";
-/** A tab left open overnight shows a skeleton rather than yesterday's inbox. */
+/** Opened the next morning, the hub shows a skeleton rather than yesterday's inbox. */
 const MAX_AGE_MS = 12 * 3_600_000;
-const sessionStore = () => window.sessionStorage;
+const browserStore = () => window.localStorage;
 
 const memory = new Map<string, HubSnapshot>();
 const patches = new Map<string, Map<number, HubPatch>>();
 const listeners = new Map<string, Set<(patch: HubPatch) => void>>();
 
-export function readHubSnapshot(scope: string, storage: () => SnapshotStorage = sessionStore, now = Date.now()): HubSnapshot | null {
+export function readHubSnapshot(scope: string, storage: () => SnapshotStorage = browserStore, now = Date.now()): HubSnapshot | null {
   let snap = memory.get(scope) ?? null;
   if (!snap) {
     try {
@@ -48,13 +50,31 @@ export function readHubSnapshot(scope: string, storage: () => SnapshotStorage = 
   return snap && now - snap.listedAt < MAX_AGE_MS ? snap : null;
 }
 
-export function writeHubSnapshot(scope: string, snap: HubSnapshot, storage: () => SnapshotStorage = sessionStore): void {
+export function writeHubSnapshot(scope: string, snap: HubSnapshot, storage: () => SnapshotStorage = browserStore): void {
   memory.set(scope, snap);
   try {
     storage().setItem(`${KEY}:${scope}`, JSON.stringify({ ...snap, details: [...snap.details] }));
   } catch {
     // Full or denied storage: the in-memory copy still covers navigation within the page.
   }
+}
+
+/**
+ * What the hub already knows about one pull request, for its page's skeleton while the real data loads: only
+ * the id when the PR isn't in the cached list.
+ */
+export function prSkeletonHint(scope: string, id: number, storage: () => SnapshotStorage = browserStore): PrSkeletonHint {
+  const pr = readHubSnapshot(scope, storage)?.prs.find((p) => p.id === id);
+  if (!pr) return { id };
+  return {
+    id,
+    title: pr.title,
+    repo: pr.repository.name,
+    author: pr.createdBy,
+    sourceBranch: pr.sourceBranch,
+    targetBranch: pr.targetBranch,
+    status: pr.isDraft && pr.status === "active" ? "draft" : pr.status,
+  };
 }
 
 /** The PR page's latest view of one PR, as a hub patch. */
@@ -80,7 +100,7 @@ export function hubPatch(overview: PrOverview, loadedAt = Date.now()): HubPatch 
  * Records what the PR page just loaded (after opening it, or after a vote or another change), so the hub shows
  * the PR in its new section straight away instead of moving it once its own refresh lands.
  */
-export function rememberPr(scope: string, patch: HubPatch, storage: () => SnapshotStorage = sessionStore): void {
+export function rememberPr(scope: string, patch: HubPatch, storage: () => SnapshotStorage = browserStore): void {
   let byId = patches.get(scope);
   if (!byId) patches.set(scope, (byId = new Map()));
   byId.set(patch.id, patch);

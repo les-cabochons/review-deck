@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Review Deck settings</title>
+    <!-- Filled in by extension/build.mjs like review.html: last theme, preloads, and the settings skeleton. -->
+    <!-- theme -->
     <style>
       body { margin: 0; color: var(--text-primary-color, #242424); background: var(--background-color, #fff); font: 14px "Segoe UI", sans-serif; }
       .startup-message { margin: 32px; max-width: 640px; }
@@ -12,9 +14,10 @@
       .startup-message button { font: inherit; padding: 6px 12px; }
     </style>
     <link rel="stylesheet" href="review.css" />
+    <script type="module" src="review.js"></script>
+    <!-- modulepreload -->
   </head>
   <body data-page="settings">
-    <div id="root"><p class="startup-message" role="status">Opening settings…</p></div>
-    <script type="module" src="review.js"></script>
+    <div id="root"><!-- skeleton:settings --></div>
   </body>
 </html>

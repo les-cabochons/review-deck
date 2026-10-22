@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { hubPatch, onHubPatch, readHubSnapshot, rememberPr, resetHubCache, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
+import { hubPatch, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
 import { policyFacts, type PrSummary, sectionOf } from "../src/data/list";
 import type { Identity, PrOverview } from "../src/data/model";
 
@@ -47,7 +47,7 @@ test("Given a saved hub, then a reload reads it back with dates and details inta
   const storage = memoryStorage();
   const restack = { state: "failed" as const, description: "conflict", date: new Date("2026-10-02T00:00:00Z") };
   writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}" }, storage);
-  resetHubCache(); // a new page: only sessionStorage survives
+  resetHubCache(); // a new page or tab: only the browser's storage survives
   const snap = readHubSnapshot("s", storage)!;
   assert.equal(snap.prs[0].creationDate.toISOString(), "2026-10-01T00:00:00.000Z");
   assert.equal(snap.details.get(1)?.restack?.date.getTime(), restack.date.getTime());
@@ -59,6 +59,13 @@ test("Given a snapshot from many hours ago, then the hub starts from a skeleton 
   const storage = memoryStorage();
   writeHubSnapshot("s", { prs: [row(1)], details: new Map(), groups: [], listedAt: 0, selection: "{}" }, storage);
   assert.equal(readHubSnapshot("s", storage, 13 * 3_600_000), null);
+});
+
+test("Given a cached hub row, then the PR page's skeleton shows its title, author and branches; an unknown PR only its number", () => {
+  const storage = memoryStorage();
+  writeHubSnapshot("s", { prs: [row(7, { title: "Fix cache", isDraft: true })], details: new Map(), groups: [], listedAt: Date.now(), selection: "{}" }, storage);
+  assert.deepEqual(prSkeletonHint("s", 7, storage), { id: 7, title: "Fix cache", repo: "repo", author: ana, sourceBranch: "feature", targetBranch: "main", status: "draft" });
+  assert.deepEqual(prSkeletonHint("s", 8, storage), { id: 8 });
 });
 
 test("Given I vote on a PR page, then the cached hub already shows it under You reviewed", () => {

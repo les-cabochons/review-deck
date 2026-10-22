@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startHostedPage, withTimeout } from "../src/startup";
-import { connectPreferences, readLocal, readPreference, writeLocal, writePreference } from "../src/ui/preferences";
+import { THEME_KEY } from "../src/skeletons";
+import { rememberHostTheme, startHostedPage, withTimeout } from "../src/startup";
+import { connectPreferences, preferencesLoaded, readLocal, readPreference, writeLocal, writePreference } from "../src/ui/preferences";
 
 function host() {
   const calls: string[] = [];
@@ -13,16 +14,16 @@ function host() {
   };
 }
 
-test("Given an empty hub, when its guidance renders, then the host spinner finishes", async () => {
+test("Given a hosted page, then the host's loading indicator ends right after the handshake, before the page renders", async () => {
   const sdk = host();
   await startHostedPage(sdk, async () => { sdk.calls.push("rendered"); }, () => assert.fail("Unexpected startup failure"));
-  assert.deepEqual(sdk.calls, ["init", "rendered", "loaded"]);
+  assert.deepEqual(sdk.calls, ["init", "loaded", "rendered"]);
 });
 
-test("Given a startup failure, then the error renders and the host receives failure", async () => {
+test("Given a failure after the handshake, then the error shows on the page the host already revealed", async () => {
   const sdk = host();
   await startHostedPage(sdk, async () => { throw new Error("Navigation unavailable"); }, error => sdk.calls.push(`shown: ${error.message}`));
-  assert.deepEqual(sdk.calls, ["init", "shown: Navigation unavailable", "failed: Navigation unavailable"]);
+  assert.deepEqual(sdk.calls, ["init", "loaded", "shown: Navigation unavailable"]);
 });
 
 test("Given a rejected handshake, then page setup does not run and the host receives failure", async () => {
@@ -35,11 +36,34 @@ test("Given a rejected handshake, then page setup does not run and the host rece
 test("Given a serialized host error, then the page displays its message", async () => {
   const sdk = host();
   await startHostedPage(sdk, async () => { throw { message: "Navigation unavailable" }; }, error => sdk.calls.push(`shown: ${error.message}`));
-  assert.deepEqual(sdk.calls, ["init", "shown: Navigation unavailable", "failed: Navigation unavailable"]);
+  assert.deepEqual(sdk.calls, ["init", "loaded", "shown: Navigation unavailable"]);
+});
+
+test("Given a host that never acknowledges the page, then the page says so and the host receives failure", async () => {
+  const sdk = host();
+  sdk.notifyLoadSucceeded = () => new Promise(() => {});
+  await startHostedPage(sdk, async () => { sdk.calls.push("rendered"); }, error => sdk.calls.push(`shown: ${error.message}`), 5);
+  assert.deepEqual(sdk.calls, ["init", "rendered", "shown: Azure DevOps did not acknowledge the review page.", "failed: Azure DevOps did not acknowledge the review page."]);
 });
 
 test("Given an unanswered host request, then startup stops waiting with a useful error", async () => {
   await assert.rejects(withTimeout(new Promise(() => {}), "Host did not respond", 5), /Host did not respond/);
+});
+
+test("Given the host applies its theme, then it is kept for the next load's first paint", () => {
+  const target = new EventTarget();
+  const saved = new Map<string, string>();
+  rememberHostTheme(() => ({ setItem: (key: string, value: string) => void saved.set(key, value) }), target);
+  target.dispatchEvent(new CustomEvent("themeApplied", { detail: { "background-color": "rgba(32, 31, 30, 1)" } }));
+  assert.equal(saved.get(THEME_KEY), JSON.stringify({ "background-color": "rgba(32, 31, 30, 1)" }));
+  target.dispatchEvent(new CustomEvent("themeApplied", { detail: undefined }));
+  assert.equal(saved.size, 1);
+});
+
+test("Given denied storage, then keeping the theme is harmless", () => {
+  const target = new EventTarget();
+  rememberHostTheme(() => { throw new DOMException("Storage access denied", "SecurityError"); }, target);
+  assert.doesNotThrow(() => target.dispatchEvent(new CustomEvent("themeApplied", { detail: { "background-color": "#fff" } })));
 });
 
 test("Given a blocked localStorage getter, then reading and changing preferences work in memory", () => {
@@ -88,6 +112,16 @@ test("Given the user's account is slow, then the page opens with this browser's 
   await connectPreferences({ load: () => new Promise(() => {}), save: async () => {} }, 50, local.storage);
   assert.ok(Date.now() - started < 1000);
   assert.equal(readPreference("diffMode", "inline", local.storage), "split");
+});
+
+test("Given a slow account, then a page that opened without its preferences can adopt them once they arrive", async () => {
+  const local = memoryStorage();
+  let answer!: (values: Record<string, string>) => void;
+  await connectPreferences({ load: () => new Promise((resolve) => (answer = resolve)), save: async () => {} }, 10, local.storage);
+  assert.equal(readPreference("hub.filter", "inbox", local.storage), "inbox");
+  answer({ "hub.filter": "needs-review" });
+  await preferencesLoaded();
+  assert.equal(readPreference("hub.filter", "inbox", local.storage), "needs-review");
 });
 
 test("Given denied storage, then preferences from the user's account still apply", async () => {

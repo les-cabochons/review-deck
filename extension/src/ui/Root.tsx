@@ -3,6 +3,7 @@ import { type AppHost, type Route, sameRoute } from "../app/host";
 import type { PrSource } from "../data/model";
 import { PrPage } from "./App";
 import { HubPage } from "./hub/HubPage";
+import { PrSkeleton } from "./PrSkeleton";
 import { ProjectTagsProvider } from "./tags/Tags";
 
 /** Switches between the PR hub and a pull request without reloading the page. */
@@ -61,6 +62,6 @@ const PrRoute: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }> }
         </div>
       </div>
     );
-  if (!source) return <div className="loading page-loading">Loading pull request…</div>;
+  if (!source) return <PrSkeleton host={host} route={route} />;
   return <PrPage host={host} route={route} source={source} />;
 };

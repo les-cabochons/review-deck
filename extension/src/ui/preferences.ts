@@ -60,8 +60,8 @@ export function writeLocal(key: string, value: string, storage: () => Preference
 
 /**
  * Follows the user across browsers: their saved preferences replace this browser's, and later changes
- * are saved back. Waits at most `wait` ms so a slow host never delays the page; values that arrive later
- * apply on the next load.
+ * are saved back. Resolves once they are read or after `wait` ms, whichever comes first, so a slow host
+ * never delays a caller; startup doesn't await it at all and pages adopt late values via `preferencesLoaded`.
  */
 export async function connectPreferences(store: PreferenceStore, wait = 1500, storage: () => PreferenceStorage = browserStorage): Promise<void> {
   const state: Synced = { store, values: {}, seen: {}, loaded: Promise.resolve() };
@@ -84,4 +84,12 @@ export async function connectPreferences(store: PreferenceStore, wait = 1500, st
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([state.loaded, new Promise<void>((resolve) => (timer = setTimeout(resolve, wait)))]);
   clearTimeout(timer);
+}
+
+/**
+ * Resolves once the user's synced preferences have been read (or failed to). The first paint never waits for
+ * them, so a page that opened with this browser's values can adopt the user's here.
+ */
+export function preferencesLoaded(): Promise<void> {
+  return synced?.loaded ?? Promise.resolve();
 }

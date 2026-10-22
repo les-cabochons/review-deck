@@ -38,15 +38,39 @@ Version `0.1.5` passed Marketplace verification and is installed privately in `c
 
 Alex confirmed the live Firefox startup fix on October 12, 2026.
 
-## Run browser regressions
+## Skeleton-first startup (October 22, 2026)
 
-Build with `npm run ext:build` and run `npx esbuild --servedir=extension --serve=127.0.0.1:5173` in a terminal. Mock snapshots must exist; generate them with `npm run ext:mock` if needed.
+The hub used to sit behind the host's spinner until the UI had downloaded (after the handshake), the user's synced preferences had been read (up to 1.5 s) and React had rendered. Now the page paints before any script runs, and the spinner ends right after the handshake:
+
+1. `dist/review.html` carries the hub's skeleton inline, the theme the host sent last time (so a dark-theme user's skeleton is dark before the handshake) and `modulepreload` links for every chunk the first render needs. `extension/build.mjs` fills these in from `src/skeletons.ts` and the bundle's metafile. The module script comes before the preloads, so the handshake code is fetched first; `src/index.ts` also starts the UI imports before the handshake.
+2. `src/startup.ts` calls `notifyLoadSucceeded` right after `SDK.init`, before rendering. A failure after that shows on the page itself, with a reload button, instead of in the host's error state.
+3. Once the route is known, a link straight to a pull request swaps in that page's skeleton. React's `PrSkeleton` then fills in the title, status, author and branches from the hub cache while the real data loads.
+4. Synced preferences never delay the first paint: the page opens with this browser's values, and the hub adopts the user's (`preferencesLoaded`) when they arrive, unless the user already changed them here.
+5. The hub cache lives in `localStorage`, so a new tab also starts from the last list. The list no longer waits for the starred repositories unless the selection includes them.
+
+Medians of 5 runs in headless Chrome against a local server that adds 30 ms to every response (`npm run ext:timing`), in milliseconds from navigation start. "Loaded" is when the host receives `notifyLoadSucceeded` (its spinner ends), "skeleton" when the page shows its layout, "React" when the real UI has rendered.
+
+| Scenario | Before: loaded / skeleton / React | After: loaded / skeleton / React |
+| --- | --- | --- |
+| Hub, cold cache | 309 / 303 / 303 | 104 / 47 / 209 |
+| Hub, warm cache | 106 / 99 / 99 | 59 / 11 / 81 |
+| PR link, cold cache | 300 / 297 / – | 107 / 47 (PR skeleton at 128) / – |
+| PR link, warm cache | 74 / 71 / – | 60 / 12 (PR skeleton at 61) / – |
+| Local hub, cold cache | – / 430 / 430 (rows 492) | – / 54 / 300 (rows 359) |
+| Local hub, warm cache | – / 101 / 101 (rows 166) | – / 17 / 92 (rows 152) |
+
+The stub API has no pull request, so the hosted PR scenario ends on the page's error box. Azure DevOps adds its own latency to the handshake and to every REST call, which the skeleton and the host notification no longer wait for.
+
+## Measure startup
+
+Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files).
 
 ```powershell
-npx --yes --package @playwright/cli playwright-cli install-browser firefox
-npx --yes --package @playwright/cli playwright-cli -s=startup-firefox open about:blank --browser firefox
-npx --yes --package @playwright/cli playwright-cli -s=startup-firefox run-code --filename=extension/tests/startup.browser.js
-npx --yes --package @playwright/cli playwright-cli -s=startup-firefox close
+npm run ext:build
+npm run ext:timing                                   # all scenarios, 5 runs each
+npm run ext:timing -- --only "hosted hub" --runs 10 --latency 40
+npm run ext:timing -- --shots .cache/shots           # screenshots of the skeletons and loaded pages
+npm run ext:timing -- --root .cache/baseline         # another build, e.g. main's dist copied there
 ```
 
-Use `--browser chrome` and a separate session name to run the same checks in Chrome.
+Measure a production build: `npm run ext:dev` rewrites `extension/dist` as an unminified development bundle, which parses markedly slower. When a landmark never appears, the harness fails with the page's text, its pending requests and console errors.

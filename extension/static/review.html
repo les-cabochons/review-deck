@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Pull request review</title>
+    <!--
+      extension/build.mjs fills in the three comments below (from src/skeletons.ts and the bundle's metafile):
+      the host theme kept from the last visit, so the skeleton paints in the right colors before the handshake;
+      modulepreload links for the chunks the first render needs, so they download alongside review.js instead of
+      after the handshake; and the hub's skeleton, on screen before any script runs.
+    -->
+    <!-- theme -->
     <style>
       body { margin: 0; color: var(--text-primary-color, #242424); background: var(--background-color, #fff); font: 14px "Segoe UI", sans-serif; }
       .startup-message { margin: 32px; max-width: 640px; }
@@ -12,9 +19,12 @@
       .startup-message button { font: inherit; padding: 6px 12px; }
     </style>
     <link rel="stylesheet" href="review.css" />
+    <!-- A module script is deferred, so it runs after the skeleton below is parsed; it comes before the preloads so
+         the handshake code is fetched first. -->
+    <script type="module" src="review.js"></script>
+    <!-- modulepreload -->
   </head>
   <body>
-    <div id="root"><p class="startup-message" role="status">Opening review…</p></div>
-    <script type="module" src="review.js"></script>
+    <div id="root"><!-- skeleton:hub --></div>
   </body>
 </html>

@@ -6,12 +6,14 @@ import type { AppHost, Route } from "../app/host";
 import { hubPatch, rememberPr } from "../data/hubCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
+import { Breadcrumb } from "./Breadcrumb";
 import { CommitsTab } from "./CommitsTab";
 import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
 import { GroupingStatus } from "./GroupingStatus";
 import { OverviewTab } from "./OverviewTab";
+import { PrSkeleton } from "./PrSkeleton";
 import { PrMenu, type PrMenuLinks } from "./PrMenu";
 import { StackBar, StackPanel } from "./stack/StackPanel";
 import { useStack } from "./stack/useStack";
@@ -226,13 +228,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         </div>
       </div>
     );
-  if (!data)
-    return (
-      <div className="page-loading">
-        <Breadcrumb onBack={back} />
-        <div className="loading">Loading pull request…</div>
-      </div>
-    );
+  if (!data) return <PrSkeleton host={host} route={route} />;
 
   return (
     <IdentityNames.Provider value={names}>
@@ -310,32 +306,6 @@ function knownPeople(data: PrOverview | null, me: Identity): Identity[] {
   const all = [me, data.pr.createdBy, ...data.pr.reviewers, ...data.threads.flatMap((t) => t.comments.map((c) => c.author))];
   return [...new Map(all.filter((p) => p.id).map((p) => [p.id, p])).values()];
 }
-
-const Breadcrumb: React.FC<{ onBack: () => void; repo?: string; id?: number; nativeUrl?: string | null }> = ({ onBack, repo, id, nativeUrl }) => (
-  <nav className="breadcrumb" aria-label="Breadcrumb">
-    <button className="crumb-link" onClick={onBack}>
-      <Icon iconName="Back" /> Pull requests
-    </button>
-    {repo && (
-      <>
-        <span className="crumb-sep">/</span>
-        <span className="crumb">{repo}</span>
-      </>
-    )}
-    {id !== undefined && (
-      <>
-        <span className="crumb-sep">/</span>
-        <span className="crumb">!{id}</span>
-      </>
-    )}
-    <span className="spacer" />
-    {nativeUrl && (
-      <a className="crumb-link" href={nativeUrl} target="_top">
-        Classic review <Icon iconName="NavigateExternalInline" />
-      </a>
-    )}
-  </nav>
-);
 
 const STATUS: Record<string, { label: string; icon: string; className: string }> = {
   active: { label: "Active", icon: "BranchPullRequest", className: "status-active" },

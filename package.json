@@ -20,6 +20,7 @@
     "ext:typecheck": "tsc --noEmit -p extension",
     "ext:test": "tsx --test extension/tests/*.test.ts",
     "ext:test:browser": "node scripts/build-write-test.mjs",
+    "ext:timing": "node extension/tests/startup-timing.mjs",
     "backend:typecheck": "tsc --noEmit -p backend",
     "backend:build": "node backend/build.mjs",
     "ext:package": "node extension/build.mjs && tfx extension create --root extension --manifest-globs vss-extension.json --output-path extension/"

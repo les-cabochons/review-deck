@@ -15,7 +15,8 @@ import {
 import { applyPatches, onHubPatch, readHubSnapshot, withRecentPatches, writeHubSnapshot } from "../../data/hubCache";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
-import { readPreference, writePreference } from "../preferences";
+import { preferencesLoaded, readPreference, writePreference } from "../preferences";
+import { hubRowsSkeleton } from "../../skeletons";
 import { StackDialog } from "../stack/StackDialog";
 import { type CatalogRepo, CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope, singleRepo } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
@@ -26,6 +27,15 @@ import { useSectionFlash } from "./sectionFlash";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
+
+/** The saved set of closed sections, or the default when missing or malformed. */
+const parseCollapsed = (json: string): Set<SectionId> => {
+  try {
+    return new Set(JSON.parse(json) as SectionId[]);
+  } catch {
+    return new Set<SectionId>(["other"]);
+  }
+};
 
 /**
  * The PR hub: a Graphite-style inbox of pull requests that involve you, in an Azure DevOps skin. It paints the last
@@ -59,11 +69,14 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
   // Folded to an icon rail, like Azure DevOps' own left navigation.
   const [railOnly, setRailOnly] = React.useState(() => readPreference<"open" | "rail">("hub.sidebar", "open") === "rail");
+  // Preferences the user changed here this session; synced ones arriving later don't override those.
+  const touched = React.useRef(new Set<string>());
   const toggleRail = () => {
+    touched.current.add("hub.sidebar");
     setRailOnly(!railOnly);
     writePreference("hub.sidebar", railOnly ? "open" : "rail");
   };
-  const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => new Set(JSON.parse(readPreference("hub.collapsed", '["other"]')) as SectionId[]));
+  const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => parseCollapsed(readPreference("hub.collapsed", '["other"]')));
   // Empty sections start closed; opening one only lasts until reload.
   const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
   const [selected, setSelected] = React.useState(0);
@@ -95,9 +108,31 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
       .catch(() => null)
       .then((r) => setContext({ projectId: source.currentProjectId, repoId: r?.id ?? null }));
   }, [host, source]);
+  // Preferences synced from the user's account arrive after the first paint (startup never waits for them, see
+  // src/index.ts). Adopt them for whatever the user hasn't changed here meanwhile.
+  React.useEffect(() => {
+    let cancelled = false;
+    void preferencesLoaded().then(() => {
+      if (cancelled) return;
+      if (!touched.current.has("hub.selection")) {
+        const saved = parseSelection(readPreference("hub.selection", ""));
+        if (saved) setSelection((cur) => (cur && JSON.stringify(cur) === JSON.stringify(saved) ? cur : saved));
+      }
+      if (!touched.current.has("hub.filter")) setFilter(readPreference<Filter>("hub.filter", "inbox"));
+      if (!touched.current.has("hub.collapsed")) {
+        const saved = readPreference("hub.collapsed", '["other"]');
+        setCollapsed((cur) => (JSON.stringify([...cur]) === saved ? cur : parseCollapsed(saved)));
+      }
+      if (!touched.current.has("hub.sidebar")) setRailOnly(readPreference<"open" | "rail">("hub.sidebar", "open") === "rail");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // What the selection stands for; a saved list of projects and repositories doesn't wait for the breadcrumb.
   const resolved = selection && (!selection.current ? selection : context && resolveSelection(selection, context));
-  const scope = resolved && favorites ? selectionScope(resolved, favorites) : null;
+  // The list only waits for your starred repositories when the choice includes them.
+  const scope = resolved && (favorites || !resolved.favorites) ? selectionScope(resolved, favorites ?? []) : null;
   // New pull requests go to the one repository the selection lists, else to the Repos breadcrumb's repository.
   const breadcrumbRepo: CatalogRepo | undefined = context?.repoId
     ? (catalog?.flatMap((p) => p.repos).find((r) => r.id === context.repoId) ?? { id: context.repoId, name: context.repoId, projectId: context.projectId })
@@ -176,6 +211,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   }, [cacheScope, prs, details, groups, listed]);
 
   const pick = (next: RepoSelection) => {
+    touched.current.add("hub.selection");
     setSelection(next);
     writePreference("hub.selection", JSON.stringify(next));
   };
@@ -255,6 +291,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   }, [selected]);
 
   const choose = (f: Filter) => {
+    touched.current.add("hub.filter");
     setFilter(f);
     writePreference("hub.filter", f);
   };
@@ -270,6 +307,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     const next = new Set(collapsed);
     if (next.has(s.id)) next.delete(s.id);
     else next.add(s.id);
+    touched.current.add("hub.collapsed");
     setCollapsed(next);
     writePreference("hub.collapsed", JSON.stringify([...next]));
   };
@@ -586,23 +624,8 @@ const PrRow: React.FC<{
   );
 };
 
-/** Placeholder rows for the very first load, before anything is cached. */
-const SkeletonSection: React.FC<{ label: string }> = ({ label }) => (
-  <section className="inbox-section skeleton" aria-busy="true" aria-label={label}>
-    <div className="inbox-section-header muted">{label}</div>
-    <div className="pr-rows">
-      {[62, 48, 71, 55, 40, 66].map((w, i) => (
-        <div key={i} className="skeleton-row">
-          <span className="skeleton-dot" />
-          <span className="skeleton-lines">
-            <span className="skeleton-bar" style={{ width: `${w}%` }} />
-            <span className="skeleton-bar short" style={{ width: `${w / 2}%` }} />
-          </span>
-        </div>
-      ))}
-    </div>
-  </section>
-);
+/** Placeholder rows for the very first load, before anything is cached: the same ones the static page shows. */
+const SkeletonSection: React.FC<{ label: string }> = ({ label }) => <div dangerouslySetInnerHTML={{ __html: hubRowsSkeleton(label) }} />;
 
 const SizeBar: React.FC<{ files: number; adds: number; dels: number }> = ({ files, adds, dels }) => {
   const total = adds + dels;
