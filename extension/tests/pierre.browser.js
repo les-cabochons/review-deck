@@ -12,7 +12,7 @@ async page => {
     const viewToggle = f.locator('.files-toolbar .mode-toggle').nth(0).locator('button').first();
     const diffToggle = f.locator('.files-toolbar .mode-toggle').nth(1).locator('button').first();
     const label = async (toggle) => (await toggle.innerText()).trim();
-    if (await label(viewToggle) !== 'By concern') await viewToggle.click();
+    if (await label(viewToggle) !== 'Guided') await viewToggle.click();
     if (await label(diffToggle) !== 'Inline') await diffToggle.click();
     await f.locator('diffs-container [data-column-number="22"]').first().waitFor();
     await f.locator('file-tree-container').first().waitFor();

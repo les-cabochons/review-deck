@@ -47,8 +47,26 @@ the layer below. It uses Azure DevOps' server-side Git operations, with no clone
 - **When it can't** (a conflict, merge commits inside a layer, a missing permission, or someone pushed
   mid-restack): that layer and the ones above stay unchanged. The PR gets a failed **restack** status
   and, for conflicts, a comment with the `git rebase --onto` command to run locally.
+- **When it can't retarget** after a merge (usually because another active PR already merges the same
+  branch into the new target, which Azure DevOps forbids): the branch is still moved, and the PR gets
+  a failed status naming the other PR. Abandon one of them.
 
-Every PR it touches gets a `semantic-pr/restack` status, shown with the PR's checks.
+Every PR it touches gets a `review-deck/restack` status, shown with the PR's checks.
+
+### Restacking on request
+
+The Stack section of a PR's Overview has a **Restack** action (for any layer that doesn't target a
+trunk branch), whether or not auto-restack is on. Use it to retry after fixing a failure, or when a
+hook was missed. It calls `POST /api/stacks/restack`, which runs synchronously and answers with what
+happened, including the restack identity's own errors (not added to the organization, missing Force
+push), which the queued jobs only log. The caller's Azure DevOps token must be able to read the PR.
+
+- The layer below is open: the PR is rebased from where it was last pushed onto the layer's current
+  tip, so a rewritten parent's old commits aren't replayed.
+- The layer below merged: the PR moves onto the branch it merged into and is retargeted.
+- Already up to date: the PR gets a succeeded status, clearing an earlier failure.
+
+The layers above follow, as with auto-restack.
 
 ### How events reach the backend
 
@@ -56,17 +74,21 @@ Turning the toggle on registers two service hooks for the project (`git.push` an
 `git.pullrequest.updated`), signed in as the admin who flips it, so they need "Edit subscriptions"
 on the project:
 
-1. The hooks POST to `/api/hooks/ado?org=<org>` with an `X-Semantic-PR-Hook` secret
+1. The hooks POST to `/api/hooks/ado?org=<org>&ext=<publisher.extension>` with an `X-Review-Deck-Hook` secret
    (HMAC of `HOOK_KEY` and the organization). The function only queues the job and answers at once.
 2. The `restack` queue runs jobs one at a time. Each job re-reads the project's settings and the
    repository state, so a replayed or forged event can't restack anything that isn't behind.
 
-Turning it off removes the hooks.
+Turning it off removes the hooks. Each toggle replaces the project's hooks rather than adding to
+them, so toggling off and on also cleans up duplicates.
+
+The function writes its logs to `LogFiles/Application/Functions/Function/restack/` (Kudu, or
+`az webapp log tail`), which is where a job's error ends up when it fails before it can post a status.
 
 ### Setup
 
-1. **Deploy the backend** with Terraform (`infra/`). That generates `HOOK_KEY`. Build the extension
-   with `SEMANTIC_PR_BACKEND_URL` pointing at it (see `docs/azure-backend.md`).
+1. **Deploy the backend** with Terraform (`infra/`). That generates `HOOK_KEY`. An organization
+   administrator connects it in **Organization settings → Review Deck → Backend** (see `docs/azure-backend.md`).
 2. **Give the backend an Azure DevOps identity.** Choose one:
    - **Managed identity:** your organization must be connected to Microsoft Entra ID. Add the Function
      App's identity (`terraform output restack_identity`) as a user in **Organization settings →

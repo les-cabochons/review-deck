@@ -1,11 +1,14 @@
 import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { AiTitlesSetting } from "../hub/AiTitlesSetting";
+import { ChangelogSettings } from "./ChangelogSettings";
+import { ProjectFeatures } from "./ProjectFeatures";
 import { StackSettings } from "./StackSettings";
 
 /**
  * Project settings → Review Deck (contribution "settings-hub", dist/settings.html).
- * Project administrators change the settings here; everyone else sees them read-only.
+ * Project administrators change the project's settings here; everyone else sees them read-only. What applies to
+ * every project (who gets which feature, the backend) is in Organization settings → Review Deck.
  */
 export const SettingsPage: React.FC<{ host: AppHost }> = ({ host }) => {
   React.useEffect(() => {
@@ -15,11 +18,19 @@ export const SettingsPage: React.FC<{ host: AppHost }> = ({ host }) => {
     <div className="settings-page">
       <header className="settings-header">
         <h1>Review Deck</h1>
-        <p className="muted">Settings for this project's pull request hub and review page.</p>
+        <p className="muted">Settings for this project's pull request hub, review page and changelog.</p>
       </header>
+      <section className="settings-section" aria-labelledby="settings-features">
+        <h2 id="settings-features">Deck and Changelog</h2>
+        <ProjectFeatures host={host} />
+      </section>
       <section className="settings-section" aria-labelledby="settings-stacks">
         <h2 id="settings-stacks">Stacked pull requests</h2>
         <StackSettings host={host} />
+      </section>
+      <section className="settings-section" aria-labelledby="settings-changelog">
+        <h2 id="settings-changelog">Changelog</h2>
+        <ChangelogSettings host={host} />
       </section>
       <section className="settings-section" aria-labelledby="settings-ai">
         <h2 id="settings-ai">AI group titles</h2>

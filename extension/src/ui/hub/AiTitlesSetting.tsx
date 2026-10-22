@@ -11,11 +11,13 @@ interface State {
   /** The backend didn't answer, so whether it has a model is unknown. */
   usageFailed: boolean;
   hasBackend: boolean;
+  /** The organization allows AI titles at all (OrganizationSettings.aiTitles). */
+  allowed: boolean;
 }
 
 /**
  * The project's opt-in for LLM group titles, at the bottom of the hub sidebar. Shown only when the
- * extension was built with a backend; only project administrators can switch it.
+ * organization has a backend; only project administrators can switch it.
  */
 export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even without a backend, as on the settings page. */ alwaysShow?: boolean }> = ({ host, alwaysShow }) => {
   const [state, setState] = React.useState<State | null>(null);
@@ -24,14 +26,14 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 
   React.useEffect(() => {
     let cancelled = false;
-    Promise.all([host.backendService(), host.projectSettings(), host.canManageProject()]).then(([backend, settings, canManage]) => {
+    Promise.all([host.backendService(), host.projectSettings(), host.canManageProject(), host.organizationSettings()]).then(([backend, settings, canManage, organization]) => {
       if (cancelled || (!backend && !alwaysShow)) return;
-      setState({ settings, canManage, usage: null, usageFailed: false, hasBackend: !!backend });
-      if (!backend) return;
+      setState({ settings, canManage, usage: null, usageFailed: false, hasBackend: !!backend, allowed: organization.aiTitles });
+      if (!backend || !organization.aiTitles) return;
       fetchUsage(backend).then(
         (usage) => !cancelled && setState((s) => s && { ...s, usage }),
         (e) => {
-          console.warn("[semantic-pr] AI title usage unavailable:", e);
+          console.warn("[review-deck] AI title usage unavailable:", e);
           if (!cancelled) setState((s) => s && { ...s, usageFailed: true });
         },
       );
@@ -42,18 +44,17 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
   }, [host]);
 
   if (!state) return null;
-  const on = state.settings.aiTitles;
+  const on = state.allowed && state.settings.aiTitles;
   // Turning titles on needs the backend to confirm a model; turning them off is always allowed.
   const model = state.usage?.model ?? null;
-  const canTurnOn = state.hasBackend && model !== null;
+  const canTurnOn = state.allowed && state.hasBackend && model !== null;
 
   const change = (aiTitles: boolean) => {
-    const settings = { ...state.settings, aiTitles };
     setSaving(true);
     setError(null);
     host
-      .saveProjectSettings(settings)
-      .then(() => setState({ ...state, settings }))
+      .updateProjectSettings({ aiTitles })
+      .then((settings) => setState({ ...state, settings }))
       .catch((e: Error) => setError(`Couldn't save: ${e.message}`))
       .finally(() => setSaving(false));
   };
@@ -63,7 +64,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
       <div className="hub-sidebar-sep" />
       <Toggle text="AI group titles" checked={on} disabled={!state.canManage || saving || (!on && !canTurnOn)} onChange={(_, checked) => change(checked)} />
       <p className="hub-sidebar-note muted">
-        {describe(state, on, model)} {!state.canManage && "Project administrators can change this."}
+        {describe(state, on, model)} {state.allowed && !state.canManage && "Project administrators can change this."}
       </p>
       {state.usage && model !== null && <UsageNote usage={state.usage} />}
       {error && (
@@ -76,7 +77,8 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
 };
 
 function describe(state: State, on: boolean, model: string | null): string {
-  if (!state.hasBackend) return "Needs the backend, and this build has none: groups get rule-based titles.";
+  if (!state.allowed) return "Your organization has turned off AI group titles: groups get rule-based titles and no code is sent to an LLM.";
+  if (!state.hasBackend) return "Needs a backend, and this organization has none connected: groups get rule-based titles.";
   if (state.usageFailed) return "Couldn't reach the backend to check its AI model, so titles can't be turned on right now.";
   if (!state.usage) return "Checking the backend's AI model…";
   if (model === null) return "The backend has no AI model set up: groups get rule-based titles and no code is sent to an LLM.";

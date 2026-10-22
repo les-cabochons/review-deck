@@ -4,6 +4,7 @@ import { Toggle } from "azure-devops-ui/Toggle";
 import * as React from "react";
 import { invalidTrunkPattern, shortBranch } from "../../../../src/stack/branches";
 import type { AppHost, ProjectSettings } from "../../app/host";
+import { SaveStatus } from "./SaveStatus";
 
 interface Row {
   id: number;
@@ -53,11 +54,10 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
   if (!settings) return null;
 
   const save = async (change: Partial<ProjectSettings>) => {
-    const next = { ...latest.current!, ...change };
     setStatus("saving");
     setError(null);
     try {
-      await host.saveProjectSettings(next);
+      const next = await host.updateProjectSettings(change);
       latest.current = next;
       setSettings(next);
       setStatus("saved");
@@ -146,6 +146,8 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
           disabled={!canManage || !hasBackend || status === "saving"}
           onChange={(_, on) => {
             setError(null);
+            // Disabled until done: a second click mid-sync would subscribe the hooks twice.
+            setStatus("saving");
             // Hooks first: saving "on" without them would promise restacks that never happen.
             const work = on
               ? host.syncRestackHooks(true).then(() => save({ autoRestack: true }))
@@ -160,7 +162,7 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
         />
         <p className="settings-help muted">
           {!hasBackend
-            ? "Needs the backend, and this build has none."
+            ? "Needs a backend: an organization administrator can connect one in Organization settings → Review Deck."
             : settings.autoRestack
               ? "When a layer gets new commits or merges, the layers above are rebased on the server and retargeted. Conflicts are left alone, with a comment on the PR."
               : "Off: layers above a changed or merged PR stay where they are until someone rebases them."}
@@ -175,11 +177,3 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     </div>
   );
 };
-
-/** "Saving…" / "Saved", the quiet autosave confirmation Azure DevOps settings pages use. */
-export const SaveStatus: React.FC<{ status: "saving" | "saved" | null }> = ({ status }) =>
-  status ? (
-    <span className="save-status muted" role="status">
-      {status === "saving" ? "Saving…" : "Saved"}
-    </span>
-  ) : null;

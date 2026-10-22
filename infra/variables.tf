@@ -6,7 +6,7 @@ variable "subscription_id" {
 variable "name" {
   description = "Prefix for resource names; a random suffix is added."
   type        = string
-  default     = "semantic-pr"
+  default     = "review-deck"
 }
 
 variable "location" {
@@ -72,14 +72,8 @@ variable "titles_price_per_million" {
   default     = { input = 0.05, output = 0.4 }
 }
 
-variable "extension_secret" {
-  description = "The extension's certificate secret (Marketplace > Manage publishers > the extension > ... > Certificate). The function rejects tokens not signed with it."
-  type        = string
-  sensitive   = true
-}
-
 variable "allowed_origins" {
-  description = "Origins allowed to call the function from a browser: the published extension's CDN, plus the local dev server."
+  description = "Origins allowed to call the function from a browser: the published extension's CDN (https://<publisher>.gallerycdn.vsassets.io), plus the local dev server."
   type        = list(string)
   default     = ["https://cabochonio.gallerycdn.vsassets.io", "http://127.0.0.1:5173"]
 }
@@ -117,5 +111,5 @@ variable "ado_pat" {
 variable "extension_id" {
   description = "publisher.extension of the installed extension, whose per-project settings auto-restack reads."
   type        = string
-  default     = "Cabochonio.semantic-pr-review"
+  default     = "Cabochonio.review-deck"
 }

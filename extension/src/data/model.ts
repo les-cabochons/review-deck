@@ -23,6 +23,22 @@ export interface Reviewer extends Identity {
 
 export type PrStatus = "active" | "abandoned" | "completed";
 
+/** Azure DevOps merge types: merge (no fast-forward), squash, rebase and fast-forward, rebase with merge commit. */
+export type MergeStrategy = "noFastForward" | "squash" | "rebase" | "rebaseMerge";
+export const MERGE_STRATEGIES: MergeStrategy[] = ["noFastForward", "squash", "rebase", "rebaseMerge"];
+
+/** Azure DevOps' merge check for the source and target branches. */
+export type MergeStatus = "notSet" | "queued" | "conflicts" | "succeeded" | "rejectedByPolicy" | "failure";
+
+export interface CompletionOptions {
+  mergeStrategy: MergeStrategy;
+  deleteSourceBranch: boolean;
+  transitionWorkItems: boolean;
+  mergeCommitMessage: string;
+  /** Completes despite unmet required policies; Azure DevOps records the reason. Ignored by auto-complete. */
+  bypassReason?: string;
+}
+
 export interface PullRequest {
   id: number;
   title: string;
@@ -36,6 +52,17 @@ export interface PullRequest {
   repository: { id: string; name: string; projectId: string; projectName: string };
   reviewers: Reviewer[];
   labels: string[];
+  /** The source head as of this load. Completing sends it, so a push since then makes Azure DevOps refuse the merge. */
+  headCommit: string;
+  mergeStatus: MergeStatus;
+  /** Set once completion is requested: Azure DevOps merges in the background and the PR stays active until it's done. */
+  completionQueued?: Date;
+  /** Why the last merge attempt failed, from Azure DevOps. */
+  mergeFailure?: string;
+  /** Set while auto-complete is on: it completes the PR with `completionOptions` once policies pass. */
+  autoCompleteSetBy?: Identity;
+  completionOptions?: CompletionOptions;
+  closedBy?: Identity;
 }
 
 export interface Iteration {
@@ -72,13 +99,21 @@ export interface Comment {
 
 export type ThreadStatus = "active" | "fixed" | "wontFix" | "closed" | "byDesign" | "pending" | "unknown";
 
-export interface FileAnchor {
+/** A whole file, for file-level comments. */
+export interface FileRef {
   /** Repo path without the leading slash. */
   path: string;
+}
+
+/** A line range in one side of a file, for line comments. */
+export interface FileAnchor extends FileRef {
   side: "left" | "right";
   line: number;
   endLine: number;
 }
+
+export type ThreadFile = FileRef | FileAnchor;
+export const isLineAnchor = (file: ThreadFile | undefined): file is FileAnchor => !!file && "line" in file;
 
 export interface Thread {
   iterationContext?: { firstComparingIteration: number; secondComparingIteration: number };
@@ -87,7 +122,7 @@ export interface Thread {
   published: Date;
   updated: Date;
   comments: Comment[];
-  file?: FileAnchor;
+  file?: ThreadFile;
   /** "comment" = human discussion; "vote"/"system" = events rendered in the timeline only. */
   kind: "comment" | "vote" | "system";
   vote?: Vote;
@@ -128,7 +163,7 @@ export interface PrOverview {
 
 export interface NewThread {
   content: string;
-  file?: FileAnchor;
+  file?: ThreadFile;
   comparison?: { iteration: number; compareTo: number; changeTrackingId: number };
 }
 
@@ -144,6 +179,29 @@ export interface PrActions {
   addTag(name: string): Promise<void>;
   removeTag(name: string): Promise<void>;
   setDescription(description: string): Promise<void>;
+  /** Queues the merge into the target branch, provided the source head is still `headCommit`. */
+  complete(options: CompletionOptions, headCommit: string): Promise<void>;
+  /** Turns auto-complete on with these options, or off with null. */
+  setAutoComplete(options: CompletionOptions | null): Promise<void>;
+  abandon(): Promise<void>;
+  reactivate(): Promise<void>;
+  setDraft(isDraft: boolean): Promise<void>;
+  /** Merge types the target branch's policies allow; all of them when none limit it or they can't be read. */
+  allowedMergeStrategies(repositoryId: string, targetBranch: string): Promise<MergeStrategy[]>;
+  /** Emails a link to the pull request to people, with a message (Azure DevOps "Share pull request"). */
+  share(receivers: Identity[], message: string): Promise<void>;
+  /** Whether you get notified about this pull request's changes ("Follow"). */
+  isFollowing(): Promise<boolean>;
+  setFollowing(on: boolean): Promise<void>;
+  /** Whether `branch` (a name, no refs/heads/) is one of your favorite branches in this repository. */
+  isFavoriteBranch(branch: string): Promise<boolean>;
+  setFavoriteBranch(branch: string, on: boolean): Promise<void>;
+  /** Branch names in this repository containing `query`, for branch pickers. */
+  searchBranches(query: string): Promise<string[]>;
+  /** Retargets the pull request onto `branch`. */
+  changeTarget(branch: string): Promise<void>;
+  /** Applies the pull request's changes onto `onto` in a new branch `topic`; resolves once the branch exists. */
+  cherryPick(onto: string, topic: string): Promise<void>;
 }
 
 /** Both sources implement the same read and write contracts. */
@@ -157,6 +215,9 @@ export interface PrSource {
   getBlob(objectId: string): Promise<string>;
   getThreads(iteration: number, compareTo: number): Promise<Thread[]>;
 }
+
+const MERGE_STATUS: MergeStatus[] = ["notSet", "queued", "conflicts", "succeeded", "rejectedByPolicy", "failure"];
+export const mergeStatusFromNumber = (n: number | undefined): MergeStatus => MERGE_STATUS[n ?? 0] ?? "notSet";
 
 const THREAD_STATUS: ThreadStatus[] = ["unknown", "active", "fixed", "wontFix", "closed", "byDesign", "pending"];
 export const threadStatusFromNumber = (n: number): ThreadStatus => THREAD_STATUS[n] ?? "unknown";
@@ -175,4 +236,9 @@ export function asVote(n: number): Vote {
 
 export function branchName(ref: string): string {
   return ref.replace(/^refs\/heads\//, "");
+}
+
+/** The full ref of a branch name (or of a ref already full). */
+export function branchRef(branch: string): string {
+  return `refs/heads/${branchName(branch)}`;
 }

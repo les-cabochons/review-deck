@@ -34,6 +34,8 @@ export interface BuildOptions {
   aiTitles?: boolean;
   /** Reuses the grouping saved for this comparison, and saves a fresh one. */
   saved?: { store: SavedReviews; key: ReviewKey };
+  /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it. */
+  fresh?: boolean;
 }
 
 /**
@@ -53,7 +55,7 @@ export async function buildReview(
   const backend = options.backend ?? null;
   if (backend) warmBackend(backend);
   // Read while the files download; restoreReview (in the worker) checks it still fits.
-  const saved = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
+  const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
   const changes = await source.getChanges(iteration, compareTo);
   const contents = new Map<string, FileContents>();
   await forEachLimited(
@@ -79,8 +81,8 @@ export async function buildReview(
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
-  for (const warning of result.warnings) console.warn("[semantic-pr]", warning);
-  console.debug("[semantic-pr] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  for (const warning of result.warnings) console.warn("[review-deck]", warning);
+  console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
   const packed = !restored && options.saved ? packReview(result, reviewMode(backend, aiTitles)) : null;
   if (packed) void options.saved!.store.save(options.saved!.key, packed);
   return { result, changes, contents, comparison, analyzed: true };
@@ -96,7 +98,7 @@ function previewResult(meta: { title: string; description: string }, diff: strin
     groups: [],
     merges: [],
     timings: {},
-    options: { semantic: false, titler: "none", weights: { structural: 0, testPairing: 0, lexical: 0, semantic: 0, path: 0 }, minEdgeWeight: 0 },
+    options: { semantic: false, titler: "none", weights: { structural: 0, testPairing: 0, lexical: 0, semantic: 0, path: 0, description: 0 }, minEdgeWeight: 0 },
     warnings: [],
   };
 }
@@ -140,7 +142,7 @@ function runAnalysis(
     worker.onerror = (e) => {
       e.preventDefault();
       stop();
-      console.warn("[semantic-pr] analysis worker unavailable, running on the page:", e.message);
+      console.warn("[review-deck] analysis worker unavailable, running on the page:", e.message);
       onPage();
     };
     worker.postMessage(job);

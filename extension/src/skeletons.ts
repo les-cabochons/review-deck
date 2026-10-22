@@ -8,7 +8,7 @@
  */
 
 /** Where src/startup.ts keeps the host's theme for the next load; `themeBootScript` reads it. */
-export const THEME_KEY = "semantic-pr.theme";
+export const THEME_KEY = "review-deck.theme";
 
 /** What the hub already knows about a pull request, shown for real in its skeleton; everything else is gray. */
 export interface PrSkeletonHint {

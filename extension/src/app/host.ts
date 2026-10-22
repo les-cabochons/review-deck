@@ -1,14 +1,11 @@
 import { DEFAULT_TRUNK_PATTERNS } from "../../../src/stack/branches";
-import type { PrListSource } from "../data/list";
+import type { Feature, OrganizationSettings } from "../data/access";
+import type { PrListSource, PrSummary } from "../data/list";
+import { DEFAULT_RELEASE_SETTINGS, type ReleaseCatalog, readReleaseSettings, type ReleaseSettings } from "../data/releases";
 import type { Identity, PrSource } from "../data/model";
 import type { TagStore } from "../data/tags";
-import type { BackendService } from "../review/backend";
+import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReviews } from "../review/saved";
-
-/** Backend (Azure Function) base URL, set at build time from SEMANTIC_PR_BACKEND_URL (extension/build.mjs). */
-declare const __BACKEND_URL__: string;
-// typeof: unbundled runs (tsx tests) have no define.
-export const BACKEND_URL = typeof __BACKEND_URL__ === "string" ? __BACKEND_URL__.replace(/\/+$/, "") : "";
 
 /**
  * Per-project choices, stored with the extension (Azure DevOps extension data). Everything is off by
@@ -21,9 +18,11 @@ export interface ProjectSettings {
   trunkBranches: string[];
   /** The backend keeps stacks rebased on their parents (service hooks -> src/stack/restack.ts). */
   autoRestack: boolean;
+  /** The Changelog hub's tag convention and publishing pipelines. */
+  releases: ReleaseSettings;
 }
 
-export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false, trunkBranches: DEFAULT_TRUNK_PATTERNS, autoRestack: false };
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = { aiTitles: false, trunkBranches: DEFAULT_TRUNK_PATTERNS, autoRestack: false, releases: DEFAULT_RELEASE_SETTINGS };
 
 /** Settings from storage, with anything missing or malformed at its default. */
 export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings, unknown>> | null | undefined): ProjectSettings {
@@ -32,7 +31,37 @@ export function readProjectSettings(saved: Partial<Record<keyof ProjectSettings,
     aiTitles: saved?.aiTitles === true,
     trunkBranches: trunks.length ? trunks : DEFAULT_TRUNK_PATTERNS,
     autoRestack: saved?.autoRestack === true,
+    releases: readReleaseSettings(saved?.releases),
   };
+}
+
+/**
+ * The organization's own backend (backend/, deployed by infra/), saved in Organization settings → Review Deck by an
+ * organization administrator. There is no built-in one. `key` is the backend's API_KEY (Terraform output api_key).
+ */
+export interface BackendSettings {
+  url: string;
+  key: string;
+}
+
+/** A backend URL as saved: https (or http on localhost, for a local `func start`), without a trailing slash or /api. */
+export function normalizeBackendUrl(input: string): string {
+  const url = new URL(input.trim());
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(local && url.protocol === "http:")) throw new Error("The backend URL must start with https://");
+  if (url.search || url.hash) throw new Error("The backend URL can't have a query or fragment");
+  return `${url.origin}${url.pathname.replace(/\/+$/, "").replace(/\/api$/, "")}`;
+}
+
+/** Saved backend settings, or null when there are none or they're malformed. */
+export function readBackendSettings(saved: unknown): BackendSettings | null {
+  const s = saved as Partial<Record<keyof BackendSettings, unknown>> | null | undefined;
+  if (typeof s?.url !== "string" || !s.url || typeof s.key !== "string") return null;
+  try {
+    return { url: normalizeBackendUrl(s.url), key: s.key };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -48,6 +77,8 @@ export type Route = { view: "hub" } | { view: "pr"; repo: string; pr: number; pr
 export interface AppHost {
   readonly kind: "ado" | "local";
   readonly currentUser: Identity;
+  /** The project the page is in; empty on the organization's settings page. */
+  readonly projectId: string;
   /** Separates cached hub data between organizations, projects and users that share a browser tab's storage. */
   readonly cacheScope: string;
   route(): Route;
@@ -61,10 +92,36 @@ export interface AppHost {
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
   backendService(): Promise<BackendService | null>;
+  /** The organization's backend, or null when it has none. Never rejects. */
+  backendSettings(): Promise<BackendSettings | null>;
+  /** Saves (or, with null, clears) the organization's backend; the UI offers it to organization administrators only. */
+  saveBackendSettings(settings: BackendSettings | null): Promise<void>;
+  /** Whether the user may change organization-wide settings (Azure DevOps: "Edit instance-level information"). False if unknown. */
+  canManageOrganization(): Promise<boolean>;
+  /**
+   * Which projects get the Deck and Changelog, and whether AI titles are allowed. Re-read every so often, so an open page
+   * follows changes. Unreadable, it resolves to the defaults with AI titles off, so a failure never sends code to an LLM.
+   */
+  organizationSettings(): Promise<OrganizationSettings>;
+  /**
+   * Applies `change` to the organization's settings as stored now, saves and resolves to the result. The UI offers it
+   * to organization administrators, and to project administrators for their own project's features.
+   */
+  updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings>;
+  /**
+   * Shows or hides the feature's hub (and menu entries) in Azure DevOps to match the saved settings: for the given
+   * projects, or every project. Rejects with a readable message; the hub then explains it's off instead.
+   */
+  syncFeatureVisibility(feature: Feature, projectIds?: string[]): Promise<void>;
+  /** Every project in the organization you can see, by name. */
+  organizationProjects(): Promise<{ id: string; name: string }[]>;
   /** This project's settings. Resolves to the defaults (all off) when they can't be read, so a failure never turns AI on. */
   projectSettings(): Promise<ProjectSettings>;
-  /** Saves this project's settings; the UI offers it to project administrators only. */
-  saveProjectSettings(settings: ProjectSettings): Promise<void>;
+  /**
+   * Saves changed settings on top of the ones stored now, so sections of the settings page don't overwrite each
+   * other, and resolves to the result. The UI offers it to project administrators only.
+   */
+  updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings>;
   /** Whether the user may change project settings (Azure DevOps: "Edit project-level information"). False if unknown. */
   canManageProject(): Promise<boolean>;
   /**
@@ -72,14 +129,27 @@ export interface AppHost {
    * Rejects with a readable message, e.g. without a backend or the permission to edit subscriptions.
    */
   syncRestackHooks(on: boolean): Promise<void>;
+  /**
+   * Has the backend restack `pr` now: onto the layer below, or where it merged. Works with auto-restack
+   * off. Rejects with a readable message (no backend, the restack identity's errors, …).
+   */
+  restack(pr: PrSummary): Promise<RestackOutcome[]>;
   /** Finished groupings, so reopening a pull request shows them without re-running the analysis. */
   savedReviews(): SavedReviews;
   /** This project's tags, with their colors and descriptions. */
   tags(): TagStore;
   /** Your starred repositories, kept per user across projects. */
   favoriteRepos(): FavoriteRepos;
+  /** Git tags, pipeline runs and release descriptions, for the Changelog hub. Loaded on first use, so other pages don't carry it. */
+  releases(): Promise<ReleaseCatalog>;
+  /** This pull request in Review Deck, as a link others can open (the hub page, not the extension's iframe). */
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string;
   /** The native Azure DevOps PR page, for "open in Azure DevOps" links. */
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
+  /** The native page for creating a pull request from `source` into `target` (branch names). */
+  createPrUrl(route: Extract<Route, { view: "pr" }>, source: string, target: string): string | null;
+  /** The native page for a file at a commit, for "View file" links. */
+  fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string | null;
 }
 
 /** Starred repository ids. `load` resolves to none when they can't be read. */

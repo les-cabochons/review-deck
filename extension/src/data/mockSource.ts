@@ -1,5 +1,10 @@
 import {
   asVote,
+  branchName,
+  branchRef,
+  isLineAnchor,
+  MERGE_STRATEGIES,
+  mergeStatusFromNumber,
   type Comment,
   type FileChange,
   type Identity,
@@ -11,7 +16,14 @@ import {
   threadStatusFromNumber,
 } from "./model";
 import type { CommentJson, IdentityJson, PrSnapshot, ThreadJson } from "./snapshot";
-import { STATUS_NUMBER, requireContent, threadPayload } from "./adoActions";
+import {
+  fromCompletionOptionsJson,
+  PR_STATUS_NUMBER,
+  requireContent,
+  STATUS_NUMBER,
+  threadPayload,
+  toCompletionOptionsJson,
+} from "./adoActions";
 
 export const MOCK_USER: Identity = { id: "local-reviewer", displayName: "Local reviewer", uniqueName: "reviewer@example.test" };
 
@@ -49,6 +61,13 @@ export class MockPrSource implements PrSource {
         usersLiked: [],
       };
     };
+    let following = false;
+    const favorites = new Set<string>();
+    const active = (doing: string) => {
+      const pr = this.snap.pullRequest;
+      if (pr.status !== PR_STATUS_NUMBER.active) throw new Error(`Only an active pull request can be ${doing}.`);
+      return pr;
+    };
     this.actions = {
       createThread: async (input) => {
         threadPayload(input); // same validation and iteration convention as the REST adapter
@@ -63,8 +82,10 @@ export class MockPrSource implements PrSource {
           threadContext: input.file
             ? {
                 filePath: `/${input.file.path}`,
-                [input.file.side === "left" ? "leftFileStart" : "rightFileStart"]: { line: input.file.line, offset: 1 },
-                [input.file.side === "left" ? "leftFileEnd" : "rightFileEnd"]: { line: input.file.endLine, offset: 1 },
+                ...(isLineAnchor(input.file) && {
+                  [input.file.side === "left" ? "leftFileStart" : "rightFileStart"]: { line: input.file.line, offset: 1 },
+                  [input.file.side === "left" ? "leftFileEnd" : "rightFileEnd"]: { line: input.file.endLine, offset: 1 },
+                }),
               }
             : undefined,
           pullRequestThreadContext: input.comparison
@@ -135,7 +156,62 @@ export class MockPrSource implements PrSource {
       setDescription: async (description) => {
         this.snap.pullRequest.description = description;
       },
+      share: async (receivers) => {
+        if (!receivers.length) throw new Error("Add at least one person to share with.");
+      },
+      isFollowing: async () => following,
+      setFollowing: async (on) => void (following = on),
+      isFavoriteBranch: async (branch) => favorites.has(branch),
+      setFavoriteBranch: async (branch, on) => void (on ? favorites.add(branch) : favorites.delete(branch)),
+      searchBranches: async (query) => {
+        const { sourceRefName, targetRefName } = this.snap.pullRequest;
+        const names = [...new Set(["main", "uat", "release/00-next", ...[sourceRefName, targetRefName].map(branchName)])];
+        return names.filter((n) => n.toLowerCase().includes(query.trim().toLowerCase())).sort();
+      },
+      changeTarget: async (branch) => {
+        this.snap.pullRequest.targetRefName = branchRef(branch);
+      },
+      cherryPick: async (onto, topic) => {
+        if (!onto.trim() || !topic.trim()) throw new Error("Pick a target branch and name the new branch.");
+      },
+      // The same checks Azure DevOps makes before it merges.
+      complete: async (options, headCommit) => {
+        const pr = active("completed");
+        const json = toCompletionOptionsJson(options, true);
+        if (pr.isDraft) throw new Error("Publish the draft before completing it.");
+        if (headCommit !== this.headCommit()) throw new Error("The source branch has new commits. Refresh the pull request and review them first.");
+        if (pr.mergeStatus === 2) throw new Error("The pull request has merge conflicts.");
+        const unmet = this.snap.policies.filter((p) => p.configuration.isBlocking && p.status !== "approved" && p.status !== "notApplicable");
+        if (unmet.length && !json.bypassPolicy) throw new Error("Required policies have not passed. Set auto-complete, or override them with a reason.");
+        // Like Azure DevOps, the merge runs in the background: the next read still sees it queued, the one after merged.
+        Object.assign(pr, { completionQueueTime: new Date().toISOString(), completionOptions: json, autoCompleteSetBy: undefined });
+        this.mergeReads = 1;
+      },
+      setAutoComplete: async (options) => {
+        const pr = active("set to auto-complete");
+        pr.autoCompleteSetBy = options ? this.currentUser : undefined;
+        if (options) pr.completionOptions = toCompletionOptionsJson(options, false);
+      },
+      abandon: async () => {
+        Object.assign(active("abandoned"), { status: PR_STATUS_NUMBER.abandoned, closedBy: this.currentUser, autoCompleteSetBy: undefined });
+      },
+      reactivate: async () => {
+        const pr = this.snap.pullRequest;
+        if (pr.status !== PR_STATUS_NUMBER.abandoned) throw new Error("Only an abandoned pull request can be reactivated.");
+        Object.assign(pr, { status: PR_STATUS_NUMBER.active, closedBy: undefined });
+      },
+      setDraft: async (isDraft) => {
+        active(isDraft ? "marked as a draft" : "published").isDraft = isDraft;
+      },
+      allowedMergeStrategies: async () => [...MERGE_STRATEGIES],
     };
+  }
+
+  /** Reads left before a queued merge finishes. */
+  private mergeReads = 0;
+
+  private headCommit(): string {
+    return this.snap.pullRequest.lastMergeSourceCommit?.commitId ?? this.snap.iterations.at(-1)?.sourceRefCommit.commitId ?? "";
   }
 
   static async fetch(url: string, currentUser: Identity = MOCK_USER): Promise<MockPrSource> {
@@ -146,6 +222,8 @@ export class MockPrSource implements PrSource {
 
   async load(): Promise<PrOverview> {
     const { pullRequest: p } = this.snap;
+    if (p.completionQueueTime && p.status === PR_STATUS_NUMBER.active && this.mergeReads-- <= 0)
+      Object.assign(p, { status: PR_STATUS_NUMBER.completed, closedBy: this.currentUser, completionQueueTime: undefined });
     return {
       pr: {
         id: p.pullRequestId,
@@ -165,6 +243,13 @@ export class MockPrSource implements PrSource {
         },
         reviewers: p.reviewers.map((r) => ({ ...identity(r), vote: asVote(r.vote), isRequired: r.isRequired })),
         labels: p.labels.filter((l) => l.active).map((l) => l.name),
+        headCommit: this.headCommit(),
+        mergeStatus: mergeStatusFromNumber(p.mergeStatus),
+        autoCompleteSetBy: p.autoCompleteSetBy && identity(p.autoCompleteSetBy),
+        completionOptions: fromCompletionOptionsJson(p.completionOptions),
+        completionQueued: p.completionQueueTime ? new Date(p.completionQueueTime) : undefined,
+        mergeFailure: p.mergeFailureMessage || undefined,
+        closedBy: p.closedBy && identity(p.closedBy),
       },
       iterations: this.snap.iterations.map((it) => ({
         id: it.id,
@@ -267,10 +352,11 @@ export function thread(t: ThreadJson): Thread {
     published: new Date(t.publishedDate),
     updated: new Date(t.lastUpdatedDate),
     comments,
-    file:
-      ctx && pos
+    file: !ctx?.filePath
+      ? undefined
+      : pos
         ? { path: strip(ctx.filePath), side: right ? "right" : "left", line: pos.line, endLine: end?.line ?? pos.line }
-        : undefined,
+        : { path: strip(ctx.filePath) },
     kind: type === "VoteUpdate" ? "vote" : type || comments.every((c) => c.isSystem) ? "system" : "comment",
     vote: type === "VoteUpdate" ? asVote(Number(t.properties.CodeReviewVoteResult?.$value ?? 0)) : undefined,
   };

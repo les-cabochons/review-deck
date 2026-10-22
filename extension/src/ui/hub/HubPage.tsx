@@ -18,7 +18,7 @@ import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/
 import { preferencesLoaded, readPreference, writePreference } from "../preferences";
 import { hubRowsSkeleton } from "../../skeletons";
 import { StackDialog } from "../stack/StackDialog";
-import { ALL_PROJECTS, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, selectionScope } from "../../data/repoSelection";
+import { type CatalogRepo, CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope, singleRepo } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { RepoPicker } from "./RepoPicker";
@@ -43,12 +43,13 @@ const parseCollapsed = (json: string): Set<SectionId> => {
  */
 export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, active }) => {
   const cacheScope = host.cacheScope;
-  // The last list shown paints at once if it was for the saved repository choice. Without a saved choice, the
-  // default (the breadcrumb's repository) is only known later; if it turns out different, the rows are dropped then.
+  // The last list shown paints at once if it was for the saved repository choice. With the default or a "current"
+  // choice, the repository it stands for (the breadcrumb's) is only known later; if it turns out different, the rows
+  // are dropped then.
   const [cached] = React.useState(() => {
     const snap = readHubSnapshot(cacheScope);
     const saved = parseSelection(readPreference("hub.selection", ""));
-    return snap && (!saved || snap.selection === JSON.stringify(saved)) ? snap : null;
+    return snap && (!saved || saved.current || snap.selection === JSON.stringify(saved)) ? snap : null;
   });
   const [source, setSource] = React.useState<PrListSource | null>(null);
   const [prs, setPrs] = React.useState<PrSummary[] | null>(cached?.prs ?? null);
@@ -57,16 +58,25 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [listLoading, setListLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
-  // Null until the saved choice, or on a first visit the Repos breadcrumb's repository, is known.
+  // The saved choice, or on a first visit the Repos breadcrumb's repository. Null until the list source loads.
   const [selection, setSelection] = React.useState<RepoSelection | null>(null);
+  // The current project and the breadcrumb's repository, which "current" choices stand for.
+  const [context, setContext] = React.useState<CurrentContext | null>(null);
   const [catalog, setCatalog] = React.useState<RepoCatalog | null>(null);
   const [catalogError, setCatalogError] = React.useState<string | null>(null);
   const [favorites, setFavorites] = React.useState<string[] | null>(null);
   const [tag, setTag] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>(() => readPreference<Filter>("hub.filter", "inbox"));
-  const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => parseCollapsed(readPreference("hub.collapsed", '["other"]')));
+  // Folded to an icon rail, like Azure DevOps' own left navigation.
+  const [railOnly, setRailOnly] = React.useState(() => readPreference<"open" | "rail">("hub.sidebar", "open") === "rail");
   // Preferences the user changed here this session; synced ones arriving later don't override those.
   const touched = React.useRef(new Set<string>());
+  const toggleRail = () => {
+    touched.current.add("hub.sidebar");
+    setRailOnly(!railOnly);
+    writePreference("hub.sidebar", railOnly ? "open" : "rail");
+  };
+  const [collapsed, setCollapsed] = React.useState<Set<SectionId>>(() => parseCollapsed(readPreference("hub.collapsed", '["other"]')));
   // Empty sections start closed; opening one only lasts until reload.
   const [openedEmpty, setOpenedEmpty] = React.useState<Set<SectionId>>(new Set());
   const [selected, setSelected] = React.useState(0);
@@ -92,14 +102,11 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   React.useEffect(() => {
     if (!source) return;
     source.catalog().then(setCatalog, (e: Error) => setCatalogError(e.message));
-    const saved = parseSelection(readPreference("hub.selection", ""));
-    if (saved) setSelection(saved);
-    else
-      host
-        .currentRepository()
-        .catch(() => null)
-        // Unless the user's synced choice arrived meanwhile.
-        .then((r) => setSelection((cur) => cur ?? (r ? { ...ALL_PROJECTS, repos: [r.id] } : { ...ALL_PROJECTS, projects: [source.currentProjectId] })));
+    setSelection(parseSelection(readPreference("hub.selection", "")) ?? CURRENT_REPO);
+    host
+      .currentRepository()
+      .catch(() => null)
+      .then((r) => setContext({ projectId: source.currentProjectId, repoId: r?.id ?? null }));
   }, [host, source]);
   // Preferences synced from the user's account arrive after the first paint (startup never waits for them, see
   // src/index.ts). Adopt them for whatever the user hasn't changed here meanwhile.
@@ -116,16 +123,24 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
         const saved = readPreference("hub.collapsed", '["other"]');
         setCollapsed((cur) => (JSON.stringify([...cur]) === saved ? cur : parseCollapsed(saved)));
       }
+      if (!touched.current.has("hub.sidebar")) setRailOnly(readPreference<"open" | "rail">("hub.sidebar", "open") === "rail");
     });
     return () => {
       cancelled = true;
     };
   }, []);
+  // What the selection stands for; a saved list of projects and repositories doesn't wait for the breadcrumb.
+  const resolved = selection && (!selection.current ? selection : context && resolveSelection(selection, context));
   // The list only waits for your starred repositories when the choice includes them.
-  const scope = selection && (favorites || !selection.favorites) ? selectionScope(selection, favorites ?? []) : null;
+  const scope = resolved && (favorites || !resolved.favorites) ? selectionScope(resolved, favorites ?? []) : null;
+  // New pull requests go to the one repository the selection lists, else to the Repos breadcrumb's repository.
+  const breadcrumbRepo: CatalogRepo | undefined = context?.repoId
+    ? (catalog?.flatMap((p) => p.repos).find((r) => r.id === context.repoId) ?? { id: context.repoId, name: context.repoId, projectId: context.projectId })
+    : undefined;
+  const newPrRepo = (resolved && catalog && favorites && singleRepo(resolved, favorites, catalog)) || breadcrumbRepo;
   // A string, so effects rerun only when the queries change.
   const scopeKey = scope && JSON.stringify(scope);
-  const selectionKey = selection && JSON.stringify(selection);
+  const selectionKey = resolved && JSON.stringify(resolved);
 
   const { reload: reloadTags, revision: tagRevision, byKey: tagsByKey } = useProjectTags();
   // Drop the tag filter when that tag is renamed or deleted.
@@ -208,7 +223,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
       .favoriteRepos()
       .save(next)
       .catch((e) => {
-        console.warn("[semantic-pr] could not save favorite repositories:", e);
+        console.warn("[review-deck] could not save favorite repositories:", e);
         setFavorites(before);
       });
   };
@@ -299,7 +314,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
 
   let rowIndex = 0;
   return (
-    <div className="hub">
+    <div className={cx("hub", railOnly && "rail")}>
       <aside className="hub-sidebar">
         <nav aria-label="Inbox sections">
           <SidebarItem icon="Inbox" text="Inbox" count={sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)} active={filter === "inbox"} onClick={() => choose("inbox")} />
@@ -323,6 +338,15 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             Couldn't load your teams, so only reviews assigned to you directly are counted. {groupError}
           </p>
         )}
+        <button
+          className="hub-nav-item hub-sidebar-toggle"
+          onClick={toggleRail}
+          aria-expanded={!railOnly}
+          aria-label={railOnly ? "Expand navigation" : "Collapse navigation"}
+          title={railOnly ? "Expand navigation" : "Collapse navigation"}
+        >
+          <Icon iconName={railOnly ? "DoubleChevronRight" : "DoubleChevronLeft"} className="hub-nav-icon" />
+        </button>
       </aside>
 
       <main className="hub-main" ref={main}>
@@ -344,6 +368,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
               catalog={catalog}
               catalogError={catalogError}
               selection={selection}
+              context={context}
               onChange={pick}
               favorites={favorites ?? []}
               onToggleFavorite={toggleFavorite}
@@ -358,7 +383,9 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             onClick={load}
           />
           <span className="spacer" />
-          {source?.newPullRequestUrl && <Button text="New pull request" primary href={source.newPullRequestUrl} target="_top" />}
+          {source?.newPullRequestUrl && (
+            <Button text="New pull request" primary href={source.newPullRequestUrl(newPrRepo)} target="_top" />
+          )}
           {/* Shown while the list or row details are loading; rows on screen may be from the last visit until then. */}
           {refreshing && prs && <div className="hub-progress" role="progressbar" aria-label="Updating pull requests" />}
         </div>
@@ -432,7 +459,7 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
   attention,
   onClick,
 }) => (
-  <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined}>
+  <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined} title={text}>
     <Icon iconName={icon} className="hub-nav-icon" />
     <span className="text">{text}</span>
     {count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
@@ -501,13 +528,20 @@ const PrRow: React.FC<{
             <TagPill key={l} name={l} />
           ))}
         </div>
-        {/* Azure DevOps' own wording: "Alex Trépanier requested !1 into main". */}
-        {/* The stack chip leads, so a narrow row clips the end of the line rather than the chip. */}
+      </div>
+      {/* A line of its own under the title, as wide as the row: the columns beside the title don't narrow it. */}
+      {/* Azure DevOps' wording with the branches: "Alex Trépanier requested feature/x into main". */}
+      {/* The stack chip and the number lead, so a narrow row clips the end of the line rather than those. */}
+      <div className="pr-sub-line">
         <div className="pr-sub muted">
           {stackChip}
-          <span className="pr-request" title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
+          <span className="pr-number">!{pr.id}</span>
+          <span className="pr-request" title={`!${pr.id}: ${pr.sourceBranch} → ${pr.targetBranch}`}>
             <span className="who">{pr.createdBy.id === me ? "You" : pr.createdBy.displayName}</span>
-            <span className="requested">requested !{pr.id} into</span>
+            <span className="requested">requested</span>
+            <Icon iconName="OpenSource" className="branch-icon" />
+            <span className="branch-inline source">{pr.sourceBranch}</span>
+            <span className="requested">into</span>
             <Icon iconName="OpenSource" className="branch-icon" />
             <span className="branch-inline">{pr.targetBranch}</span>
           </span>

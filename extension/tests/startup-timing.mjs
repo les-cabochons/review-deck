@@ -39,7 +39,7 @@ function hostHtml(query, handshake) {
   return `<!doctype html><html><body style="margin:0"><script>
     const query = ${JSON.stringify(query)};
     const marks = (window.marks = { start: Date.now() });
-    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => location.origin + "/api/" };
+    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => location.origin + "/api/", 6: () => location.hash.slice(1), 7: () => {} };
     window.addEventListener("message", (event) => {
       let m; try { m = JSON.parse(event.data); } catch { return; }
       if (!m.instanceId && !m.methodName) return;
@@ -54,7 +54,8 @@ function hostHtml(query, handshake) {
         }), ${handshake});
       } else if (name === "getService") {
         const id = m.params?.[0];
-        if (id === "ms.vss-features.host-navigation-service") reply({ getQueryParams: { __proxyFunctionId: 1 }, setQueryParams: { __proxyFunctionId: 2 }, setDocumentTitle: { __proxyFunctionId: 3 }, navigate: { __proxyFunctionId: 4 } });
+        if (id === "ms.vss-features.host-navigation-service") reply({ getQueryParams: { __proxyFunctionId: 1 }, setQueryParams: { __proxyFunctionId: 2 }, setDocumentTitle: { __proxyFunctionId: 3 }, navigate: { __proxyFunctionId: 4 },
+          getHash: { __proxyFunctionId: 6 }, setHash: { __proxyFunctionId: 7 }, replaceHash: { __proxyFunctionId: 7 }, onHashChanged: { __proxyFunctionId: 7 } });
         else if (id === "ms.vss-features.location-service") reply({ getResourceAreaLocation: { __proxyFunctionId: 5 }, getServiceLocation: { __proxyFunctionId: 5 } });
         else reply(undefined, { message: "Service " + id + " is not in the harness" });
       } else if (name === "getAccessToken" || name === "getAppToken") reply({ token: "harness" });

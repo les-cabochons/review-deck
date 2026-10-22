@@ -1,10 +1,12 @@
 # AGENTS.md
 
+Packages are deep modules: see [src/README.md](./src/README.md) before adding or importing one.
+
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues for alextrepa/semantic-pr, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for les-cabochons/review-deck, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { invalidTrunkPattern, isTrunk, parseTrunkPatterns } from "../../src/stack/branches";
-import { type CherryPickResult, type CommitInfo, type RestackPr, type RestackRepo, Restacker } from "../../src/stack/restack";
+import { type CherryPickResult, type CommitInfo, type ParentPr, type RestackPr, type RestackRepo, Restacker } from "../../src/stack/restack";
 import { stackFor, stackIndex, type StackPr } from "../../src/stack/stacks";
 
 const TRUNKS = ["main", "dev", "uat", "*/00-*"];
@@ -59,7 +59,7 @@ interface Commit {
 class FakeRepo implements RestackRepo {
   commits = new Map<string, Commit>();
   branches = new Map<string, string>();
-  prs: (RestackPr & { status: "active" | "completed" })[] = [];
+  prs: (RestackPr & { status: ParentPr["status"]; lastSourceCommit?: string })[] = [];
   statuses = new Map<number, { state: string; description: string }>();
   comments: { pr: number; text: string }[] = [];
   forcePushAllowed = true;
@@ -91,6 +91,15 @@ class FakeRepo implements RestackRepo {
 
   async activePrsInto(branch: string) {
     return this.prs.filter((p) => p.status === "active" && p.targetBranch === branch);
+  }
+  async prFrom(branch: string): Promise<ParentPr | null> {
+    const from = this.prs.filter((p) => p.sourceBranch === branch).reverse();
+    const p = from.find((x) => x.status === "active") ?? from[0];
+    return p ? { ...p, lastSourceCommit: p.lastSourceCommit ?? null } : null;
+  }
+  bases = new Map<number, string>();
+  async pushedBase(prId: number) {
+    return this.bases.get(prId) ?? null;
   }
   async branchTip(branch: string) {
     return this.branches.get(branch) ?? null;
@@ -128,7 +137,12 @@ class FakeRepo implements RestackRepo {
     this.branches.delete(branch);
   }
   async retarget(prId: number, branch: string) {
-    this.prs.find((p) => p.id === prId)!.targetBranch = branch;
+    const pr = this.prs.find((p) => p.id === prId)!;
+    // Like Azure DevOps (TF401179): one active PR per source and target.
+    if (this.prs.some((p) => p.id !== prId && p.status === "active" && p.sourceBranch === pr.sourceBranch && p.targetBranch === branch)) {
+      throw new Error("TF401179: An active pull request for the source and target branch already exists.");
+    }
+    pr.targetBranch = branch;
   }
   async report(prId: number, state: "pending" | "succeeded" | "failed", description: string) {
     this.statuses.set(prId, { state, description });
@@ -172,7 +186,7 @@ test("restack: a push to the bottom layer cascades to every layer above", async 
   assert.deepEqual(repo.files("b", "a"), ["b1"], "only the layer's own commits move");
   assert.deepEqual(repo.files("c", "b"), ["c1", "c2"]);
   assert.equal(repo.statuses.get(3)?.state, "succeeded");
-  assert.ok(![...repo.branches.keys()].some((b) => b.startsWith("semantic-pr/")), "scratch branches are cleaned up");
+  assert.ok(![...repo.branches.keys()].some((b) => b.startsWith("review-deck/")), "scratch branches are cleaned up");
   // Replaying the same event finds everything up to date.
   const again = await new Restacker(repo, { trunkPatterns: TRUNKS }).branchMoved("a", old, tip);
   assert.deepEqual(again.map((o) => o.result), ["up-to-date"]);
@@ -243,6 +257,116 @@ test("restack: refuses merge commits, trunk sources, and reports missing Force p
   assert.equal(repo3.branches.get("dev"), devTip);
 });
 
+test("restack: a retarget blocked by a twin PR fails on the PR, naming the twin, and the layers above still follow", async () => {
+  const repo = stackRepo();
+  const aTip = repo.branches.get("a")!;
+  // !4 already merges b straight into main, so !2 can't be retargeted there.
+  repo.prs.push({ id: 4, title: "B again", sourceBranch: "b", targetBranch: "main", status: "active" });
+  repo.push("main", ["squash(a1,a2)"]);
+  repo.branches.delete("a");
+  repo.prs[0].status = "completed";
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).prCompleted(repo.prs[0], aTip);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "failed"], [3, "restacked"]]);
+  assert.equal(repo.prs[1].targetBranch, "a", "!2 keeps its target");
+  assert.ok(repo.isOn("b", "main"), "the branch itself was still moved");
+  assert.equal(repo.statuses.get(2)?.state, "failed");
+  assert.match(repo.statuses.get(2)!.description, /!4 already merges b into main/);
+  assert.ok(repo.isOn("c", "b"));
+});
+
+test("restack: an unexpected error on one layer is reported on that PR and doesn't stop its siblings", async () => {
+  const repo = stackRepo();
+  repo.push("d", ["d1"], "a");
+  repo.prs.push({ id: 5, title: "D", sourceBranch: "d", targetBranch: "a", status: "active" });
+  const realMerge = repo.mergeBase.bind(repo);
+  repo.mergeBase = async (x, y) => {
+    if (x === repo.branches.get("b")) throw new Error("GET mergebases returned 500");
+    return realMerge(x, y);
+  };
+  const old = repo.branches.get("a")!;
+  const tip = repo.push("a", ["a3"]);
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).branchMoved("a", old, tip);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "failed"], [5, "restacked"]]);
+  assert.match(repo.statuses.get(2)!.description, /Couldn't restack onto a: GET mergebases returned 500/);
+});
+
+test("manual restack: a layer whose parent merged moves onto where it merged, and is retargeted", async () => {
+  const repo = stackRepo();
+  const aTip = repo.branches.get("a")!;
+  // !1 squash-merged and the hook never came: !2 still targets a.
+  repo.push("main", ["squash(a1,a2)"]);
+  Object.assign(repo.prs[0], { status: "completed", lastSourceCommit: aTip });
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).restackPr(repo.prs[1]);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "restacked"], [3, "restacked"]]);
+  assert.equal(repo.prs[1].targetBranch, "main");
+  assert.deepEqual(repo.files("b", "main"), ["b1"]);
+  assert.ok(repo.isOn("c", "b"));
+});
+
+test("manual restack: follows an open parent's tip, clears a failure when up to date, refuses abandoned parents", async () => {
+  const repo = stackRepo();
+  repo.push("a", ["a3"]); // pushed without a hook
+  let outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).restackPr(repo.prs[1]);
+  assert.deepEqual(outcomes.map((o) => [o.pr, o.result]), [[2, "restacked"], [3, "restacked"]]);
+  assert.ok(repo.isOn("b", "a") && repo.isOn("c", "b"));
+  assert.deepEqual(repo.files("b", "a"), ["b1"]);
+
+  repo.statuses.set(2, { state: "failed", description: "conflict" });
+  outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).restackPr(repo.prs[1]);
+  assert.deepEqual(outcomes.map((o) => o.result), ["up-to-date"]);
+  assert.equal(repo.statuses.get(2)?.state, "succeeded", "a retry that finds nothing to do clears the old failure");
+
+  repo.prs[0].status = "abandoned";
+  outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).restackPr(repo.prs[1]);
+  assert.match((outcomes[0] as { reason: string }).reason, /abandoned/);
+});
+
+test("manual restack: after the parent was rewritten, only the layer's own commits are replayed", async () => {
+  const repo = stackRepo();
+  // !2 was last pushed on a's old tip; then a was rebased onto a newer main (new commit ids, same changes).
+  repo.bases.set(2, repo.branches.get("a")!);
+  repo.push("main", ["m2"]);
+  repo.branches.delete("a");
+  repo.push("a", ["a1'", "a2'"], "main");
+  const outcomes = await new Restacker(repo, { trunkPatterns: TRUNKS }).restackPr(repo.prs[1]);
+  assert.equal(outcomes[0].result, "restacked");
+  assert.deepEqual(repo.files("b", "a"), ["b1"], "a's old commits aren't replayed onto its rewritten history");
+});
+
+// ---------- service hook subscriptions (extension/src/app/restackHooks.ts) ----------
+
+import { syncRestackHooks } from "../src/app/restackHooks";
+
+test("hook sync: overlapping calls run one after another, leaving one subscription per event", async () => {
+  const subscriptions: { id: string; eventType: string; publisherInputs: { projectId: string }; consumerInputs: { url: string } }[] = [];
+  let ids = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = String(input);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+    if (url.includes("/api/stacks/hook")) return json({ url: "https://backend/api/hooks/ado?org=org", header: "x-review-deck-hook", secret: "s" });
+    // Every Azure DevOps call yields first, so unserialized syncs would interleave.
+    await new Promise((r) => setTimeout(r, 1));
+    if (init?.method === "GET") return json({ value: [...subscriptions] });
+    if (init?.method === "DELETE") {
+      subscriptions.splice(subscriptions.findIndex((s) => url.includes(s.id)), 1);
+      return new Response(null, { status: 204 });
+    }
+    const body = JSON.parse(String(init?.body));
+    subscriptions.push({ id: `sub-${++ids}`, eventType: body.eventType, publisherInputs: body.publisherInputs, consumerInputs: body.consumerInputs });
+    return json({});
+  }) as typeof fetch;
+  try {
+    const context = { hostUrl: "https://dev.azure.com/org/", projectId: "proj-1", token: "t", extensionId: "Pub.ext", backend: { url: "https://backend", token: "", scope: { organization: "org", projectId: "proj-1", projectName: "p" } } };
+    await Promise.all([syncRestackHooks(context, true), syncRestackHooks(context, true)]);
+    assert.deepEqual(subscriptions.map((s) => s.eventType).sort(), ["git.pullrequest.updated", "git.push"]);
+    await syncRestackHooks(context, false);
+    assert.deepEqual(subscriptions, []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 // ---------- service hooks (backend/src/stacks/hooks.ts) ----------
 
 import { hookSecret, jobsFromHook, verifyHookSecret } from "../../backend/src/stacks/hooks";
@@ -268,6 +392,7 @@ test("hooks: git.push and completed PRs become restack jobs; everything else is 
   assert.deepEqual(jobsFromHook("cabochons", { eventType: "git.pullrequest.updated", resource: { repository, pullRequestId: 7, status: "active" } }), []);
   assert.deepEqual(jobsFromHook("cabochons", { eventType: "workitem.updated" }), []);
   assert.deepEqual(jobsFromHook("cabochons", null), []);
+  assert.equal(jobsFromHook("cabochons", { eventType: "git.pullrequest.updated", resource: { repository, pullRequestId: 7, status: "completed" } }, "Pub.ext")[0].extensionId, "Pub.ext");
 });
 
 test("hooks: the secret is per organization and checked in constant time", () => {

@@ -4,7 +4,7 @@ import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { activeComments, type DetailScope, type MyGroup, policyFacts, type PrListSource, type PrSummary } from "./list";
 import { policyStatus } from "./adoSource";
-import type { CatalogProject, ListScope, RepoCatalog } from "./repoSelection";
+import type { CatalogProject, CatalogRepo, ListScope, RepoCatalog } from "./repoSelection";
 import { asVote, type Identity, identityImageUrl, type PrStatus, threadStatusFromNumber } from "./model";
 
 const PR_STATUS: Record<number, PrStatus> = { 1: "active", 2: "abandoned", 3: "completed" };
@@ -23,8 +23,13 @@ export class AdoPrListSource implements PrListSource {
     private readonly projectId: string,
     readonly currentUser: Identity,
     private readonly hostUrl: string,
-    readonly newPullRequestUrl?: string,
+    private readonly defaultRepoUrl: string,
   ) {}
+
+  newPullRequestUrl(repo?: CatalogRepo): string {
+    // Ids work in place of names, and say which project a repository picked from another one lives in.
+    return repo ? `${this.hostUrl}${repo.projectId}/_git/${repo.id}/pullrequestcreate` : `${this.defaultRepoUrl}/pullrequestcreate`;
+  }
 
   get currentProjectId(): string {
     return this.projectId;
@@ -136,9 +141,9 @@ export class AdoPrListSource implements PrListSource {
   }
 }
 
-/** GitStatusState: 1 pending, 2 succeeded, 3 failed, 4 error. The backend posts genre "semantic-pr", name "restack". */
+/** GitStatusState: 1 pending, 2 succeeded, 3 failed, 4 error. The backend posts genre "review-deck", name "restack". */
 function latestRestack(statuses: { context?: { genre?: string; name?: string }; state?: number; description?: string; creationDate?: Date }[]): PrSummary["restack"] {
-  const ours = statuses.filter((s) => s.context?.genre === "semantic-pr" && s.context?.name === "restack");
+  const ours = statuses.filter((s) => s.context?.genre === "review-deck" && s.context?.name === "restack");
   const latest = ours.sort((a, b) => new Date(b.creationDate ?? 0).getTime() - new Date(a.creationDate ?? 0).getTime())[0];
   if (!latest) return undefined;
   const state = latest.state === 1 ? "pending" : latest.state === 2 ? "succeeded" : "failed";

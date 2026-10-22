@@ -14,13 +14,27 @@ interface Subscription {
   consumerInputs?: { url?: string };
 }
 
+type SyncContext = { hostUrl: string; projectId: string; backend: BackendService; token: string; extensionId: string };
+
+/** The sync in flight: two overlapping ones would each find no subscriptions and both create a set. */
+let syncing: Promise<unknown> = Promise.resolve();
+
 /**
  * Makes this project's service hook subscriptions match `on`: the backend gives the hook URL and the
  * organization's secret header, and the subscriptions are created as the signed-in project admin
- * (Azure DevOps requires "Edit subscriptions" on the project).
+ * (Azure DevOps requires "Edit subscriptions" on the project). Calls run one after another.
  */
-export async function syncRestackHooks(context: { hostUrl: string; projectId: string; backend: BackendService; token: string }, on: boolean): Promise<void> {
-  const { hostUrl, projectId, backend, token } = context;
+export function syncRestackHooks(context: SyncContext, on: boolean): Promise<void> {
+  const run = syncing.then(
+    () => sync(context, on),
+    () => sync(context, on),
+  );
+  syncing = run.catch(() => {});
+  return run;
+}
+
+async function sync(context: SyncContext, on: boolean): Promise<void> {
+  const { hostUrl, projectId, backend, token, extensionId } = context;
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
   const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
     const response = await fetch(`${hostUrl}_apis/hooks/${path}${path.includes("?") ? "&" : "?"}api-version=7.1`, { method, headers, body: body ? JSON.stringify(body) : undefined });
@@ -29,7 +43,7 @@ export async function syncRestackHooks(context: { hostUrl: string; projectId: st
     return (response.status === 204 ? undefined : await response.json()) as T;
   };
 
-  const hook = await fetchHook(backend);
+  const hook = await fetchHook(backend, extensionId);
   const hookPath = hook.url.split("?")[0];
   const { value } = await call<{ value: Subscription[] }>("GET", "subscriptions?publisherId=tfs&consumerId=webHooks");
   const ours = value.filter((s) => s.publisherInputs?.projectId === projectId && s.consumerInputs?.url?.split("?")[0] === hookPath);
@@ -49,8 +63,9 @@ export async function syncRestackHooks(context: { hostUrl: string; projectId: st
   }
 }
 
-async function fetchHook(backend: BackendService): Promise<{ url: string; header: string; secret: string }> {
-  const query = new URLSearchParams({ organization: backend.scope.organization });
+/** `extensionId` (publisher.extension) goes into the hook URL, so the backend reads this installation's settings. */
+async function fetchHook(backend: BackendService, extensionId: string): Promise<{ url: string; header: string; secret: string }> {
+  const query = new URLSearchParams({ organization: backend.scope.organization, extension: extensionId });
   const response = await fetch(`${backend.url}/api/stacks/hook?${query}`, {
     headers: backend.token ? { authorization: `Bearer ${backend.token}` } : {},
     signal: AbortSignal.timeout(30_000),

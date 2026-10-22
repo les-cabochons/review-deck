@@ -50,10 +50,12 @@ async function main() {
     setTitle: (title) => (document.title = title),
     backendService: async () => null,
     projectSettings: async () => ({ aiTitles: false }),
-    saveProjectSettings: async () => {},
+    updateProjectSettings: async () => ({ aiTitles: false }),
     canManageProject: async () => false,
     savedReviews: () => ({ load: async () => null, save: async () => {} }),
+    reviewUrl: () => location.href,
     nativePrUrl: () => null,
+    createPrUrl: () => null,
     settingsUrl: () => null,
   };
   ReactDOM.render(<PrPage host={host} route={route} source={source} />, document.getElementById("root"));

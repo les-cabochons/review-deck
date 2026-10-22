@@ -20,7 +20,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     archive = {
       source  = "hashicorp/archive"
@@ -36,6 +36,13 @@ terraform {
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
+  # Only what this file creates; azurerm 5 registers nothing by default.
+  resource_providers_to_register = [
+    "Microsoft.CognitiveServices",
+    "Microsoft.Consumption",
+    "Microsoft.Storage",
+    "Microsoft.Web",
+  ]
 }
 
 resource "random_string" "suffix" {
@@ -46,6 +53,12 @@ resource "random_string" "suffix" {
 
 # Derives each organization's service hook secret (backend/src/stacks/hooks.ts). Rotating it breaks
 # existing hook subscriptions until a project admin turns auto-restack off and on again.
+# The key organizations save with the backend URL in Project settings → Review Deck.
+resource "random_password" "api_key" {
+  length  = 40
+  special = false
+}
+
 resource "random_password" "hook_key" {
   length  = 48
   special = false
@@ -151,7 +164,7 @@ resource "azurerm_windows_function_app" "this" {
     minimum_tls_version = "1.2"
 
     application_stack {
-      node_version = "~22"
+      node_version = "~24"
     }
 
     cors {
@@ -161,8 +174,9 @@ resource "azurerm_windows_function_app" "this" {
 
   app_settings = {
     WEBSITE_RUN_FROM_PACKAGE = "1"
-    # Checks the Bearer token the review page gets from SDK.getAppToken() (backend/src/auth.ts).
-    EXTENSION_SECRET = var.extension_secret
+    # The Bearer token the page sends (backend/src/auth.ts), saved with the backend URL in
+    # Project settings → Review Deck.
+    API_KEY = random_password.api_key.result
     # backend/src/titles.ts
     # The OpenAI-compatible v1 API, which serves every model in an AI Services resource.
     OPENAI_ENDPOINT           = var.titles_model == null ? "" : "https://${azurerm_cognitive_account.openai[0].custom_subdomain_name}.openai.azure.com/"
@@ -177,6 +191,9 @@ resource "azurerm_windows_function_app" "this" {
     HOOK_KEY     = random_password.hook_key.result
     ADO_PAT      = var.ado_pat
     EXTENSION_ID = var.extension_id
+    # Write function logs to LogFiles/Application/Functions even with no debugger attached: without
+    # Application Insights, that's the only record of why a queued restack job failed.
+    AzureFunctionsJobHost__logging__fileLoggingMode = "always"
   }
 }
 

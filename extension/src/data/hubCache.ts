@@ -28,7 +28,7 @@ export interface HubPatch {
 
 type SnapshotStorage = Pick<Storage, "getItem" | "setItem">;
 
-const KEY = "semantic-pr.hub.v1";
+const KEY = "review-deck.hub.v1";
 /** Opened the next morning, the hub shows a skeleton rather than yesterday's inbox. */
 const MAX_AGE_MS = 12 * 3_600_000;
 const browserStore = () => window.localStorage;

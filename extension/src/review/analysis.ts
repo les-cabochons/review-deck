@@ -90,10 +90,7 @@ let parsersPromise: Promise<SyntaxParsers> | null = null;
 
 function parsers(assetBase: string): Promise<SyntaxParsers> {
   const asset = (name: string) => new URL(name, assetBase).toString();
-  parsersPromise ??= SyntaxParsers.create(
-    { typescript: asset("tree-sitter-typescript.wasm"), tsx: asset("tree-sitter-tsx.wasm") },
-    { locateFile: (file: string) => asset(file) },
-  );
+  parsersPromise ??= SyntaxParsers.create((grammar) => asset(grammar.file), { locateFile: (file: string) => asset(file) });
   return parsersPromise;
 }
 

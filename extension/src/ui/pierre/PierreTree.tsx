@@ -61,24 +61,28 @@ export const PierreTree: React.FC<{
   maxHeight?: number;
   /** Comment threads per full path, shown next to the line counts. */
   comments?: Map<string, number>;
-}> = ({ files, onSelect, maxHeight = 360, comments }) => {
+  viewed?: ReadonlySet<string>;
+}> = ({ files, onSelect, maxHeight = 360, comments, viewed }) => {
   const host = React.useRef<HTMLDivElement>(null);
+  const instance = React.useRef<FileTree | null>(null);
   const theme = usePierreTheme();
   const current = React.useRef(onSelect);
   current.current = onSelect;
   // Narrow sidebar: drop the folders every file shares so rows show what differs instead of truncated paths.
   const prefix = commonDirectory(files.map((file) => file.path));
   const paths = files.map((file) => file.path.slice(prefix.length));
-  const counts = files.map((file) => lineCounts(file, comments?.get(file.path) ?? 0));
-  const identity = prefix + "\n" + paths.join("\n") + files.map((file) => file.status).join(",") + counts.map((c) => `${c.adds}/${c.dels}/${c.comments}`).join(",");
+  const counts = files.map((file) => ({ ...lineCounts(file, comments?.get(file.path) ?? 0), viewed: viewed?.has(file.path) ?? false }));
+  const identity = prefix + "\n" + paths.join("\n") + files.map((file) => file.status).join(",");
+  const decorations = React.useRef(new Map(paths.map((path, i) => [path, counts[i]])));
+  decorations.current = new Map(paths.map((path, i) => [path, counts[i]]));
+  const decorationKey = counts.map(c => `${c.adds}/${c.dels}/${c.comments}/${c.viewed}`).join(",");
   React.useLayoutEffect(() => {
     if (!host.current) return;
     const gitStatus: GitStatusEntry[] = files.map((file, i) => ({ path: paths[i], status: file.status }));
-    const byPath = new Map(paths.map((path, i) => [path, counts[i]]));
     const tree = new FileTree({
       paths, gitStatus, initialExpansion: "open", density: "compact", icons: ICONS, unsafeCSS: TREE_CSS,
       renderRowDecoration: ({ item }) => {
-        const count = byPath.get(item.path);
+        const count = decorations.current.get(item.path);
         return count ? countsDecoration(count) : null;
       },
       onSelectionChange: (selected) => {
@@ -86,6 +90,7 @@ export const PierreTree: React.FC<{
         if (path && paths.includes(path)) current.current(prefix + path);
       },
     });
+    instance.current = tree;
     const resize = () => {
       if (host.current) host.current.style.height = `${Math.min(maxHeight, Math.max(36, tree.getVisibleCount() * tree.getItemHeight() + 8))}px`;
     };
@@ -94,8 +99,11 @@ export const PierreTree: React.FC<{
     tree.render({ containerWrapper: host.current });
     // cleanUp() leaves its <file-tree-container> behind; drop it so a rebuild doesn't stack below an empty one.
     const mount = host.current;
-    return () => { unsubscribe(); tree.cleanUp(); mount.replaceChildren(); };
+    return () => { unsubscribe(); tree.cleanUp(); instance.current = null; mount.replaceChildren(); };
   }, [identity, maxHeight]);
+  React.useLayoutEffect(() => {
+    if (host.current) instance.current?.render({ containerWrapper: host.current });
+  }, [decorationKey]);
   return (
     <div className="pierre-tree-wrap">
       {prefix && <div className="pierre-tree-prefix" title={prefix}>{prefix}</div>}
@@ -123,13 +131,14 @@ function lineCounts(file: FileDiff, comments: number): LineCounts {
 }
 
 /** "+32 −2 [bubble]1" at the end of a file row, like Graphite's file list (TREE_CSS draws the bubble). */
-function countsDecoration({ adds, dels, comments }: LineCounts) {
+function countsDecoration({ adds, dels, comments, viewed }: LineCounts & { viewed: boolean }) {
   const parts = [
+    viewed ? { text: "✓ ", color: "var(--accent)" } : null,
     adds ? { text: `+${adds}`, color: "var(--ok)" } : null,
     dels ? { text: `${adds ? " " : ""}−${dels}`, color: "var(--err)" } : null,
     comments ? { text: String(comments), color: "var(--fg2)" } : null,
   ].filter((part) => part !== null);
   if (!parts.length) return null;
-  const title = [`${adds} added`, `${dels} removed`, comments ? `${comments} comment thread${comments === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
+  const title = [viewed ? "Viewed" : "Not viewed", `${adds} added`, `${dels} removed`, comments ? `${comments} comment thread${comments === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
   return { text: parts.map((part) => part.text).join(""), title, parts };
 }

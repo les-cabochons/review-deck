@@ -29,7 +29,7 @@ await esbuild.build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   minify: true,
   // Native runtime, copied below; the Functions worker provides @azure/functions-core.
   external: ["onnxruntime-node", "onnxruntime-common", "@azure/functions-core"],
@@ -64,7 +64,7 @@ for (const file of MODEL_FILES) {
   cpSync(join(cache, MODEL, file), target);
 }
 
-writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "semantic-pr-embed", type: "module", main: "dist/index.mjs" }, null, 2)}\n`);
+writeFileSync(join(out, "package.json"), `${JSON.stringify({ name: "review-deck-embed", type: "module", main: "dist/index.mjs" }, null, 2)}\n`);
 cpSync(join(here, "host.json"), join(out, "host.json"));
 
 // Content hash, so Terraform redeploys exactly when the package changes.

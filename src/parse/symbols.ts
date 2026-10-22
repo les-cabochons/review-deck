@@ -8,6 +8,8 @@ export interface Decl {
   startRow: number;
   endRow: number;
   nameRow: number;
+  /** For a constructor, the class it constructs: changing it stands for the class (`new Foo(...)`). */
+  constructs?: string;
   /** Identifiers used anywhere inside the declaration (excluding its own name). */
   refs: Set<string>;
 }
@@ -35,41 +37,67 @@ export interface LineFacts {
 export interface FileSymbols {
   decls: Decl[];
   lines: Map<number, LineFacts>;
-  /** Raw module specifiers of import / re-export statements. */
-  imports: string[];
+  /** Modules this file imports (or re-exports from). */
+  imports: ImportRef[];
 }
 
-const DECL_KINDS: Record<string, Decl["kind"]> = {
-  function_declaration: "function",
-  generator_function_declaration: "function",
-  class_declaration: "class",
-  abstract_class_declaration: "class",
-  interface_declaration: "interface",
-  type_alias_declaration: "type",
-  enum_declaration: "enum",
-  method_definition: "method",
-  method_signature: "method",
-  abstract_method_signature: "method",
-  public_field_definition: "field",
-};
+/** One imported module, resolved against the PR's changed files by `match`. */
+export interface ImportRef {
+  /** Slash-separated module path; starts with `./` or `../` when relative to the importing file. */
+  path: string;
+  /**
+   * How a non-relative path finds files: `package` is the JS monorepo convention (`pkg/sub`),
+   * `suffix` matches a file path ending in it (`com/acme/Foo`), and `directory` matches every file
+   * in a directory ending in it (Go packages, C# namespaces).
+   */
+  match: "package" | "suffix" | "directory";
+}
 
-const IDENT_TYPES = new Set([
-  "identifier",
-  "type_identifier",
-  "property_identifier",
-  "shorthand_property_identifier",
-  "shorthand_property_identifier_pattern",
-  "private_property_identifier",
-]);
+/** Where a leaf identifier is matched: plain `name`, member `.name`, or both. */
+export type KeyStyle = "plain" | "member" | "both";
 
-const TEST_CALLS = new Set(["describe", "it", "test", "suite"]);
+/** A declaration a spec found: its kind and the node holding its name. */
+export interface DeclSite {
+  kind: Decl["kind"];
+  name: Node;
+  /** Type named in the declaration itself (`void Foo::bar()`), when no enclosing declaration says it. */
+  scope?: string;
+}
 
-export function extractSymbols(tree: Tree): FileSymbols {
+/**
+ * What one grammar contributes to symbol extraction. The walker in `extractSymbols` is shared; a
+ * spec only names the node types and recognizes the constructs specific to its language. Hooks get
+ * the node's `type` alongside it: reading `node.type` crosses into wasm, so the walker reads it once.
+ */
+export interface SymbolSpec {
+  /** Leaf node types that are identifiers. */
+  idents: ReadonlySet<string>;
+  /** Match style of an identifier leaf (see `isField` for its position in its parent). */
+  keyStyle(node: Node, type: string): KeyStyle;
+  /** Node types holding a comment (not descended into). */
+  comments: ReadonlySet<string>;
+  /** Node types whose text is a string literal's content. */
+  strings: ReadonlySet<string>;
+  /** String literal node types that may span lines (every row counts as code). */
+  multilineStrings: ReadonlySet<string>;
+  /** A test case or suite (`describe("x", ...)`): its label and the node holding it. Checked before `decl`. */
+  test?(node: Node, type: string, path: string): { label: string; at: Node } | null;
+  /** Declaration introduced by `node`. */
+  decl(node: Node, type: string, stack: readonly Decl[]): DeclSite | null;
+  /** Names declared by `node` that get no declaration of their own (property signatures, fields). */
+  defNames?(node: Node, type: string): { name: Node; style: KeyStyle }[];
+  /** Modules imported by `node` (a file at `path`); `isImport` marks its rows as an import statement. */
+  imports?(node: Node, type: string, path: string): { refs: ImportRef[]; isImport: boolean } | null;
+  /** True for a method that constructs its type (`constructor`, `__init__`, `Foo()` in `class Foo`). */
+  isConstructor?(name: string, owner: Pick<Decl, "name" | "kind">): boolean;
+}
+
+export function extractSymbols(tree: Tree, spec: SymbolSpec, path: string): FileSymbols {
   const decls: Decl[] = [];
   const lines = new Map<number, LineFacts>();
-  const imports: string[] = [];
-  const defNameIds = new Set<number>();
-  const memberDefIds = new Set<number>();
+  const imports: ImportRef[] = [];
+  // Identifier leaves that declare a name, by node id. A non-null style overrides `keyStyle`.
+  const declared = new Map<number, KeyStyle | null>();
 
   const line = (row: number): LineFacts => {
     let f = lines.get(row);
@@ -80,91 +108,66 @@ export function extractSymbols(tree: Tree): FileSymbols {
     return f;
   };
 
-  const markDefName = (n: Node | null) => {
-    if (n) defNameIds.add(n.id);
-  };
-
-  const walk = (node: Node, stack: Decl[], inImport: boolean) => {
+  const walk = (node: Node, stack: Decl[]) => {
     const type = node.type;
     let decl: Decl | null = null;
 
-    const kind = DECL_KINDS[type];
-    if (kind) {
-      const nameNode = node.childForFieldName("name");
-      if (nameNode) {
-        markDefName(nameNode);
-        decl = makeDecl(nameNode.text, kind, node, nameNode, stack);
-      }
-    } else if (type === "variable_declarator") {
-      const nameNode = node.childForFieldName("name");
-      const value = node.childForFieldName("value");
-      const statement = node.parent;
-      const topLevel = statement?.parent?.type === "program" || statement?.parent?.parent?.type === "program";
-      // Locals are not symbols: only module-level and function-valued declarators define a name.
-      if (nameNode?.type === "identifier" && (topLevel || value?.type === "arrow_function" || value?.type === "function_expression")) {
-        markDefName(nameNode);
-        decl = makeDecl(nameNode.text, "variable", node, nameNode, stack);
-      }
-    } else if (type === "property_signature") {
-      markDefName(node.childForFieldName("name"));
-    } else if (type === "required_parameter" || type === "optional_parameter") {
-      // TS parameter properties: `constructor(public readonly x: T)` declare a member.
-      if (node.children.some((c) => c?.type === "accessibility_modifier" || c?.type === "readonly")) {
-        const pattern = node.childForFieldName("pattern");
-        markDefName(pattern);
-        if (pattern) memberDefIds.add(pattern.id);
-      }
-    } else if (type === "call_expression") {
-      const fn = node.childForFieldName("function");
-      const args = node.childForFieldName("arguments");
-      const first = args?.namedChildren[0];
-      if (fn && TEST_CALLS.has(fn.text) && first && (first.type === "string" || first.type === "template_string")) {
-        const label = first.text.slice(1, -1);
-        decl = makeDecl(`${fn.text}("${label}")`, "test", node, first, stack);
-      }
-    } else if (type === "import_statement" || type === "export_statement") {
-      const source = node.childForFieldName("source");
-      if (source) imports.push(source.text.slice(1, -1));
-      if (type === "import_statement") {
-        inImport = true;
-        for (let r = node.startPosition.row; r <= node.endPosition.row; r++) line(r).isImport = true;
-      }
+    const test = spec.test?.(node, type, path);
+    const found = test ? null : spec.decl(node, type, stack);
+    if (test) {
+      decl = makeDecl({ kind: "test", name: test.at }, test.label, node, stack, spec);
+    } else if (found) {
+      // Members are matched as `.name`; plain identifiers keep their own style.
+      declared.set(found.name.id, found.kind === "method" || found.kind === "field" ? "member" : null);
+      decl = makeDecl(found, found.name.text, node, stack, spec);
+    } else {
+      for (const d of spec.defNames?.(node, type) ?? []) declared.set(d.name.id, d.style === "plain" ? null : d.style);
+    }
+    const imported = spec.imports?.(node, type, path);
+    if (imported) {
+      imports.push(...imported.refs);
+      if (imported.isImport) for (let r = node.startPosition.row; r <= node.endPosition.row; r++) line(r).isImport = true;
     }
 
     if (decl) decls.push(decl);
     const nextStack = decl ? [...stack, decl] : stack;
 
-    if (type === "comment") {
+    if (spec.comments.has(type)) {
       for (let r = node.startPosition.row; r <= node.endPosition.row; r++) line(r).comments.push(node.text);
       return;
     }
-    if (type === "string_fragment") {
+    if (spec.strings.has(type)) {
       line(node.startPosition.row).strings.push(node.text);
     }
     if (node.childCount === 0) {
       const f = line(node.startPosition.row);
       f.hasCode = true;
-      if (IDENT_TYPES.has(type)) {
-        f.idents.push({ text: node.text, keys: identKeys(type, node.text, memberDefIds.has(node.id)), isDefName: defNameIds.has(node.id) });
-        for (const d of stack) if (d.name !== node.text) d.refs.add(node.text);
-        if (decl && decl.name !== node.text) decl.refs.add(node.text);
+      if (spec.idents.has(type)) {
+        const style = declared.get(node.id) ?? spec.keyStyle(node, type);
+        f.idents.push({ text: node.text, keys: identKeys(style, node.text), isDefName: declared.has(node.id) });
+        for (const d of nextStack) if (d.name !== node.text) d.refs.add(node.text);
       }
       return;
     }
-    // Multi-line strings/templates: mark every row as code.
-    if (type === "template_string" || type === "string") {
+    if (spec.multilineStrings.has(type)) {
       for (let r = node.startPosition.row; r <= node.endPosition.row; r++) line(r).hasCode = true;
     }
-    for (const child of node.children) if (child) walk(child, nextStack, inImport);
+    for (const child of node.children) if (child) walk(child, nextStack);
   };
 
-  walk(tree.rootNode, [], false);
+  walk(tree.rootNode, []);
   return { decls, lines, imports };
 }
 
-function identKeys(type: string, text: string, memberDef: boolean): string[] {
-  if (type === "property_identifier" || type === "private_property_identifier") return [`.${text}`];
-  if (type.startsWith("shorthand_property_identifier") || memberDef) return [text, `.${text}`];
+/** True when `node` sits in field `field` of a `parentType` node. */
+export function isField(node: Node, parentType: string, field: string): boolean {
+  const parent = node.parent;
+  return parent?.type === parentType && parent.childForFieldName(field)?.id === node.id;
+}
+
+function identKeys(style: KeyStyle, text: string): string[] {
+  if (style === "member") return [`.${text}`];
+  if (style === "both") return [text, `.${text}`];
   return [text];
 }
 
@@ -173,16 +176,25 @@ export function declKey(decl: Pick<Decl, "kind" | "name">): string {
   return decl.kind === "method" || decl.kind === "field" ? `.${decl.name}` : decl.name;
 }
 
-function makeDecl(name: string, kind: Decl["kind"], node: Node, nameNode: Node, stack: Decl[]): Decl {
-  const parent = [...stack].reverse().find((d) => d.kind !== "test");
-  const qualified = kind === "test" || !parent ? name : `${parent.qualified}.${name}`;
+/** Nearest enclosing declaration that is not a test. */
+export function enclosingDecl(stack: readonly Decl[]): Decl | undefined {
+  for (let i = stack.length - 1; i >= 0; i--) if (stack[i].kind !== "test") return stack[i];
+  return undefined;
+}
+
+function makeDecl(site: DeclSite, name: string, node: Node, stack: Decl[], spec: SymbolSpec): Decl {
+  const { kind, scope } = site;
+  const parent = enclosingDecl(stack);
+  const prefix = [parent?.qualified, scope].filter(Boolean).join(".");
+  const owner = scope ? { name: scope, kind: "class" as const } : parent;
   return {
     name,
-    qualified,
+    qualified: kind === "test" || !prefix ? name : `${prefix}.${name}`,
     kind,
+    constructs: kind !== "test" && owner && spec.isConstructor?.(name, owner) ? owner.name : undefined,
     startRow: node.startPosition.row,
     endRow: node.endPosition.row,
-    nameRow: nameNode.startPosition.row,
+    nameRow: site.name.startPosition.row,
     refs: new Set(),
   };
 }

@@ -1,14 +1,18 @@
-import { MockPrListSource } from "../data/list";
+import { type Feature, type OrganizationSettings, readOrganizationSettings } from "../data/access";
+import { MockPrListSource, type PrSummary } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
+import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
-import type { BackendService } from "../review/backend";
+import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 
-const SETTINGS_KEY = "semantic-pr.local.projectSettings";
-const TAGS_KEY = "semantic-pr.local.tagStyles";
-const FAVORITES_KEY = "semantic-pr.local.favoriteRepos";
+const SETTINGS_KEY = "review-deck.local.projectSettings";
+const TAGS_KEY = "review-deck.local.tagStyles";
+const FAVORITES_KEY = "review-deck.local.favoriteRepos";
+const BACKEND_KEY = "review-deck.local.backend";
+const ORGANIZATION_KEY = "review-deck.local.organizationSettings";
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -20,6 +24,7 @@ export class LocalHost implements AppHost {
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
   private readonly reviews = new Map<string, SavedReview>();
+  private readonly releaseCatalog = new MockReleaseCatalog();
 
   private constructor(private readonly list: MockPrListSource) {
     window.addEventListener("popstate", () => this.listeners.emit(this.route()));
@@ -35,6 +40,10 @@ export class LocalHost implements AppHost {
       if (id) history.replaceState(null, "", host.href({ view: "pr", repo: "t3code", pr: id }));
     }
     return host;
+  }
+
+  get projectId(): string {
+    return this.list.currentProjectId;
   }
 
   get currentUser(): Identity {
@@ -58,9 +67,16 @@ export class LocalHost implements AppHost {
     return this.list;
   }
 
-  /** The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. */
+  /**
+   * The dev shell has no repository picker; `?currentRepo=<id>` stands in for one. The Changelog page opens on the
+   * made-up repository with tags, as Azure DevOps always has one selected there.
+   */
   async currentRepository(): Promise<{ id: string; name: string } | null> {
     const id = new URLSearchParams(location.search).get("currentRepo");
+    const releaseRepos = await this.releaseCatalog.repositories();
+    if (!id && document.body.dataset.page === "changelog") return releaseRepos[0] ?? null;
+    const known = releaseRepos.find((r) => r.id === id);
+    if (known) return known;
     const pr = id && (await this.list.list()).find((p) => p.repository.id === id);
     return pr ? { id, name: pr.repository.name } : null;
   }
@@ -82,10 +98,55 @@ export class LocalHost implements AppHost {
     document.title = title;
   }
 
-  /** `?backend=http://localhost:7071` points at a local `func start` (which skips the token check). */
+  /**
+   * `?backend=http://localhost:7071` points at a local `func start` (which skips the token check without
+   * API_KEY); otherwise the backend saved in the dev shell's Organization settings → Review Deck.
+   */
   async backendService(): Promise<BackendService | null> {
-    const url = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "") || BACKEND_URL;
-    return url ? { url, token: "", scope: { organization: "local", projectId: "t3code", projectName: "t3code" } } : null;
+    const scope = { organization: "local", projectId: "t3code", projectName: "t3code" };
+    const query = new URLSearchParams(location.search).get("backend")?.replace(/\/+$/, "");
+    if (query) return { url: query, token: "", scope };
+    const own = await this.backendSettings();
+    return own && { url: own.url, token: own.key, scope };
+  }
+
+  async backendSettings(): Promise<BackendSettings | null> {
+    try {
+      return readBackendSettings(JSON.parse(localStorage.getItem(BACKEND_KEY) ?? "null"));
+    } catch {
+      return null;
+    }
+  }
+
+  async saveBackendSettings(settings: BackendSettings | null): Promise<void> {
+    if (settings) localStorage.setItem(BACKEND_KEY, JSON.stringify(settings));
+    else localStorage.removeItem(BACKEND_KEY);
+  }
+
+  async canManageOrganization(): Promise<boolean> {
+    return true;
+  }
+
+  async organizationSettings(): Promise<OrganizationSettings> {
+    try {
+      return readOrganizationSettings(JSON.parse(localStorage.getItem(ORGANIZATION_KEY) ?? "null"));
+    } catch {
+      return { ...readOrganizationSettings(null), aiTitles: false };
+    }
+  }
+
+  async updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings> {
+    const settings = change(await this.organizationSettings());
+    localStorage.setItem(ORGANIZATION_KEY, JSON.stringify(settings));
+    return settings;
+  }
+
+  /** No Azure DevOps navigation here: the hub shows, and says when it's off. */
+  async syncFeatureVisibility(_feature: Feature): Promise<void> {}
+
+  /** The demo's projects. */
+  async organizationProjects(): Promise<{ id: string; name: string }[]> {
+    return (await this.list.catalog()).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** In memory, so a reload analyzes again with the code being worked on. */
@@ -106,8 +167,10 @@ export class LocalHost implements AppHost {
     }
   }
 
-  async saveProjectSettings(settings: ProjectSettings): Promise<void> {
+  async updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings> {
+    const settings = { ...(await this.projectSettings()), ...change };
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    return settings;
   }
 
   async canManageProject(): Promise<boolean> {
@@ -116,6 +179,12 @@ export class LocalHost implements AppHost {
 
   /** No Azure DevOps here: the setting is saved, and nothing calls the backend. */
   async syncRestackHooks(): Promise<void> {}
+
+  /** No backend here: pretends the PR was already up to date. */
+  async restack(pr: PrSummary): Promise<RestackOutcome[]> {
+    await new Promise((r) => setTimeout(r, 600));
+    return [{ pr: pr.id, result: "up-to-date" }];
+  }
 
   /** Styles in localStorage; renames and deletions change the demo's pull requests in memory. */
   tags(): TagStore {
@@ -153,8 +222,25 @@ export class LocalHost implements AppHost {
     };
   }
 
+  /** A made-up repository's tags and pipeline runs (data/mockReleases.ts). */
+  async releases(): Promise<MockReleaseCatalog> {
+    return this.releaseCatalog;
+  }
+
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string {
+    return new URL(this.href(route), location.href).href;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `https://github.com/pingdotgg/t3code/pull/${route.pr}`;
+  }
+
+  createPrUrl(_route: Extract<Route, { view: "pr" }>, source: string, target: string): string {
+    return `https://github.com/pingdotgg/t3code/compare/${encodeURIComponent(target)}...${encodeURIComponent(source)}`;
+  }
+
+  fileUrl(_route: Extract<Route, { view: "pr" }>, path: string, commit: string): string {
+    return `https://github.com/pingdotgg/t3code/blob/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`;
   }
 
   private href(route: Route): string {

@@ -1,10 +1,10 @@
 import * as React from "react";
-import type { FileAnchor, NewThread } from "../data/model";
+import type { NewThread, ThreadFile } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 
 interface LineComments {
-  /** Builds the new-thread payload for a line in the current comparison (throws if it is stale). */
-  toThread: (file: FileAnchor, content: string) => NewThread;
+  /** Builds the new-thread payload for a line or file in the current comparison (throws if it is stale). */
+  toThread: (file: ThreadFile, content: string) => NewThread;
   canComment: (path: string) => boolean;
 }
 export const LineCommentContext = React.createContext<LineComments | null>(null);
@@ -12,7 +12,7 @@ export const LineCommentContext = React.createContext<LineComments | null>(null)
 export function lineThreadInput(
   review: Pick<ReviewModel, "changes" | "comparison">,
   selection: { iteration: number; compareTo: number },
-  file: FileAnchor,
+  file: ThreadFile,
   content: string,
 ): NewThread {
   if (review.comparison.iteration !== selection.iteration || review.comparison.compareTo !== selection.compareTo) {

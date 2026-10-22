@@ -4,6 +4,8 @@ import type { PrSummary } from "../../data/list";
 import { CHECKS, reviewState, STATE_ICON, stateKey } from "../prState";
 import { cx, Time } from "../util";
 import type { StackPosition } from "../../../../src/stack/stacks";
+import { isTrunk } from "../../../../src/stack/branches";
+import type { RestackOutcome } from "../../review/backend";
 import { type StackView, withDetails } from "./useStack";
 
 const RESTACK: Record<string, { icon: string; tone: string; label: string }> = {
@@ -16,9 +18,15 @@ const RESTACK: Record<string, { icon: string; tone: string; label: string }> = {
  * The stack in the Overview sidebar, Graphite-style: newest layer on top, the trunk (or the branch the
  * bottom layer targets) underneath, the current PR highlighted. Click a layer to open it.
  */
-export const StackPanel: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => void }> = ({ view, onOpen }) => {
+export const StackPanel: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => void; onRestack: (pr: PrSummary) => Promise<RestackOutcome[]> }> = ({
+  view,
+  onOpen,
+  onRestack,
+}) => {
   const { position } = view;
   const current = withDetails(view, position.pr);
+  // A bottom layer (into a trunk branch) has nothing below it to restack onto.
+  const restackable = !isTrunk(position.pr.targetBranch, view.trunkBranches);
   return (
     <section className="side-section stack-panel" aria-label="Stack">
       <h3>
@@ -31,6 +39,7 @@ export const StackPanel: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => 
       </h3>
       <StackLayers position={position} details={view.details} onOpen={onOpen} />
       {current.restack && <RestackNote restack={current.restack} />}
+      {restackable && <RestackAction pr={position.pr} onRestack={onRestack} onDone={view.reload} />}
     </section>
   );
 };
@@ -64,7 +73,7 @@ export const StackLayers: React.FC<{
         {!position.base.trunk && (
           <span className="muted">
             {" "}
-            · no open PR. Its parent merged or was abandoned; auto-restack moves this layer when that PR completes, or retarget it.
+            · no open PR. Its parent merged or was abandoned: restack to move this layer onto where it merged.
           </span>
         )}
       </li>
@@ -124,6 +133,44 @@ const RestackNote: React.FC<{ restack: NonNullable<PrSummary["restack"]> }> = ({
     </p>
   );
 };
+
+/** "Restack" on demand: a retry after a failure, or a merge auto-restack missed. Says what happened. */
+const RestackAction: React.FC<{ pr: PrSummary; onRestack: (pr: PrSummary) => Promise<RestackOutcome[]>; onDone: () => void }> = ({ pr, onRestack, onDone }) => {
+  const [state, setState] = React.useState<{ busy: boolean; result?: { tone: string; text: string } }>({ busy: false });
+  const run = () => {
+    setState({ busy: true });
+    onRestack(pr)
+      .then((outcomes) => {
+        setState({ busy: false, result: summarize(pr.id, outcomes) });
+        onDone();
+      })
+      .catch((e: Error) => setState({ busy: false, result: { tone: "error", text: e.message } }));
+  };
+  return (
+    <div className="stack-restack-action">
+      <button className="link-button" disabled={state.busy} onClick={run} title="Rebase this layer on the one below it (or where it merged), then the layers above">
+        <Icon iconName={state.busy ? "ProgressLoopOuter" : "BranchRebase"} /> {state.busy ? "Restacking…" : "Restack"}
+      </button>
+      {state.result && (
+        <span className={`tone-${state.result.tone}`} role="status">
+          {state.result.text}
+        </span>
+      )}
+    </div>
+  );
+};
+
+function summarize(prId: number, outcomes: RestackOutcome[]): { tone: string; text: string } {
+  const own = outcomes.find((o) => o.pr === prId);
+  const failed = outcomes.filter((o): o is Extract<RestackOutcome, { result: "failed" }> => o.result === "failed");
+  const above = outcomes.filter((o) => o.pr !== prId && o.result === "restacked").length;
+  const more = above ? ` and ${above} layer${above === 1 ? "" : "s"} above` : "";
+  if (own?.result === "failed") return { tone: "warning", text: own.reason };
+  if (failed.length) return { tone: "warning", text: `!${failed[0].pr}: ${failed[0].reason}` };
+  if (own?.result === "restacked") return { tone: "success", text: `Restacked onto ${own.onto}${more}.` };
+  if (own?.result === "up-to-date") return { tone: "success", text: "Already up to date." };
+  return { tone: "info", text: "Nothing to restack." };
+}
 
 /** "Stack · 2 of 4 ‹ !17826 · !18665 ›" under the PR header, GitHub-style, on every tab. */
 export const StackBar: React.FC<{ view: StackView; onOpen: (pr: PrSummary) => void }> = ({ view, onOpen }) => {

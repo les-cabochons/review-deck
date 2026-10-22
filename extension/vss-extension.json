@@ -1,10 +1,10 @@
 {
   "manifestVersion": 1,
-  "id": "semantic-pr-review",
+  "id": "review-deck",
   "publisher": "Cabochonio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "name": "Review Deck",
-  "description": "A pull request review page that groups changes by concern instead of by file.",
+  "description": "A pull request review page that groups changes by concern instead of by file, and a changelog of your tags and releases with their pipeline artifacts.",
   "public": false,
   "icons": {
     "default": "images/logo.png"
@@ -16,20 +16,20 @@
   },
   "repository": {
     "type": "git",
-    "uri": "https://github.com/alextrepa/semantic-pr"
+    "uri": "https://github.com/les-cabochons/review-deck"
   },
   "links": {
     "getstarted": {
-      "uri": "https://github.com/alextrepa/semantic-pr#azure-devops-services-extension"
+      "uri": "https://github.com/les-cabochons/review-deck#azure-devops-services-extension"
     },
     "repository": {
-      "uri": "https://github.com/alextrepa/semantic-pr"
+      "uri": "https://github.com/les-cabochons/review-deck"
     },
     "issues": {
-      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+      "uri": "https://github.com/les-cabochons/review-deck/issues"
     },
     "support": {
-      "uri": "https://github.com/alextrepa/semantic-pr/issues"
+      "uri": "https://github.com/les-cabochons/review-deck/issues"
     }
   },
   "CustomerQnASupport": {
@@ -44,7 +44,10 @@
     "Code Review",
     "Diff",
     "Stacked PRs",
-    "Git"
+    "Git",
+    "Changelog",
+    "Releases",
+    "Conventional Commits"
   ],
   "categories": [
     "Azure Repos"
@@ -56,6 +59,9 @@
   ],
   "scopes": [
     "vso.code_write",
+    "vso.code_manage",
+    "vso.notification_write",
+    "vso.build",
     "vso.work",
     "vso.project",
     "vso.hooks_write"
@@ -76,7 +82,40 @@
           "dark": "images/deck-dark.png"
         },
         "order": 100
-      }
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.deck-feature"
+          }
+        }
+      ]
+    },
+    {
+      "id": "changelog-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Changelog: the repository's tags and releases, with generated changelogs and pipeline artifacts.",
+      "targets": [
+        "ms.vss-code-web.code-hub-group"
+      ],
+      "properties": {
+        "name": "Changelog",
+        "uri": "dist/changelog.html",
+        "icon": {
+          "light": "images/changelog-light.png",
+          "dark": "images/changelog-dark.png"
+        },
+        "order": 101
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.changelog-feature"
+          }
+        }
+      ]
     },
     {
       "id": "settings-hub",
@@ -92,6 +131,19 @@
       }
     },
     {
+      "id": "org-settings-hub",
+      "type": "ms.vss-web.hub",
+      "description": "Organization settings for Review Deck: which projects get the Deck and Changelog, AI group titles, and the backend.",
+      "targets": [
+        "ms.vss-web.collection-admin-hub-group"
+      ],
+      "properties": {
+        "name": "Review Deck",
+        "uri": "dist/org-settings.html",
+        "order": 100
+      }
+    },
+    {
       "id": "open-review-action",
       "type": "ms.vss-web.action",
       "description": "Opens the current pull request in Review Deck.",
@@ -101,8 +153,53 @@
       "properties": {
         "text": "Open in Review Deck",
         "title": "Open this pull request in Review Deck",
+        "icon": "images/logo.png",
         "uri": "dist/action.html",
         "registeredObjectId": "open-review-action"
+      },
+      "constraints": [
+        {
+          "name": "Feature",
+          "properties": {
+            "featureId": "Cabochonio.review-deck.deck-feature"
+          }
+        }
+      ]
+    },
+    {
+      "id": "deck-feature",
+      "type": "ms.vss-web.feature",
+      "description": "Shows the Deck hub under Repos. Set in Organization settings → Review Deck.",
+      "targets": [
+        "ms.vss-web.managed-features"
+      ],
+      "properties": {
+        "name": "Review Deck: Deck",
+        "userConfigurable": false,
+        "hostConfigurable": true,
+        "hostScopes": [
+          null,
+          "project"
+        ],
+        "defaultState": true
+      }
+    },
+    {
+      "id": "changelog-feature",
+      "type": "ms.vss-web.feature",
+      "description": "Shows the Changelog hub under Repos. Set in Organization settings → Review Deck.",
+      "targets": [
+        "ms.vss-web.managed-features"
+      ],
+      "properties": {
+        "name": "Review Deck: Changelog",
+        "userConfigurable": false,
+        "hostConfigurable": true,
+        "hostScopes": [
+          null,
+          "project"
+        ],
+        "defaultState": true
       }
     }
   ],
@@ -127,6 +224,46 @@
     },
     {
       "path": "assets/tree-sitter-tsx.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-python.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-go.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-rust.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-java.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-c_sharp.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-ruby.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-php.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-cpp.wasm",
       "addressable": true,
       "contentType": "application/wasm"
     }

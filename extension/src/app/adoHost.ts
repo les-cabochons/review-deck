@@ -1,13 +1,20 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
+import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
+import { getClient } from "azure-devops-extension-api";
+import { type Feature, type OrganizationSettings, readOrganizationSettings } from "../data/access";
 import { AdoPrListSource } from "../data/adoList";
+import type { PrSummary } from "../data/list";
 import { AdoPrSource } from "../data/adoSource";
 import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
-import type { BackendService } from "../review/backend";
+import type { ReleaseCatalog } from "../data/releases";
+import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
-import { type AppHost, BACKEND_URL, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, parseRoute, type ProjectSettings, readProjectSettings, type Route } from "./host";
+import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
+import { featureContributionId, syncFeatureStates } from "./featureStates";
+import { HashRouter } from "./hashRoute";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -22,52 +29,69 @@ const FAVORITES_KEY = "favorite-repos";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
 const EDIT_PROJECT = 2;
+/** Organization-wide (Default scope) extension data value holding the organization's own backend. */
+const BACKEND_KEY = "backend";
+/** Organization-wide extension data collection holding the organization's settings (data/access.ts), as one document. */
+const ORGANIZATION_COLLECTION = "organization-settings";
+const ORGANIZATION_DOCUMENT = "settings";
+/** How long a page reuses the organization's settings before reading them again, so an open page picks up changes. */
+const ORGANIZATION_REUSE_MS = 30_000;
+/** Saves tried when another administrator saved in between. */
+const SAVE_ATTEMPTS = 3;
+/** Projects per page when listing the organization's. */
+const PROJECT_PAGE = 100;
+/** The "Collection" security namespace and its GENERIC_WRITE bit ("Edit instance-level information"), held by Project Collection Administrators. */
+const COLLECTION_NAMESPACE = "3e65f728-f8bc-4ecd-8764-7e378b19bfa7";
+const EDIT_COLLECTION = 2;
 
 /**
- * Runs inside the Azure DevOps hub iframe. The route lives in the host page's query string
- * (`?pr=<id>&repo=<id>`), so links to a review are shareable; navigation updates it in place.
+ * Runs inside the Azure DevOps hub iframe. The route lives in the host page's hash (`#pr=<id>&repo=<id>`, see
+ * app/hashRoute.ts), so links to a review are shareable and the browser's back and forward move between pages.
  */
 export class AdoHost implements AppHost {
   readonly kind = "ado";
   readonly currentUser: Identity;
   readonly cacheScope: string;
-  private current: Route;
+  readonly projectId: string;
+  private router!: HashRouter;
   private readonly listeners = new Listeners<Route>();
   private readonly project = SDK.getWebContext().project;
   private readonly hostUrl: string;
   private dataManager: Promise<IExtensionDataManager> | null = null;
   private tagStore: AdoTagStore | null = null;
+  private backend: Promise<BackendService | null> | null = null;
+  private releaseCatalog: Promise<ReleaseCatalog> | null = null;
+  private organization: { read: number; settings: Promise<OrganizationSettings> } | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
-    query: Record<string, string>,
   ) {
     const user = SDK.getUser();
     this.currentUser = { id: user.id, displayName: user.displayName, uniqueName: user.name, imageUrl: user.imageUrl };
-    this.current = parseRoute(query);
     this.hostUrl = `https://dev.azure.com/${encodeURIComponent(SDK.getHost().name)}/`;
-    this.cacheScope = `${SDK.getHost().id}/${this.project.id}/${user.id}`;
+    // No project on Organization settings pages.
+    this.projectId = this.project?.id ?? "";
+    this.cacheScope = `${SDK.getHost().id}/${this.projectId}/${user.id}`;
   }
 
   static async create(): Promise<AdoHost> {
     const nav = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-    return new AdoHost(nav, await nav.getQueryParams());
+    const host = new AdoHost(nav);
+    host.router = await HashRouter.connect(nav, (route) => host.listeners.emit(route));
+    return host;
   }
 
   route(): Route {
-    return this.current;
+    return this.router.route();
   }
 
   navigate(route: Route): void {
     if (route.view === "pr" && route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) {
       // Another project's PR: open it in that project's hub, so its settings and links apply.
-      const { publisherId, extensionId } = SDK.getExtensionContext();
-      const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
-      this.nav.navigate(`${this.hostUrl}${encodeURIComponent(route.project)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`);
+      this.nav.navigate(this.reviewUrl(route));
       return;
     }
-    this.current = route;
-    this.nav.setQueryParams(route.view === "pr" ? { pr: String(route.pr), repo: route.repo } : { pr: "", repo: "" });
+    this.router.navigate(route);
     this.listeners.emit(route);
   }
 
@@ -76,7 +100,7 @@ export class AdoHost implements AppHost {
   }
 
   async listSource() {
-    return new AdoPrListSource(this.project.id, this.currentUser, this.hostUrl, `${this.projectUrl()}/_git/${encodeURIComponent(this.project.name)}/pullrequestcreate`);
+    return new AdoPrListSource(this.project.id, this.currentUser, this.hostUrl, `${this.projectUrl()}/_git/${encodeURIComponent(this.project.name)}`);
   }
 
   async currentRepository(): Promise<{ id: string; name: string } | null> {
@@ -85,7 +109,7 @@ export class AdoHost implements AppHost {
       const repo = await service.getCurrentGitRepository();
       return repo && { id: repo.id, name: repo.name };
     } catch (e) {
-      console.warn("[semantic-pr] no current repository:", e);
+      console.warn("[review-deck] no current repository:", e);
       return null;
     }
   }
@@ -98,15 +122,87 @@ export class AdoHost implements AppHost {
     this.nav.setDocumentTitle(title);
   }
 
-  async backendService(): Promise<BackendService | null> {
-    if (!BACKEND_URL) return null;
+  backendService(): Promise<BackendService | null> {
+    this.backend ??= this.resolveBackend();
+    return this.backend;
+  }
+
+  private async resolveBackend(): Promise<BackendService | null> {
+    const own = await this.backendSettings();
+    const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
+    return own && { url: own.url, token: own.key, scope };
+  }
+
+  async backendSettings(): Promise<BackendSettings | null> {
     try {
-      // Signed with the extension's secret; the function checks it (backend/src/auth.ts).
-      const scope = { organization: SDK.getHost().name, projectId: this.project.id, projectName: this.project.name };
-      return { url: BACKEND_URL, token: await SDK.getAppToken(), scope };
+      return readBackendSettings(await (await this.data()).getValue<unknown>(BACKEND_KEY, { defaultValue: null }));
     } catch (e) {
-      console.warn("[semantic-pr] no app token, grouping without the backend:", e);
+      console.warn("[review-deck] backend settings unavailable:", e);
       return null;
+    }
+  }
+
+  async saveBackendSettings(settings: BackendSettings | null): Promise<void> {
+    await (await this.data()).setValue(BACKEND_KEY, settings);
+    this.backend = null;
+  }
+
+  async canManageOrganization(): Promise<boolean> {
+    return this.hasPermission(COLLECTION_NAMESPACE, "NAMESPACE:", EDIT_COLLECTION, "organization");
+  }
+
+  organizationSettings(): Promise<OrganizationSettings> {
+    // Shared for a short while: the hub's startup check, the review and the settings sections read it together.
+    if (this.organization && Date.now() - this.organization.read < ORGANIZATION_REUSE_MS) return this.organization.settings;
+    const settings = this.data()
+      .then(storedOrganizationSettings)
+      .then(
+        (stored) => stored.settings,
+        (e) => {
+          console.warn("[review-deck] organization settings unavailable, using defaults without AI titles:", e);
+          this.organization = null;
+          // The hubs stay usable, but code isn't sent to an LLM the organization may have turned off.
+          return { ...readOrganizationSettings(null), aiTitles: false };
+        },
+      );
+    this.organization = { read: Date.now(), settings };
+    return settings;
+  }
+
+  async updateOrganizationSettings(change: (settings: OrganizationSettings) => OrganizationSettings): Promise<OrganizationSettings> {
+    const data = await this.data();
+    for (let attempt = 1; ; attempt++) {
+      // Unlike organizationSettings(), a failed read rejects: saving on top of the defaults could undo others' choices.
+      const stored = await storedOrganizationSettings(data);
+      const settings = change(stored.settings);
+      const doc = { id: ORGANIZATION_DOCUMENT, ...settings };
+      try {
+        // The etag makes a save fail if someone else saved since the read, instead of overwriting their change.
+        if (stored.etag === undefined) await data.createDocument(ORGANIZATION_COLLECTION, doc);
+        else await data.setDocument(ORGANIZATION_COLLECTION, { ...doc, __etag: stored.etag });
+        this.organization = { read: Date.now(), settings: Promise.resolve(settings) };
+        return settings;
+      } catch (e) {
+        // Lost the race: apply the change again on top of theirs.
+        if (attempt >= SAVE_ATTEMPTS || !isConflict(e)) throw e;
+      }
+    }
+  }
+
+  async syncFeatureVisibility(feature: Feature, projectIds?: string[]): Promise<void> {
+    // Fresh, not the copy read on load: another administrator may have changed it since.
+    const { settings } = await storedOrganizationSettings(await this.data());
+    const ids = projectIds ?? (await this.organizationProjects()).map((p) => p.id);
+    await syncFeatureStates(featureContributionId(SDK.getExtensionContext().id, feature), settings[feature], ids, !projectIds);
+  }
+
+  async organizationProjects(): Promise<{ id: string; name: string }[]> {
+    const core = getClient(CoreRestClient);
+    const all: { id: string; name: string }[] = [];
+    for (;;) {
+      const page = await core.getProjects(undefined, PROJECT_PAGE, all.length);
+      all.push(...page.map((p) => ({ id: p.id, name: p.name })));
+      if (page.length < PROJECT_PAGE) return all.sort((a, b) => a.name.localeCompare(b.name));
     }
   }
 
@@ -115,37 +211,66 @@ export class AdoHost implements AppHost {
       return readProjectSettings(await (await this.data()).getDocument(SETTINGS_COLLECTION, this.project.id));
     } catch (e) {
       // A project that never saved settings has no document (404): that's the defaults too.
-      if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] project settings unavailable, using defaults:", e);
+      if ((e as { status?: number }).status !== 404) console.warn("[review-deck] project settings unavailable, using defaults:", e);
       return DEFAULT_PROJECT_SETTINGS;
     }
   }
 
-  async saveProjectSettings(settings: ProjectSettings): Promise<void> {
+  async updateProjectSettings(change: Partial<ProjectSettings>): Promise<ProjectSettings> {
+    const data = await this.data();
+    let saved: Partial<Record<keyof ProjectSettings, unknown>> | null = null;
+    try {
+      saved = await data.getDocument(SETTINGS_COLLECTION, this.project.id);
+    } catch (e) {
+      // Never saved (404) is the defaults; anything else could mean overwriting settings we couldn't read.
+      if ((e as { status?: number }).status !== 404) throw e;
+    }
+    const settings = { ...readProjectSettings(saved), ...change };
     // __etag -1: last write wins.
-    await (await this.data()).setDocument(SETTINGS_COLLECTION, { id: this.project.id, __etag: -1, ...settings });
+    await data.setDocument(SETTINGS_COLLECTION, { id: this.project.id, __etag: -1, ...settings });
+    return settings;
   }
 
   async syncRestackHooks(on: boolean): Promise<void> {
     const backend = await this.backendService();
-    if (!backend) throw new Error("This extension was built without a backend, so it can't restack automatically.");
-    await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken() }, on);
+    if (!backend) throw new Error("No backend is set up for this organization, so it can't restack automatically.");
+    await syncRestackHooks({ hostUrl: this.hostUrl, projectId: this.project.id, backend, token: await SDK.getAccessToken(), extensionId: this.extensionId() }, on);
+  }
+
+  async restack(pr: PrSummary): Promise<RestackOutcome[]> {
+    const backend = await this.backendService();
+    if (!backend) throw new Error("No backend is set up for this organization, so it can't restack.");
+    return restackPr(backend, {
+      projectId: pr.repository.projectId,
+      repositoryId: pr.repository.id,
+      pullRequestId: pr.id,
+      extensionId: this.extensionId(),
+      adoToken: await SDK.getAccessToken(),
+    });
+  }
+
+  /** publisher.extension, where the backend reads this project's settings. */
+  private extensionId(): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    return `${publisherId}.${extensionId}`;
   }
 
   async canManageProject(): Promise<boolean> {
+    return this.hasPermission(PROJECT_NAMESPACE, `$PROJECT:vstfs:///Classification/TeamProject/${this.project.id}`, EDIT_PROJECT, "project");
+  }
+
+  private async hasPermission(securityNamespaceId: string, token: string, permissions: number, what: string): Promise<boolean> {
     try {
       const response = await fetch(`${this.hostUrl}_apis/security/permissionevaluationbatch?api-version=7.1`, {
         method: "POST",
         headers: { authorization: `Bearer ${await SDK.getAccessToken()}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          alwaysAllowAdministrators: true,
-          evaluations: [{ securityNamespaceId: PROJECT_NAMESPACE, token: `$PROJECT:vstfs:///Classification/TeamProject/${this.project.id}`, permissions: EDIT_PROJECT }],
-        }),
+        body: JSON.stringify({ alwaysAllowAdministrators: true, evaluations: [{ securityNamespaceId, token, permissions }] }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const { evaluations } = (await response.json()) as { evaluations?: { value?: boolean }[] };
       return evaluations?.[0]?.value === true;
     } catch (e) {
-      console.warn("[semantic-pr] could not check project permissions:", e);
+      console.warn(`[review-deck] could not check ${what} permissions:`, e);
       return false;
     }
   }
@@ -175,7 +300,7 @@ export class AdoHost implements AppHost {
           return fits ? (doc.review ?? null) : null;
         } catch (e) {
           // Never saved: 404.
-          if ((e as { status?: number }).status !== 404) console.warn("[semantic-pr] saved grouping unavailable:", e);
+          if ((e as { status?: number }).status !== 404) console.warn("[review-deck] saved grouping unavailable:", e);
           return null;
         }
       },
@@ -184,7 +309,7 @@ export class AdoHost implements AppHost {
           await (await this.data()).setDocument(REVIEWS_COLLECTION, { id: id(key), __etag: -1, version, iteration: key.iteration, compareTo: key.compareTo, review });
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
-          console.warn("[semantic-pr] could not save the grouping:", e);
+          console.warn("[review-deck] could not save the grouping:", e);
         }
       },
     };
@@ -195,6 +320,22 @@ export class AdoHost implements AppHost {
     return this.tagStore;
   }
 
+  releases(): Promise<ReleaseCatalog> {
+    // A separate chunk: the Build and File Container clients are only needed by the Changelog hub and its settings.
+    this.releaseCatalog ??= import("./adoReleases").then(
+      ({ AdoReleaseCatalog }) =>
+        new AdoReleaseCatalog({
+          hostUrl: this.hostUrl,
+          projectId: this.project.id,
+          projectName: this.project.name,
+          token: () => SDK.getAccessToken(),
+          data: () => this.data(),
+        }),
+    );
+    this.releaseCatalog.catch(() => (this.releaseCatalog = null));
+    return this.releaseCatalog;
+  }
+
   /** In user-scoped extension data, so your stars follow you to every project and browser. */
   favoriteRepos(): FavoriteRepos {
     return {
@@ -203,7 +344,7 @@ export class AdoHost implements AppHost {
           const ids = await (await this.data()).getValue<unknown>(FAVORITES_KEY, { scopeType: "User", defaultValue: [] });
           return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
         } catch (e) {
-          console.warn("[semantic-pr] favorite repositories unavailable:", e);
+          console.warn("[review-deck] favorite repositories unavailable:", e);
           return [];
         }
       },
@@ -220,11 +361,45 @@ export class AdoHost implements AppHost {
     return this.dataManager;
   }
 
+  reviewUrl(route: Extract<Route, { view: "pr" }>): string {
+    const { publisherId, extensionId } = SDK.getExtensionContext();
+    const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
+    return `${this.hostUrl}${encodeURIComponent(route.project ?? this.project.name)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`;
+  }
+
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
     return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequest/${route.pr}`;
+  }
+
+  createPrUrl(route: Extract<Route, { view: "pr" }>, source: string, target: string): string {
+    const query = new URLSearchParams({ sourceRef: source, targetRef: target });
+    return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/pullrequestcreate?${query}`;
+  }
+
+  fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string {
+    const query = new URLSearchParams({ path: `/${path}`, version: `GC${commit}`, _a: "contents" });
+    return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}?${query}`;
   }
 
   private projectUrl(): string {
     return `${this.hostUrl}${encodeURIComponent(this.project.name)}`;
   }
+}
+
+/** The organization's settings as saved, with the version a save must match (none if never saved). */
+async function storedOrganizationSettings(data: IExtensionDataManager): Promise<{ settings: OrganizationSettings; etag?: number }> {
+  try {
+    const doc = (await data.getDocument(ORGANIZATION_COLLECTION, ORGANIZATION_DOCUMENT)) as { __etag?: number };
+    return { settings: readOrganizationSettings(doc), etag: doc.__etag };
+  } catch (e) {
+    // Never saved: the defaults.
+    if ((e as { status?: number }).status === 404) return { settings: readOrganizationSettings(null) };
+    throw e;
+  }
+}
+
+/** A document save refused because another save changed (or created) the document since it was read. */
+function isConflict(e: unknown): boolean {
+  const { status, message } = e as { status?: number; message?: string };
+  return status === 409 || status === 412 || /etag|version|already exists/i.test(message ?? "");
 }

@@ -34,7 +34,7 @@ export function writePreference(key: string, value: string, storage: () => Prefe
   state.timer = setTimeout(() => {
     void state.loaded
       .then(() => state.store.save({ ...state.seen, ...state.values }))
-      .catch((e) => console.warn("[semantic-pr] could not save preferences:", e));
+      .catch((e) => console.warn("[review-deck] could not save preferences:", e));
   }, 500);
 }
 
@@ -79,7 +79,7 @@ export async function connectPreferences(store: PreferenceStore, wait = 1500, st
         }
       }
     })
-    .catch((e) => console.warn("[semantic-pr] could not load preferences:", e));
+    .catch((e) => console.warn("[review-deck] could not load preferences:", e));
   synced = state;
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([state.loaded, new Promise<void>((resolve) => (timer = setTimeout(resolve, wait)))]);

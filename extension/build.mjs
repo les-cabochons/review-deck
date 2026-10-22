@@ -2,7 +2,7 @@
 //   node extension/build.mjs            -> extension/dist + extension/assets (production, minified)
 //   node extension/build.mjs --serve    -> watch + serve on http://127.0.0.1:5173/dist/review.html
 //                                          (PORT=5180 for another port, e.g. a second worktree)
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,11 +25,14 @@ cpSync(join(here, "static"), dist, { recursive: true });
 const assets = join(here, "assets");
 mkdirSync(assets, { recursive: true });
 cpSync(require.resolve("web-tree-sitter/web-tree-sitter.wasm"), join(assets, "web-tree-sitter.wasm"));
-const grammars = dirname(require.resolve("tree-sitter-typescript/package.json"));
-for (const g of ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"]) cpSync(join(grammars, g), join(assets, g));
+const { GRAMMARS } = await import("../src/parse/grammars.ts");
+for (const g of Object.values(GRAMMARS)) {
+  const pkg = dirname(require.resolve(`${g.package}/package.json`));
+  cpSync(join(pkg, g.file), join(assets, g.file));
+}
 
 /**
- * dist/review.html and dist/settings.html, from static/: the page's skeleton and the host theme kept from the last
+ * The pages in static/ that have the placeholders (review, settings, org-settings, changelog): the page's skeleton and the host theme kept from the last
  * visit inline, so they paint before any script runs, and modulepreload links for every chunk the first render
  * needs, so those download alongside review.js instead of after the host handshake (src/index.ts, src/skeletons.ts).
  */
@@ -42,12 +45,18 @@ const startupHtml = {
         .map((file) => `<link rel="modulepreload" href="${file}" />`)
         .join("\n    ");
       const skeletons = await loadSkeletons();
-      for (const [page, skeleton] of [["review", skeletons.hubSkeleton], ["settings", skeletons.settingsSkeleton]]) {
-        const html = readFileSync(join(here, "static", `${page}.html`), "utf8")
+      const byName = { hub: skeletons.hubSkeleton, settings: skeletons.settingsSkeleton };
+      for (const file of readdirSync(join(here, "static")).filter((f) => f.endsWith(".html"))) {
+        const source = readFileSync(join(here, "static", file), "utf8");
+        if (!source.includes("<!-- modulepreload -->")) continue;
+        const html = source
           .replace("<!-- theme -->", () => `<script>${skeletons.themeBootScript()}</script>`)
           .replace("<!-- modulepreload -->", () => preload)
-          .replace(/<!-- skeleton:\w+ -->/, () => skeleton());
-        writeFileSync(join(dist, `${page}.html`), html);
+          .replace(/<!-- skeleton:(\w+) -->/, (_, name) => {
+            if (!byName[name]) throw new Error(`static/${file}: no skeleton named ${name} in src/skeletons.ts`);
+            return byName[name]();
+          });
+        writeFileSync(join(dist, file), html);
       }
     });
   },
@@ -112,8 +121,6 @@ const options = {
   external: ["fs", "fs/promises", "module", "path", "url"],
   define: {
     "process.env.NODE_ENV": serve ? '"development"' : '"production"',
-    // The backend Azure Function (infra/ output backend_url); empty = structural grouping, heuristic titles.
-    __BACKEND_URL__: JSON.stringify(process.env.SEMANTIC_PR_BACKEND_URL ?? ""),
   },
   logLevel: "info",
 };

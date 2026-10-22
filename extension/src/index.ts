@@ -6,8 +6,8 @@ import { rememberHostTheme, startHostedPage, withTimeout } from "./startup";
 
 const root = document.getElementById("root")!;
 const params = new URLSearchParams(location.search);
-/** settings.html (Project settings → Review Deck) and review.html share this bundle. */
-const isSettings = document.body.dataset.page === "settings";
+/** review.html has no data-page; settings, organization settings and the changelog share this bundle. */
+const isReview = (document.body.dataset.page ?? "review") === "review";
 // Local mode: opened directly, or inside the dev shell (?local), or an old ?mock= link.
 const local = window.parent === window || params.has("local") || params.has("mock");
 
@@ -43,9 +43,11 @@ async function renderHosted() {
     adoHost.then(({ AdoHost }) => AdoHost.create()),
     "Could not connect to Azure DevOps navigation. Reload to try again.",
   );
+  // Started now so the hub's on/off check (page.tsx) doesn't wait behind the UI chunks.
+  void host.organizationSettings();
   // The route is known now: a link straight to a pull request gets that page's skeleton while the UI loads.
   const route = host.route();
-  if (route.view === "pr" && !isSettings) root.innerHTML = prSkeleton({ id: route.pr });
+  if (route.view === "pr" && isReview) root.innerHTML = prSkeleton({ id: route.pr });
   const [{ renderHost }, { connectPreferences }] = await withTimeout(
     Promise.all([page, preferences]),
     "The review code could not finish loading. Check your connection and reload.",
@@ -53,7 +55,7 @@ async function renderHosted() {
   // The user's synced preferences never delay the first paint: the page opens with this browser's and adopts
   // theirs as they arrive (ui/preferences.ts preferencesLoaded).
   void connectPreferences(host.preferences());
-  renderHost(host);
+  await renderHost(host);
 }
 
 if (!local) {
