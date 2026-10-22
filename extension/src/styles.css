@@ -478,13 +478,82 @@ kbd {
 .skeleton-bar.short {
   height: 8px;
 }
+/* Page skeletons (src/skeletons.ts): the pages' own layout in gray, before React and while their data loads. */
+.skeleton-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  animation: pulse 1.2s ease-in-out infinite;
+  flex: none;
+}
+.hub-nav-icon.skeleton-icon {
+  width: 18px;
+  height: 18px;
+}
+.skeleton-pill {
+  display: inline-block;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  animation: pulse 1.2s ease-in-out infinite;
+  flex: none;
+}
+.skeleton-pill.primary {
+  background: var(--accent);
+  opacity: 0.35;
+  animation: none;
+}
+.skeleton-pill.small {
+  height: 20px;
+  border-radius: 10px;
+  margin-right: 4px;
+}
+.skeleton-dot.small {
+  width: 20px;
+  height: 20px;
+}
+.pr-meta .skeleton-bar,
+.search-box .skeleton-bar {
+  display: inline-block;
+}
+.skeleton-bar.skeleton-h1 {
+  display: inline-block;
+  height: 20px;
+  vertical-align: middle;
+}
+.skeleton-bar.skeleton-h2 {
+  height: 14px;
+}
+.overview .skeleton-bar,
+.settings-section .skeleton-bar {
+  margin: 0 0 14px;
+}
+.skeleton-tabs {
+  display: flex;
+  gap: 8px;
+}
+.skeleton-tab {
+  padding: 14px 8px;
+  line-height: 20px;
+  color: var(--fg2);
+  border-bottom: 2px solid transparent;
+}
+.skeleton-tab.active {
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
 @media (prefers-reduced-motion: reduce) {
   .hub-progress::before {
     animation-duration: 3s;
   }
   .hub-refresh.busy .fabric-icon,
   .skeleton-dot,
-  .skeleton-bar {
+  .skeleton-bar,
+  .skeleton-icon,
+  .skeleton-pill {
     animation: none;
   }
 }

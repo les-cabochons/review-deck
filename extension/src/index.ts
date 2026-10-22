@@ -1,10 +1,20 @@
 import "azure-devops-ui/Core/override.css";
 import "./styles.css";
 import * as SDK from "azure-devops-extension-sdk";
-import { startHostedPage, withTimeout } from "./startup";
+import { prSkeleton } from "./skeletons";
+import { rememberHostTheme, startHostedPage, withTimeout } from "./startup";
 
 const root = document.getElementById("root")!;
 const params = new URLSearchParams(location.search);
+/** settings.html (Project settings → Review Deck) and review.html share this bundle. */
+const isSettings = document.body.dataset.page === "settings";
+// Local mode: opened directly, or inside the dev shell (?local), or an old ?mock= link.
+const local = window.parent === window || params.has("local") || params.has("mock");
+
+// The UI downloads and parses while the host handshake runs (review.html also preloads these chunks), instead of
+// after it. The static page shows the hub's skeleton meanwhile.
+const ui = local ? null : { adoHost: import("./app/adoHost"), page: import("./page"), preferences: import("./ui/preferences") };
+for (const chunk of Object.values(ui ?? {})) chunk.catch(() => {}); // reported where awaited
 
 function showMessage(title: string, message: string) {
   const section = document.createElement("section");
@@ -28,19 +38,26 @@ function showError(error: Error) {
 }
 
 async function renderHosted() {
-  const [{ AdoHost }, { renderHost }, { connectPreferences }] = await withTimeout(
-    Promise.all([import("./app/adoHost"), import("./page"), import("./ui/preferences")]),
+  const { adoHost, page, preferences } = ui!;
+  const host = await withTimeout(
+    adoHost.then(({ AdoHost }) => AdoHost.create()),
+    "Could not connect to Azure DevOps navigation. Reload to try again.",
+  );
+  // The route is known now: a link straight to a pull request gets that page's skeleton while the UI loads.
+  const route = host.route();
+  if (route.view === "pr" && !isSettings) root.innerHTML = prSkeleton({ id: route.pr });
+  const [{ renderHost }, { connectPreferences }] = await withTimeout(
+    Promise.all([page, preferences]),
     "The review code could not finish loading. Check your connection and reload.",
   );
-  const host = await withTimeout(AdoHost.create(), "Could not connect to Azure DevOps navigation. Reload to try again.");
-  // Bounded wait: if the user's saved preferences are slow, the page opens with this browser's.
-  await connectPreferences(host.preferences());
+  // The user's synced preferences never delay the first paint: the page opens with this browser's and adopts
+  // theirs as they arrive (ui/preferences.ts preferencesLoaded).
+  void connectPreferences(host.preferences());
   renderHost(host);
 }
 
-// Local mode: opened directly, or inside the dev shell (?local), or an old ?mock= link.
-const local = window.parent === window || params.has("local") || params.has("mock");
 if (!local) {
+  rememberHostTheme();
   void startHostedPage(SDK, renderHosted, showError);
 } else {
   import("./page").then((page) => page.renderLocal()).catch(showError);

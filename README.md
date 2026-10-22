@@ -260,10 +260,11 @@ comparison. Imported snapshot comments without iteration data retain their store
 line positions.
 
 The milestone plan and remaining backlog are in [docs/milestone-2.md](docs/milestone-2.md).
-Startup and Firefox regression checks are in [docs/startup-loading.md](docs/startup-loading.md).
+Startup timing and browser checks are in [docs/startup-loading.md](docs/startup-loading.md).
 Opening the Deck hub without a PR shows the inbox. Preferences still
-work for the current session when browser storage is denied. The SDK handshake
-runs before loading the review UI, and parsing/clustering code loads separately.
+work for the current session when browser storage is denied. The page paints a
+skeleton before the SDK handshake and tells the host it has loaded right after it,
+then fills in from the hub cache and the network; parsing/clustering code loads separately.
 
 For browser failure checks, run `npm run ext:test:browser` while `npm run ext:dev`
 is running, then open `http://127.0.0.1:5173/test-dist/index.html`. This renders the

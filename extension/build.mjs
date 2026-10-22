@@ -2,9 +2,9 @@
 //   node extension/build.mjs            -> extension/dist + extension/assets (production, minified)
 //   node extension/build.mjs --serve    -> watch + serve on http://127.0.0.1:5173/dist/review.html
 //                                          (PORT=5180 for another port, e.g. a second worktree)
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 
@@ -28,6 +28,60 @@ cpSync(require.resolve("web-tree-sitter/web-tree-sitter.wasm"), join(assets, "we
 const grammars = dirname(require.resolve("tree-sitter-typescript/package.json"));
 for (const g of ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"]) cpSync(join(grammars, g), join(assets, g));
 
+/**
+ * dist/review.html and dist/settings.html, from static/: the page's skeleton and the host theme kept from the last
+ * visit inline, so they paint before any script runs, and modulepreload links for every chunk the first render
+ * needs, so those download alongside review.js instead of after the host handshake (src/index.ts, src/skeletons.ts).
+ */
+const startupHtml = {
+  name: "startup-html",
+  setup(build) {
+    build.onEnd(async (result) => {
+      if (!result.metafile) return;
+      const preload = startupChunks(result.metafile)
+        .map((file) => `<link rel="modulepreload" href="${file}" />`)
+        .join("\n    ");
+      const skeletons = await loadSkeletons();
+      for (const [page, skeleton] of [["review", skeletons.hubSkeleton], ["settings", skeletons.settingsSkeleton]]) {
+        const html = readFileSync(join(here, "static", `${page}.html`), "utf8")
+          .replace("<!-- theme -->", () => `<script>${skeletons.themeBootScript()}</script>`)
+          .replace("<!-- modulepreload -->", () => preload)
+          .replace(/<!-- skeleton:\w+ -->/, () => skeleton());
+        writeFileSync(join(dist, `${page}.html`), html);
+      }
+    });
+  },
+};
+
+/** src/skeletons.ts as a module this build can call (it has no imports, so it is one small bundle). */
+async function loadSkeletons() {
+  const { outputFiles } = await esbuild.build({ entryPoints: [join(here, "src", "skeletons.ts")], bundle: true, format: "esm", write: false });
+  return import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
+}
+
+/**
+ * The chunks review.js needs before its first render: its static imports, the chunks it imports dynamically at
+ * startup (host adapter, page, preferences) and their static imports. What those load later themselves (the diff
+ * renderer, the analysis engine, the local dev host) is left out.
+ */
+function startupChunks(metafile) {
+  const outputs = metafile.outputs;
+  const entry = Object.keys(outputs).find((path) => /[\\/]index\.ts$/.test(outputs[path].entryPoint ?? ""));
+  if (!entry) return [];
+  const files = new Set();
+  const visit = (path, dynamicToo) => {
+    for (const imp of outputs[path]?.imports ?? []) {
+      if (imp.external || files.has(imp.path)) continue;
+      if (imp.kind === "import-statement" || (dynamicToo && imp.kind === "dynamic-import")) {
+        files.add(imp.path);
+        visit(imp.path, false);
+      }
+    }
+  };
+  visit(entry, true);
+  return [...files].map((path) => basename(path));
+}
+
 const options = {
   entryPoints: {
     review: join(here, "src", "index.ts"),
@@ -41,12 +95,16 @@ const options = {
   splitting: true,
   target: "es2022",
   platform: "browser",
-  plugins: [{
-    name: "pierre-local-highlighter",
-    setup(build) {
-      build.onResolve({ filter: /^shiki$/ }, () => ({ path: join(here, "src/ui/pierre/shiki.ts") }));
+  metafile: true,
+  plugins: [
+    {
+      name: "pierre-local-highlighter",
+      setup(build) {
+        build.onResolve({ filter: /^shiki$/ }, () => ({ path: join(here, "src/ui/pierre/shiki.ts") }));
+      },
     },
-  }],
+    startupHtml,
+  ],
   sourcemap: serve ? "inline" : "linked",
   minify: !serve,
   loader: { ".woff": "file", ".woff2": "file", ".ttf": "file", ".svg": "file", ".png": "file" },
