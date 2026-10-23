@@ -315,7 +315,7 @@ const NAV_BOTTOM_GAP = 16;
 /**
  * Caps the sticky navigator at the visible part of the window. The stylesheet's max-height assumes it is already
  * stuck under the toolbar; before the page scrolls past the PR header it starts lower, so its bottom was off screen.
- * Only while it is sticky: in the phone sheet it is static and the sheet sizes it.
+ * It only does so while the navigator is sticky. In the phone sheet the navigator is static and the sheet sizes it.
  */
 function useFitViewport(element: HTMLElement | null) {
   React.useLayoutEffect(() => {
@@ -335,13 +335,13 @@ function useFitViewport(element: HTMLElement | null) {
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule);
     // Content above it (the grouping banner, the PR header) can change height without a scroll.
-    const resized = new ResizeObserver(schedule);
-    resized.observe(document.body);
+    const observer = new ResizeObserver(schedule);
+    observer.observe(document.body);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
-      resized.disconnect();
+      observer.disconnect();
     };
   }, [element]);
 }
