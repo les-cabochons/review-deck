@@ -27,7 +27,7 @@ function versionsByPath(changes: FileChange[]): Map<string, string> {
 }
 
 /** Ids of the chunks ticked at their file's current version. */
-export function viewedHunks(saved: ViewedHunks, files: FileDiff[], changes: FileChange[]): Set<string> {
+export function viewedHunkIds(saved: ViewedHunks, files: FileDiff[], changes: FileChange[]): Set<string> {
   const versions = versionsByPath(changes);
   return new Set(files.flatMap(file => {
     const version = versions.get(file.path);
@@ -35,9 +35,9 @@ export function viewedHunks(saved: ViewedHunks, files: FileDiff[], changes: File
   }));
 }
 
-export function setHunksViewed(saved: ViewedHunks, files: FileDiff[], changes: FileChange[], ids: string[], checked: boolean): ViewedHunks {
+export function setHunksViewed(saved: ViewedHunks, files: FileDiff[], changes: FileChange[], hunkIds: string[], checked: boolean): ViewedHunks {
   const next = { ...saved };
-  const selected = new Set(ids);
+  const selected = new Set(hunkIds);
   const versions = versionsByPath(changes);
   for (const file of files) {
     const version = versions.get(file.path);
@@ -52,12 +52,12 @@ export function setHunksViewed(saved: ViewedHunks, files: FileDiff[], changes: F
 }
 
 /** Paths of the files whose every chunk is viewed. */
-export function viewedFiles(files: FileDiff[], viewed: ReadonlySet<string>): Set<string> {
-  return new Set(files.filter(file => file.hunks.every(hunk => viewed.has(hunk.id))).map(file => file.path));
+export function fullyViewedFiles(files: FileDiff[], viewedHunks: ReadonlySet<string>): Set<string> {
+  return new Set(files.filter(file => file.hunks.every(hunk => viewedHunks.has(hunk.id))).map(file => file.path));
 }
 
-export function viewedStatus(ids: string[], viewed: ReadonlySet<string>): { checked: boolean; mixed: boolean } {
-  const unique = [...new Set(ids)];
+export function viewedStatus(hunkIds: string[], viewed: ReadonlySet<string>): { checked: boolean; mixed: boolean } {
+  const unique = [...new Set(hunkIds)];
   const count = unique.filter(id => viewed.has(id)).length;
   return { checked: unique.length > 0 && count === unique.length, mixed: count > 0 && count < unique.length };
 }

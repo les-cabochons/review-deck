@@ -2,7 +2,7 @@ import * as React from "react";
 import type { FileDiff } from "../../../src/core/types";
 import type { FileChange } from "../data/model";
 import { readLocal, writeLocal } from "./preferences";
-import { parseViewed, setHunksViewed, viewedFiles, viewedHunks, viewedStatus } from "./viewed";
+import { fullyViewedFiles, parseViewed, setHunksViewed, viewedHunkIds, viewedStatus } from "./viewed";
 
 /**
  * Viewed and fold state, kept per chunk (hunk id). A guided card is one chunk and an A–Z file card is all of a
@@ -32,9 +32,9 @@ const Context = React.createContext<FileReviewState | null>(null);
 
 export const FileReviewProvider: React.FC<{ storageKey: string; changes: FileChange[]; files: FileDiff[] }> = ({ storageKey, changes, files, children }) => {
   const [saved, setSaved] = React.useState(() => parseViewed(readLocal(storageKey)));
-  const viewed = React.useMemo(() => viewedHunks(saved, files, changes), [saved, files, changes]);
-  const fullyViewed = React.useMemo(() => viewedFiles(files, viewed), [files, viewed]);
-  const deleted = React.useMemo(() => new Set(files.filter(f => f.status === "deleted").flatMap(f => f.hunks.map(h => h.id))), [files]);
+  const viewedHunks = React.useMemo(() => viewedHunkIds(saved, files, changes), [saved, files, changes]);
+  const viewedFiles = React.useMemo(() => fullyViewedFiles(files, viewedHunks), [files, viewedHunks]);
+  const deletedHunks = React.useMemo(() => new Set(files.filter(f => f.status === "deleted").flatMap(f => f.hunks.map(h => h.id))), [files]);
   // Only the reader's choices are stored, so each chunk's default applies until they toggle it.
   const [foldChoices, setFoldChoices] = React.useState(new Map<string, boolean>());
   const setCollapsed = React.useCallback((hunkIds: string[], closed: boolean) => {
@@ -53,13 +53,13 @@ export const FileReviewProvider: React.FC<{ storageKey: string; changes: FileCha
     setCollapsed(hunkIds, checked);
   }, [files, changes, storageKey, setCollapsed]);
   const isCollapsed = React.useCallback(
-    (hunkIds: string[]) => hunkIds.every(id => foldChoices.get(id) ?? (deleted.has(id) || viewed.has(id))),
-    [foldChoices, deleted, viewed],
+    (hunkIds: string[]) => hunkIds.every(id => foldChoices.get(id) ?? (deletedHunks.has(id) || viewedHunks.has(id))),
+    [foldChoices, deletedHunks, viewedHunks],
   );
   const [groupChoices, setGroupChoices] = React.useState(new Map<string, boolean>());
   // Files arrive after the provider mounts; the first non-empty list is what was viewed on opening.
   const viewedOnOpen = React.useRef<Set<string> | null>(null);
-  if (!viewedOnOpen.current && files.length) viewedOnOpen.current = viewed;
+  if (!viewedOnOpen.current && files.length) viewedOnOpen.current = viewedHunks;
   const groupCollapsed = React.useCallback(
     (id: string, hunkIds: string[], fallback: boolean) =>
       groupChoices.get(id) ?? (fallback || viewedStatus(hunkIds, viewedOnOpen.current ?? new Set()).checked),
@@ -68,7 +68,7 @@ export const FileReviewProvider: React.FC<{ storageKey: string; changes: FileCha
   const setGroupCollapsed = React.useCallback((id: string, closed: boolean) => {
     setGroupChoices(previous => new Map(previous).set(id, closed));
   }, []);
-  return <Context.Provider value={{ viewedHunks: viewed, viewedFiles: fullyViewed, setViewed, isCollapsed, setCollapsed, groupCollapsed, setGroupCollapsed }}>
+  return <Context.Provider value={{ viewedHunks, viewedFiles, setViewed, isCollapsed, setCollapsed, groupCollapsed, setGroupCollapsed }}>
     {children}
   </Context.Provider>;
 };

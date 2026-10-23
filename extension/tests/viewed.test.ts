@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { FileDiff } from "../../src/core/types";
 import type { FileChange } from "../src/data/model";
-import { parseViewed, setHunksViewed, viewedFiles, viewedHunks, viewedStatus } from "../src/ui/viewed";
+import { fullyViewedFiles, parseViewed, setHunksViewed, viewedHunkIds, viewedStatus } from "../src/ui/viewed";
 
 const changes: FileChange[] = [
   { path: "src/shared.ts", changeType: "edit", oldObjectId: "base", newObjectId: "head" },
@@ -24,36 +24,36 @@ const files = [file("src/shared.ts", 2), file("src/other.ts"), file("src/gone.ts
 const allChunks = files.flatMap(f => f.hunks.map(h => h.id));
 
 test("Given a file with chunks in two concerns, when one chunk is marked viewed, then its other chunk and the file stay unviewed", () => {
-  const viewed = viewedHunks(setHunksViewed({}, files, changes, ["src/shared.ts#0"], true), files, changes);
+  const viewed = viewedHunkIds(setHunksViewed({}, files, changes, ["src/shared.ts#0"], true), files, changes);
   assert.deepEqual([...viewed], ["src/shared.ts#0"]);
   assert.deepEqual(viewedStatus(["src/shared.ts#1"], viewed), { checked: false, mixed: false });
   assert.deepEqual(viewedStatus(["src/shared.ts#0", "src/shared.ts#1"], viewed), { checked: false, mixed: true });
-  assert.equal(viewedFiles(files, viewed).has("src/shared.ts"), false);
+  assert.equal(fullyViewedFiles(files, viewed).has("src/shared.ts"), false);
   assert.deepEqual(viewedStatus([], viewed), { checked: false, mixed: false });
 });
 
 test("Given every chunk of a file marked viewed across concerns, then the file counts as viewed", () => {
   let saved = setHunksViewed({}, files, changes, ["src/shared.ts#0", "src/other.ts#0"], true);
   saved = setHunksViewed(saved, files, changes, ["src/shared.ts#1"], true);
-  assert.deepEqual([...viewedFiles(files, viewedHunks(saved, files, changes))], ["src/shared.ts", "src/other.ts"]);
+  assert.deepEqual([...fullyViewedFiles(files, viewedHunkIds(saved, files, changes))], ["src/shared.ts", "src/other.ts"]);
 });
 
 test("Given a mixed concern, when it is checked then unchecked, then its chunks update together and unrelated viewed chunks remain", () => {
   const concern = ["src/shared.ts#1", "src/other.ts#0"];
   let saved = setHunksViewed({}, files, changes, ["src/gone.ts#0", "src/shared.ts#1"], true);
   saved = setHunksViewed(saved, files, changes, concern, true);
-  assert.deepEqual(viewedStatus(concern, viewedHunks(saved, files, changes)), { checked: true, mixed: false });
+  assert.deepEqual(viewedStatus(concern, viewedHunkIds(saved, files, changes)), { checked: true, mixed: false });
   saved = setHunksViewed(saved, files, changes, concern, false);
-  assert.deepEqual([...viewedHunks(saved, files, changes)], ["src/gone.ts#0"]);
+  assert.deepEqual([...viewedHunkIds(saved, files, changes)], ["src/gone.ts#0"]);
 });
 
 test("Given viewed chunks saved locally, when either compared blob changes or a file leaves the comparison, then its viewed checks reset", () => {
   const saved = setHunksViewed({}, files, changes, allChunks, true);
-  assert.equal(viewedHunks(parseViewed(JSON.stringify(saved)), files, changes).size, 5);
-  assert.equal(viewedHunks(saved, files, changes.map(change => ({ ...change, newObjectId: "force-pushed" }))).size, 0);
-  assert.equal(viewedHunks(saved, files, changes.map(change => ({ ...change, oldObjectId: "new-base" }))).size, 0);
-  assert.equal(viewedHunks(saved, files, []).size, 0);
-  assert.equal(viewedHunks(saved, files, changes.map(change => ({ ...change, originalPath: "different.ts" }))).size, 0);
+  assert.equal(viewedHunkIds(parseViewed(JSON.stringify(saved)), files, changes).size, 5);
+  assert.equal(viewedHunkIds(saved, files, changes.map(change => ({ ...change, newObjectId: "force-pushed" }))).size, 0);
+  assert.equal(viewedHunkIds(saved, files, changes.map(change => ({ ...change, oldObjectId: "new-base" }))).size, 0);
+  assert.equal(viewedHunkIds(saved, files, []).size, 0);
+  assert.equal(viewedHunkIds(saved, files, changes.map(change => ({ ...change, originalPath: "different.ts" }))).size, 0);
 });
 
 test("Given malformed local storage, then loading viewed chunks falls back to an empty state or keeps only valid versions", () => {
