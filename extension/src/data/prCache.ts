@@ -62,7 +62,16 @@ export function writePrSnapshot(scope: string, overview: PrOverview, storage: ()
       }
     }
     if (kept[0]?.key !== key) store.removeItem(itemKey(key));
-    store.setItem(KEY, JSON.stringify(kept));
+    try {
+      store.setItem(KEY, JSON.stringify(kept));
+    } catch {
+      // No room for the index either: this PR's item would be in storage unlisted, never read nor dropped.
+      if (kept[0]?.key === key) {
+        store.removeItem(itemKey(key));
+        kept.shift();
+      }
+      store.setItem(KEY, JSON.stringify(kept));
+    }
   } catch {
     // Denied storage: the next open shows the skeleton, as it does the first time.
   }

@@ -125,6 +125,14 @@ test("Given full storage, then older PRs make room for the one just opened, and 
   assert.equal(big.items.has("review-deck.pr.v1:s:2"), false);
 });
 
+test("Given room for the PR but not for the index, then the PR isn't left in storage unlisted", () => {
+  const size = JSON.stringify(overview(1)).length;
+  const storage = memoryStorage(size + "review-deck.pr.v1:s:1".length + 30);
+  writePrSnapshot("s", overview(1), storage, 1);
+  assert.equal(readPrSnapshot("s", 1, storage, 2), null);
+  assert.deepEqual(items(storage), []);
+});
+
 test("Given storage the browser denies, or garbage in it, then the PR opens on the skeleton without failing", () => {
   const denied = () => {
     throw new DOMException("denied", "SecurityError");

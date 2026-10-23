@@ -84,7 +84,7 @@ Medians of 9 runs, in ms from navigation start. "Cold" means a first visit; "war
 | PR link, REST at 400 ms, cold | 784 / 784 | 677 / 677 |
 | PR link, REST at 400 ms, warm | 549 / 549 | 125 / 560 |
 
-The harness doesn't measure the hub's hover prefetch, because its stub lists no pull requests.
+The harness doesn't measure the hub's hover prefetch, because its stub lists no pull requests. Its pull request also has no changed files, so the guided view built from the kept copy costs next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
 
 ## Measure startup
 

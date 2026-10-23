@@ -14,7 +14,7 @@
 // host would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold
 // browser profile and a warm one (second visit).
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { createSecureServer } from "node:http2";
 import { tmpdir } from "node:os";
@@ -165,19 +165,23 @@ function answerApi(req, res, wait) {
 function certificate() {
   const dir = mkdtempSync(join(tmpdir(), "startup-timing-"));
   const [key, cert] = [join(dir, "key.pem"), join(dir, "cert.pem")];
-  // On PATH, or Git for Windows' copy (not on PATH outside Git Bash).
-  for (const openssl of ["openssl", "C:/Program Files/Git/usr/bin/openssl.exe"]) {
-    try {
-      execFileSync(openssl, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=127.0.0.1"], {
-        stdio: "ignore",
-        env: { ...process.env, MSYS_NO_PATHCONV: "1" },
-      });
-      return { key: readFileSync(key), cert: readFileSync(cert) };
-    } catch {
-      // Try the next.
+  try {
+    // On PATH, or Git for Windows' copy (not on PATH outside Git Bash).
+    for (const openssl of ["openssl", "C:/Program Files/Git/usr/bin/openssl.exe"]) {
+      try {
+        execFileSync(openssl, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=127.0.0.1"], {
+          stdio: "ignore",
+          env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+        });
+        return { key: readFileSync(key), cert: readFileSync(cert) };
+      } catch {
+        // Try the next.
+      }
     }
+    return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  return null;
 }
 
 /** The one pull request the stub API knows, as GET pullRequests/{id} returns it. */

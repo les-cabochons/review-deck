@@ -58,6 +58,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [error, setError] = React.useState<string | null>(null);
   /** Why loading failed while the kept copy shows; it stays, marked as possibly out of date, as the hub keeps its rows. */
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
+  const staleNow = React.useRef(stale);
+  staleNow.current = stale;
   const [tab, setTab] = React.useState<TabId>(() =>
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
@@ -99,7 +101,11 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         const latest = latestComparison(d);
         setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
       },
-      (e: Error) => (kept ? setRefreshError(e.message) : setError(e.message)),
+      (e: Error) => {
+        if (!kept) setError(e.message);
+        // Unless a load since (a poll while completing) made the page current.
+        else if (staleNow.current) setRefreshError(e.message);
+      },
     );
   };
   React.useEffect(load, [source]);

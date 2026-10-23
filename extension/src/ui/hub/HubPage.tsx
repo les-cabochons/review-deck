@@ -269,7 +269,9 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const cancelPrefetch = () => clearTimeout(prefetchTimer.current);
   const prefetch = (pr: PrSummary, delay = PREFETCH_DWELL_MS) => {
     cancelPrefetch();
-    if (pr.openable) prefetchTimer.current = setTimeout(() => host.prefetchPr(routeTo(pr)), delay);
+    if (!pr.openable) return;
+    if (delay > 0) prefetchTimer.current = setTimeout(() => host.prefetchPr(routeTo(pr)), delay);
+    else host.prefetchPr(routeTo(pr));
   };
   React.useEffect(() => cancelPrefetch, []);
   const open = (pr: PrSummary) => {
