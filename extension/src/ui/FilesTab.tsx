@@ -54,7 +54,7 @@ interface Props {
 export const FilesTab: React.FC<Props> = (props) => {
   const comparison = props.review?.comparison ?? props.selection;
   const key = `viewed.${props.storageKey}.${comparison.compareTo}.${comparison.iteration}`;
-  return <FileReviewProvider key={key} storageKey={key} changes={props.review?.changes ?? []}>
+  return <FileReviewProvider key={key} storageKey={key} changes={props.review?.changes ?? []} files={props.review?.result.files ?? []}>
     <FilesContent {...props} />
   </FileReviewProvider>;
 };
@@ -202,9 +202,9 @@ const Toolbar: React.FC<Props & { ready: number | null; treeOpen: boolean; onTre
   onTreeOpen,
 }) => {
   const { disabled } = useReviewActions();
-  const { viewed } = useFileReview();
+  const { viewedFiles } = useFileReview();
   const stats = review ? diffStats(review) : null;
-  const viewedCount = review ? review.result.files.filter((f) => viewed.has(f.path)).length : 0;
+  const viewedCount = review ? review.result.files.filter((f) => viewedFiles.has(f.path)).length : 0;
   const grouping = !!review && !review.analyzed;
   const latest = iterations.at(-1)?.id;
   const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
@@ -328,7 +328,7 @@ interface NavigatorProps {
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
 const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup, onPick }) => {
   const { result } = review;
-  const { viewed, setFileCollapsed } = useFileReview();
+  const { viewed, viewedFiles, setCollapsed } = useFileReview();
   const go = (id: string) => {
     scrollToId(id);
     onPick?.();
@@ -381,7 +381,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
                     {i + 1}
                   </span>
                   <span className="text">{g.title}</span>
-                  {viewedStatus(groupFiles(review, g).map((file) => file.path), viewed).checked && <Icon iconName="CheckMark" className="nav-viewed" ariaLabel="Viewed" />}
+                  {viewedStatus(g.hunkIds, viewed).checked && <Icon iconName="CheckMark" className="nav-viewed" ariaLabel="Viewed" />}
                   <span className="count">{g.hunkIds.length}</span>
                 </button>
               </div>
@@ -401,8 +401,8 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
     <nav className="navigator">
       {header}
       {files.length ? (
-        <PierreTree files={files} comments={comments} viewed={viewed} maxHeight={Infinity} onSelect={(path) => {
-          setFileCollapsed(path, false);
+        <PierreTree files={files} comments={comments} viewed={viewedFiles} maxHeight={Infinity} onSelect={(path) => {
+          setCollapsed(result.files.find((f) => f.path === path)?.hunks.map((h) => h.id) ?? [], false);
           go(`file-${path}`);
         }} />
       ) : (
@@ -419,9 +419,9 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
  */
 const NavigatorSheet: React.FC<NavigatorProps> = (props) => {
   const [open, setOpen] = React.useState(false);
-  const { viewed } = useFileReview();
+  const { viewedFiles } = useFileReview();
   const files = props.review.result.files;
-  const viewedCount = files.filter((f) => viewed.has(f.path)).length;
+  const viewedCount = files.filter((f) => viewedFiles.has(f.path)).length;
   const grouped = props.view === "grouped";
   const title = grouped ? "Concerns" : "Files";
   const icon = grouped ? "ViewListGroup" : "SortLines";
@@ -552,7 +552,10 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
   onPick,
 }) => {
   const { result } = review;
-  const { viewed, setFileCollapsed } = useFileReview();
+  const { viewed, setCollapsed } = useFileReview();
+  const hunksOf = (path: string) => group.hunkIds.filter((id) => result.hunks.get(id)!.file.path === path);
+  // A file is checked here once its chunks in this concern are, whatever its chunks elsewhere.
+  const viewedHere = new Set(files.filter((f) => viewedStatus(hunksOf(f.path), viewed).checked).map((f) => f.path));
   // Rough tree height before it renders: a row per file and per folder, capped like the tree itself.
   const rows = files.length + new Set(files.map((f) => dirname(f.path))).size;
   return (
@@ -560,12 +563,12 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
       <PierreTree
         files={files}
         comments={comments}
-        viewed={viewed}
+        viewed={viewedHere}
         onSelect={(path) => {
-          setFileCollapsed(path, false);
+          setCollapsed(hunksOf(path), false);
           const section = document.getElementById(`group-${group.id}`);
           section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
-          requestAnimationFrame(() => scrollToId(`hunk-${group.hunkIds.find((id) => result.hunks.get(id)!.file.path === path)}`));
+          requestAnimationFrame(() => scrollToId(`hunk-${hunksOf(path)[0]}`));
           onPick?.();
         }}
       />
@@ -600,7 +603,7 @@ const GroupedView: React.FC<ViewProps> = (props) => {
     const first = new Map<string, string>();
     const firstOpen = new Map<string, string>();
     for (const g of result.groups) {
-      const open = !groupCollapsed(g.id, groupFiles(review, g).map((f) => f.path), g.kind === "mechanical");
+      const open = !groupCollapsed(g.id, g.hunkIds, g.kind === "mechanical");
       for (const id of g.hunkIds) {
         const path = result.hunks.get(id)!.file.path;
         if (!shown(path)) continue;
@@ -643,8 +646,7 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   viewUrl,
 }) => {
   const { groupCollapsed, setGroupCollapsed } = useFileReview();
-  const paths = groupFiles(review, group).map((file) => file.path);
-  const open = !groupCollapsed(group.id, paths, group.kind === "mechanical");
+  const open = !groupCollapsed(group.id, group.hunkIds, group.kind === "mechanical");
   const setOpen = (next: boolean) => setGroupCollapsed(group.id, !next);
   const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
   const files = new Set(hunks.map((h) => h.file.path)).size;
@@ -666,7 +668,7 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
             {plural(hunks.length, "change")} · {plural(files, "file")}
           </span>
         </button>
-        <ViewedCheckbox paths={paths} label={`Mark concern ${group.title} as viewed`} onChange={(checked) => setOpen(!checked)} />
+        <ViewedCheckbox hunkIds={group.hunkIds} label={`Mark concern ${group.title} as viewed`} onChange={(checked) => setOpen(!checked)} />
       </div>
       {open && (
         <>
@@ -688,15 +690,15 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; sh
   showFileThreads,
   viewUrl,
 }) => {
-  const { fileCollapsed } = useFileReview();
-  const collapsed = fileCollapsed(info.file);
+  const { collapsed: isCollapsed } = useFileReview();
+  const collapsed = isCollapsed([info.hunk.id]);
   const adds = info.hunk.lines.filter((l) => l.kind === "add").length;
   const dels = info.hunk.lines.filter((l) => l.kind === "del").length;
   return (
     <article className="hunk-card" id={`hunk-${info.hunk.id}`}>
       {/* The article stays as a scroll target; its contents mount near the viewport. */}
       <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode))}>
-      <FileHeader file={info.file} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>
+      <FileHeader file={info.file} hunkIds={[info.hunk.id]} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>
         <FileStatusPill file={info.file} />
         {info.isTest && <span className="tag">test</span>}
         {info.mechanical && <span className="tag">{info.mechanical.reason}</span>}
@@ -708,7 +710,7 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; sh
 };
 
 const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, viewUrl }) => {
-  const { fileCollapsed } = useFileReview();
+  const { collapsed: isCollapsed } = useFileReview();
   const files = review.result.files.filter((f) => shown(f.path)).sort((a, b) => a.path.localeCompare(b.path));
   const visible = visibleLines(review.result.files);
   return (
@@ -719,11 +721,12 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, view
         const index = lineIndex(threads);
         const adds = f.hunks.reduce((n, h) => n + h.lines.filter((l) => l.kind === "add").length, 0);
         const dels = f.hunks.reduce((n, h) => n + h.lines.filter((l) => l.kind === "del").length, 0);
-        const collapsed = fileCollapsed(f);
+        const hunkIds = f.hunks.map((h) => h.id);
+        const collapsed = isCollapsed(hunkIds);
         return (
           <article key={f.path} className="file-card" id={`file-${f.path}`}>
             <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : f.hunks.reduce((n, h) => n + estimateHunkHeight(h, mode), 0))}>
-            <FileHeader file={f} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads viewUrl={viewUrl(f)}>
+            <FileHeader file={f} hunkIds={hunkIds} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads viewUrl={viewUrl(f)}>
               <FileStatusPill file={f} />
             </FileHeader>
             {!collapsed && orphans.map((t) => (

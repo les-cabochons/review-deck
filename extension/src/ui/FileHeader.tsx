@@ -16,10 +16,12 @@ import { basename, dirname } from "./util";
 /**
  * A file card's header (fold, path, tags, stats, Comment / Viewed / ⋯) and, below it, the comments on the whole
  * file. A file can span several cards in the grouped view, so only one of them shows the file's threads
- * (`showThreads`); any of them can start a new one.
+ * (`showThreads`); any of them can start a new one. The fold and Viewed controls act on the card's chunks only.
  */
 export const FileHeader: React.FC<{
   file: FileDiff;
+  /** The chunks this card shows: all of the file's in A–Z, one in a guided card. */
+  hunkIds: string[];
   adds: number;
   dels: number;
   /** File-level threads (no line anchor). */
@@ -27,13 +29,13 @@ export const FileHeader: React.FC<{
   showThreads: boolean;
   /** The file at the compared update, or null when the host has no file page. */
   viewUrl: string | null;
-}> = ({ file, adds, dels, threads, showThreads, viewUrl, children }) => {
+}> = ({ file, hunkIds, adds, dels, threads, showThreads, viewUrl, children }) => {
   const comments = React.useContext(LineCommentContext);
   const { actions, disabled } = useReviewActions();
   const pending = usePendingReview();
   const [composing, setComposing] = React.useState(false);
-  const { fileCollapsed, setFileCollapsed } = useFileReview();
-  const collapsed = fileCollapsed(file);
+  const { collapsed: isCollapsed, setCollapsed } = useFileReview();
+  const collapsed = isCollapsed(hunkIds);
   const drafts = pending.draftsAt(file.path).filter((d) => !isLineAnchor(d.thread.file));
   const canComment = !!comments?.canComment(file.path) && !disabled;
   const count = threads.length + drafts.length;
@@ -43,7 +45,7 @@ export const FileHeader: React.FC<{
     <>
       <header className="file-header">
         <button type="button" className="file-collapse" aria-expanded={!collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${file.path}`} onClick={() => setFileCollapsed(file.path, !collapsed)}>
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${file.path}`} onClick={() => setCollapsed(hunkIds, !collapsed)}>
           <Icon iconName={collapsed ? "ChevronRight" : "ChevronDown"} />
         </button>
         <FilePath path={file.path} from={file.status === "renamed" ? file.oldPath : null} />
@@ -61,10 +63,10 @@ export const FileHeader: React.FC<{
           tooltipProps={{ text: canComment ? "Comment on this file" : "Comments need the latest comparison to load" }}
           onClick={() => {
             setComposing(!composing);
-            if (!composing) setFileCollapsed(file.path, false);
+            if (!composing) setCollapsed(hunkIds, false);
           }}
         />
-        <ViewedCheckbox paths={[file.path]} label={`Mark ${file.path} as viewed`} />
+        <ViewedCheckbox hunkIds={hunkIds} label={`Mark ${file.path} as viewed`} />
         <MoreMenu
           label={`More options for ${file.path}`}
           options={[
