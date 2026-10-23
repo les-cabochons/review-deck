@@ -309,6 +309,43 @@ function scrollToId(id: string) {
   setTimeout(go, 300);
 }
 
+/** Space kept under the navigator, matching the stylesheet's `calc(100vh - 64px)` (48px sticky top + 16px). */
+const NAV_BOTTOM_GAP = 16;
+
+/**
+ * Caps the sticky navigator at the part of the window below its top, so its bottom stays on screen before the page
+ * scrolls past the PR header. The stylesheet's max-height only fits once the navigator is stuck under the toolbar.
+ * It only does so while the navigator is sticky. In the phone sheet the navigator is static and the sheet sizes it.
+ */
+function useFitViewport(element: HTMLElement | null) {
+  React.useLayoutEffect(() => {
+    if (!element) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      if (getComputedStyle(element).position !== "sticky") {
+        element.style.maxHeight = "";
+        return;
+      }
+      const top = Math.max(element.getBoundingClientRect().top, 0);
+      element.style.maxHeight = `${window.innerHeight - top - NAV_BOTTOM_GAP}px`;
+    };
+    const schedule = () => { frame ||= requestAnimationFrame(fit); };
+    fit();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    // Content above it (the grouping banner, the PR header) can change height without a scroll.
+    const observer = new ResizeObserver(schedule);
+    observer.observe(document.body);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      observer.disconnect();
+    };
+  }, [element]);
+}
+
 interface NavigatorProps {
   review: ReviewModel;
   view: FileView;
@@ -334,6 +371,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
     onPick?.();
   };
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
+  useFitViewport(nav);
   const query = search.trim().toLowerCase();
   const visible = (file: FileDiff) => shown(file.path) && (!query || file.path.toLowerCase().includes(query));
   const filtered = result.files.filter((f) => !shown(f.path)).length;
@@ -398,7 +436,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
   }
   const files = result.files.filter(visible).sort((a, b) => a.path.localeCompare(b.path));
   return (
-    <nav className="navigator">
+    <nav className="navigator" ref={setNav}>
       {header}
       {files.length ? (
         <PierreTree files={files} comments={comments} viewed={viewedFiles} maxHeight={Infinity} onSelect={(path) => {
