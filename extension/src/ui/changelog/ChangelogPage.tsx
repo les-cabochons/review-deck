@@ -24,7 +24,7 @@ import {
   runSucceeded,
 } from "../../data/releases";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
-import { readPreference, writePreference } from "../preferences";
+import { usePreference } from "../usePreference";
 import { cx, Markdown, plural, Time } from "../util";
 
 type View = "releases" | "tags";
@@ -42,7 +42,6 @@ const VIEWS: Record<View, { text: string; icon: string; noun: string; list: stri
   tags: { text: "Tags", icon: "Tag", noun: "tags", list: "Tag list", find: "Find a tag", none: "No tags." },
 };
 
-const readView = (): View => (readPreference<string>("changelog.view", "releases") === "tags" ? "tags" : "releases");
 
 /** Git tags resolved so far: when and by whom, and their latest publishing pipeline run. */
 interface TagInfo {
@@ -68,7 +67,8 @@ export const ChangelogPage: React.FC<{ host: AppHost }> = ({ host }) => {
   /** The repository picked in Azure DevOps' own repository picker, above the page. */
   const [repo, setRepo] = React.useState<Repository | null>(null);
   const [settings, setSettings] = React.useState<ReturnType<typeof repoReleaseSettings> | null>(null);
-  const [view, setView] = React.useState<View>(readView);
+  const [savedView, setView] = usePreference<string>("changelog.view", "releases");
+  const view: View = savedView === "tags" ? "tags" : "releases";
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
 
@@ -116,10 +116,7 @@ export const ChangelogPage: React.FC<{ host: AppHost }> = ({ host }) => {
               role="tab"
               aria-selected={view === v}
               className={cx(view === v && "selected")}
-              onClick={() => {
-                writePreference("changelog.view", v);
-                setView(v);
-              }}
+              onClick={() => setView(v)}
             >
               <Icon iconName={VIEWS[v].icon} />
               {VIEWS[v].text}

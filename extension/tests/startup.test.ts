@@ -124,6 +124,18 @@ test("Given a slow account, then a page that opened without its preferences can 
   assert.equal(readPreference("hub.filter", "inbox", local.storage), "needs-review");
 });
 
+test("Given a change made before the account's preferences arrive, then re-reading after they arrive keeps the change", async () => {
+  const local = memoryStorage();
+  let answer!: (values: Record<string, string>) => void;
+  await connectPreferences({ load: () => new Promise((resolve) => (answer = resolve)), save: async () => {} }, 10, local.storage);
+  writePreference("diffMode", "split", local.storage);
+  answer({ diffMode: "inline", fileView: "alpha" });
+  await preferencesLoaded();
+  // What usePreference reads once they arrive: the change for diffMode, the account's value for the rest.
+  assert.equal(readPreference("diffMode", "inline", local.storage), "split");
+  assert.equal(readPreference("fileView", "grouped", local.storage), "alpha");
+});
+
 test("Given denied storage, then preferences from the user's account still apply", async () => {
   const denied = () => { throw new DOMException("Storage access denied", "SecurityError"); };
   await connectPreferences({ load: async () => ({ fileView: "alpha" }), save: async () => {} }, 1500, denied);
