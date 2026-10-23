@@ -1,4 +1,6 @@
 import type { IHostNavigationService } from "azure-devops-extension-api";
+import { reviewHubUrl } from "./hashRoute";
+import type { Route } from "./host";
 
 /** What the pull request menu passes to execute; Azure DevOps' PR pages don't all pass the same shape. */
 export interface PrActionContext {
@@ -23,17 +25,32 @@ export interface ActionSdk {
 export function openReviewAction(sdk: ActionSdk, navigation: () => Promise<Pick<IHostNavigationService, "navigate">>) {
   return {
     execute: async (context: PrActionContext) => {
-      const prId = context.pullRequest?.pullRequestId ?? context.pullRequestId;
-      const repoId = context.pullRequest?.repository?.id ?? context.repositoryId;
-      if (!prId || !repoId) return;
+      const route = prRoute(context);
+      if (!route) return;
       await sdk.ready();
-      const ext = sdk.getExtensionContext();
-      const project = context.pullRequest?.repository?.project?.name ?? sdk.getWebContext().project.name;
-      const hub = `${ext.publisherId}.${ext.extensionId}.review-hub`;
-      const query = new URLSearchParams({ pr: String(prId), repo: repoId });
-      (await navigation()).navigate(
-        `https://dev.azure.com/${encodeURIComponent(sdk.getHost().name)}/${encodeURIComponent(project)}/_apps/hub/${hub}?${query}`,
-      );
+      const project = route.project ?? sdk.getWebContext().project.name;
+      (await navigation()).navigate(reviewHubUrl(sdk.getHost().name, sdk.getExtensionContext(), project, route));
     },
   };
+}
+
+/** `ask`'s answer, asked for once and kept for every later call; asked again if it failed. */
+export function keptUnlessFailed<T>(ask: () => Promise<T>): () => Promise<T> {
+  let kept: Promise<T> | null = null;
+  return () => {
+    if (!kept) {
+      const asked = ask();
+      asked.catch(() => {
+        if (kept === asked) kept = null;
+      });
+      kept = asked;
+    }
+    return kept;
+  };
+}
+
+function prRoute(context: PrActionContext): Extract<Route, { view: "pr" }> | null {
+  const pr = context.pullRequest?.pullRequestId ?? context.pullRequestId;
+  const repo = context.pullRequest?.repository?.id ?? context.repositoryId;
+  return pr && repo ? { view: "pr", pr, repo, project: context.pullRequest?.repository?.project?.name } : null;
 }
