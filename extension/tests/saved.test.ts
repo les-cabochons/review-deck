@@ -126,6 +126,9 @@ test("Given a complete guided view is saved, then one that fell back (another re
   failing.warnings.push("semantic signal skipped: embedding service returned 503");
   const complete = withSaved(null, key, packReview(analyzed(), mode));
   assert.equal(withSaved(complete, key, packReview(failing, mode)), null);
+  // Regrouped after editing the description: the reader asked for the new one, even if it fell back.
+  const edited = { ...failing, description: "1. Rename `get` in `src/api.ts`" };
+  assert.equal((savedFor(withSaved(complete, key, packReview(edited, mode)), key) as { madeWith: { description: string } }).madeWith.description, edited.description);
   // Made another way (the project turned AI titles off since), it is no use to anyone now: replace it.
   assert.equal((savedFor(withSaved(complete, key, packReview(failing, reviewMode({}, false))), key) as { fellBack?: true }).fellBack, true);
   // A complete one replaces one that fell back, and one that fell back an older one that did too.
@@ -135,10 +138,17 @@ test("Given a complete guided view is saved, then one that fell back (another re
 });
 
 test("Given a huge PR, then its other saved comparisons are dropped before its document grows too large, but the new one is always kept", () => {
-  const huge = packReview(analyzed(), reviewMode({}, true));
-  huge.groups = [{ ...huge.groups[0], rationale: "x".repeat(150_000) }];
+  const sized = (chars: number) => {
+    const review = packReview(analyzed(), reviewMode({}, true));
+    review.groups = [{ ...review.groups[0], rationale: "x".repeat(chars) }];
+    return review;
+  };
   const key = (compareTo: number): ReviewKey => ({ repo: "r", pr: 7, iteration: 5, compareTo });
   let doc: unknown = null;
-  for (const compareTo of [0, 1, 2, 3]) doc = withSaved(doc, key(compareTo), huge);
+  for (const compareTo of [0, 1, 2, 3]) doc = withSaved(doc, key(compareTo), sized(100_000));
   assert.deepEqual((doc as { compareTo: number }[]).map((c) => c.compareTo), [3, 2]);
+  // The new one counts too: alongside it, no other fits.
+  assert.deepEqual(withSaved(doc, key(4), sized(200_000))!.map((c) => c.compareTo), [4]);
+  // Larger than the budget alone, it is still saved, by itself.
+  assert.deepEqual(withSaved(doc, key(5), sized(300_000))!.map((c) => c.compareTo), [5]);
 });

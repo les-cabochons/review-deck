@@ -16,8 +16,8 @@ const FORMAT = 4;
 
 /** Comparisons kept per PR, most recently grouped first: the default one, plus the few others reviewers opened. */
 const MAX_COMPARISONS = 4;
-/** Characters the other comparisons may add to a PR's document, so a huge PR's stays small; the new one always fits. */
-const MAX_OTHERS_CHARS = 256_000;
+/** A PR's document keeps other comparisons only while it stays under this many characters; the new one always fits. */
+const MAX_DOC_CHARS = 256_000;
 
 /** How long a guided view made while the backend failed is reused before the next open groups again. */
 const RETRY_FALLBACK_MS = 60 * 60 * 1000;
@@ -95,7 +95,7 @@ export function savedFor(comparisons: unknown, key: ReviewKey): unknown {
 /**
  * A PR's saved views with `review` as `key`'s comparison's, first, then as many of the others as fit (most recently
  * grouped first), so switching comparisons doesn't evict the one everyone else opens. Null if there's nothing to
- * save: `review` fell back, and a complete one made the same way is already saved for this comparison.
+ * save: `review` fell back, and a complete one made the same way, from the same title and description, is saved.
  */
 export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview): SavedComparison[] | null {
   const saved = Array.isArray(comparisons)
@@ -104,13 +104,16 @@ export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedRev
   const same = (c: SavedComparison) => c.iteration === key.iteration && c.compareTo === key.compareTo;
   const current = saved.find(same)?.review;
   // E.g. two reviewers grouped it at once and only one reached the backend: everyone keeps getting the complete one.
-  if (review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode)) return null;
+  // A Regroup after editing the description still replaces it: that's the grouping its reader asked for.
+  if (review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode) && sameText(current.madeWith, review.madeWith)) {
+    return null;
+  }
   const kept: SavedComparison[] = [{ iteration: key.iteration, compareTo: key.compareTo, review }];
-  let chars = 0;
+  let chars = JSON.stringify(kept[0]).length;
   for (const c of saved) {
     if (same(c)) continue;
     chars += JSON.stringify(c).length;
-    if (kept.length >= MAX_COMPARISONS || chars > MAX_OTHERS_CHARS) break;
+    if (kept.length >= MAX_COMPARISONS || chars > MAX_DOC_CHARS) break;
     kept.push(c);
   }
   return kept;
@@ -154,6 +157,10 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
 
 function sameMode(a: Partial<ReviewMode> | undefined, b: ReviewMode): boolean {
   return a?.semantic === b.semantic && a.llmTitles === b.llmTitles;
+}
+
+function sameText(a: Partial<SavedReview["madeWith"]> | undefined, b: SavedReview["madeWith"]): boolean {
+  return a?.title === b.title && a.description === b.description;
 }
 
 function describeMode(mode: Partial<ReviewMode> | undefined): string {
