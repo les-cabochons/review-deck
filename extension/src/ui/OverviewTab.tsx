@@ -12,13 +12,15 @@ import { Avatar, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 interface Props {
   data: PrOverview;
   review: ReviewModel | null;
+  /** The analysis is running; until then the files load, and a saved guided view needs nothing more. */
+  building: boolean;
   onOpenGroup: (groupId: string) => void;
   onOpenFiles: () => void;
   /** Shown first in the sidebar (the stack panel). */
   sidebarTop?: React.ReactNode;
 }
 
-export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpenFiles, sidebarTop }) => {
+export const OverviewTab: React.FC<Props> = ({ data, review, building, onOpenGroup, onOpenFiles, sidebarTop }) => {
   const { actions } = useReviewActions();
   return (
     <div className="overview">
@@ -29,7 +31,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, onOpenGroup, onOpen
       </div>
       <aside className="overview-side">
         {sidebarTop}
-        <SemanticSummary review={review} onOpenGroup={onOpenGroup} />
+        <SemanticSummary review={review} building={building} onOpenGroup={onOpenGroup} />
         <Reviewers data={data} />
         <Checks data={data} />
         <Tags data={data} />
@@ -197,10 +199,10 @@ const Side: React.FC<{ title: string; action?: string }> = ({ title, action, chi
   </section>
 );
 
-const SemanticSummary: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: string) => void }> = ({ review, onOpenGroup }) => (
+const SemanticSummary: React.FC<{ review: ReviewModel | null; building: boolean; onOpenGroup: (id: string) => void }> = ({ review, building, onOpenGroup }) => (
   <Side title="Guided review">
     {!review?.analyzed ? (
-      <p className="muted">Building guided view…</p>
+      <p className="muted">{building ? "Building guided view…" : "Loading guided view…"}</p>
     ) : (
       <ul className="summary-groups">
         {review.result.groups.map((g, i) => (

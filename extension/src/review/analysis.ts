@@ -42,7 +42,14 @@ export interface AnalysisProgress {
 export type AnalysisMessage =
   | { type: "diff"; diff: string }
   | { type: "progress"; progress: AnalysisProgress }
-  | { type: "result"; result: ReviewResult; /** From the saved grouping, not a fresh analysis. */ restored: boolean }
+  | {
+      type: "result";
+      result: ReviewResult;
+      /** From the saved grouping, not a fresh analysis. */
+      restored: boolean;
+      /** Why a saved grouping was there but not used. */
+      skipped?: string;
+    }
   | { type: "error"; error: string };
 
 /** Rough share of the pipeline's time per stage, measured on large PRs (parsing dominates). */
@@ -76,11 +83,14 @@ function throttled(send: (message: AnalysisMessage) => void, ms = 150): (p: Pipe
 export async function runJob(job: AnalysisJob, send: (message: AnalysisMessage) => void): Promise<void> {
   try {
     const diff = buildDiff(job.changes, job.contents);
+    // A saved guided view shows straight away; the A–Z preview is only for while a fresh analysis runs.
+    const restored = job.saved ? restoreReview(job.saved, reviewMode(job.backend, job.aiTitles), diff) : null;
+    if (restored && "result" in restored) {
+      send({ type: "result", result: restored.result, restored: true });
+      return;
+    }
     send({ type: "diff", diff });
-    const meta = { title: job.title, description: job.description };
-    const restored = job.saved ? restoreReview(job.saved, reviewMode(job.backend, job.aiTitles), meta, diff) : null;
-    if (restored) send({ type: "result", result: restored, restored: true });
-    else send({ type: "result", result: await analyze(job, diff, throttled(send)), restored: false });
+    send({ type: "result", result: await analyze(job, diff, throttled(send)), restored: false, skipped: restored?.skipped });
   } catch (e) {
     send({ type: "error", error: e instanceof Error ? e.message : String(e) });
   }

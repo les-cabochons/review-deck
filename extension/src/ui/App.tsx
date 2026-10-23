@@ -67,7 +67,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   /** Bumped by "Regroup"; `freshNext` makes that run skip the saved grouping. */
   const [regroup, setRegroup] = React.useState(0);
   const freshNext = React.useRef(false);
-  /** The title and description the grouping was made with; they differ from `data` after an edit on this page. */
+  /** The title and description the grouping was made with; they differ from `data` once edited (here, or since it was saved). */
   const [groupedWith, setGroupedWith] = React.useState<{ title: string; description: string } | null>(null);
   const stack = useStack(host, route.pr);
   const openLayer = (pr: { id: number; repository: { id: string } }) => host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id });
@@ -105,7 +105,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     const meta = { title: data.pr.title, description: data.pr.description };
     const fresh = freshNext.current;
     freshNext.current = false;
-    setGroupedWith(meta);
+    setGroupedWith(null);
     setReviewLoading(true);
     setReview(null);
     setReviewError(null);
@@ -114,7 +114,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     Promise.all([import("../review/engine"), host.backendService(), host.projectSettings(), host.organizationSettings()])
       .then(([{ buildReview }, backend, settings, organization]) => {
         if (cancelled) return null;
-        // The preview (diff only) shows at once; grouping replaces it when the worker finishes.
+        // A saved guided view shows once the files are in; otherwise the preview (diff only) shows until grouping is done.
         return buildReview(source, meta, selection.iteration, selection.compareTo, {
           signal: abort.signal,
           fresh,
@@ -133,6 +133,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       .then((r) => {
         if (cancelled || !r) return;
         setReview(r);
+        setGroupedWith({ title: r.result.title, description: r.result.description });
         setProgress(null);
         if (previewAt !== null && Date.now() - previewAt >= ANNOUNCE_AFTER_MS) announceGrouped(r);
       })
@@ -239,6 +240,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                     <OverviewTab
                       data={data}
                       review={review}
+                      building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
                       onOpenFiles={() => selectTab("files")}
                       onOpenGroup={(id) => {
