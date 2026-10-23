@@ -309,6 +309,38 @@ function scrollToId(id: string) {
   setTimeout(go, 300);
 }
 
+/** Space kept under the navigator, matching the stylesheet's `calc(100vh - 64px)` (48px sticky top + 16px). */
+const NAV_BOTTOM_GAP = 16;
+
+/**
+ * Caps the sticky navigator at the visible part of the window. The stylesheet's max-height assumes it is already
+ * stuck under the toolbar; before the page scrolls past the PR header it starts lower, so its bottom was off screen.
+ */
+function useFitViewport(element: HTMLElement | null) {
+  React.useLayoutEffect(() => {
+    if (!element) return;
+    let frame = 0;
+    const fit = () => {
+      frame = 0;
+      const top = Math.max(element.getBoundingClientRect().top, 0);
+      element.style.maxHeight = `${window.innerHeight - top - NAV_BOTTOM_GAP}px`;
+    };
+    const schedule = () => { frame ||= requestAnimationFrame(fit); };
+    fit();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    // Content above it (the grouping banner, the PR header) can change height without a scroll.
+    const resized = new ResizeObserver(schedule);
+    resized.observe(document.body);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      resized.disconnect();
+    };
+  }, [element]);
+}
+
 interface NavigatorProps {
   review: ReviewModel;
   view: FileView;
@@ -334,6 +366,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
     onPick?.();
   };
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
+  useFitViewport(nav);
   const query = search.trim().toLowerCase();
   const visible = (file: FileDiff) => shown(file.path) && (!query || file.path.toLowerCase().includes(query));
   const filtered = result.files.filter((f) => !shown(f.path)).length;
@@ -398,7 +431,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
   }
   const files = result.files.filter(visible).sort((a, b) => a.path.localeCompare(b.path));
   return (
-    <nav className="navigator">
+    <nav className="navigator" ref={setNav}>
       {header}
       {files.length ? (
         <PierreTree files={files} comments={comments} viewed={viewed} maxHeight={Infinity} onSelect={(path) => {
