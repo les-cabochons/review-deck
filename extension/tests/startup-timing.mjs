@@ -7,9 +7,10 @@
 //   node extension/tests/startup-timing.mjs --shots .cache/shots   # screenshots of the skeletons and pages
 //
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
-// the scenario), the location service (REST calls go to this server's /api/, which returns empty lists) and the
-// access token. Every other service fails, as a locked-down host would. Times are milliseconds from the moment
-// the iframe starts loading, medians over the runs, for a cold browser profile and a warm one (second visit).
+// the scenario), the location service (REST calls go to this server's /api/, which returns empty lists), extension
+// data (nothing stored, answered after ?data= ms) and the access token. Every other service fails, as a locked-down
+// host would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold
+// browser profile and a warm one (second visit).
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
@@ -34,12 +35,18 @@ const DARK = {
   "palette-neutral-4": "44, 43, 42", "palette-neutral-8": "53, 52, 51", "palette-black-alpha-6": "rgba(255, 255, 255, 0.06)", "palette-black-alpha-10": "rgba(255, 255, 255, 0.10)",
 };
 
-/** The fake host page. `query` is what the navigation service reports; `handshake` delays its answer. */
-function hostHtml(query, handshake) {
+/**
+ * The fake host page. `query` is what the navigation service reports; `handshake` delays its answer, and `data`
+ * every extension data call (organization settings, synced preferences), which finds nothing.
+ */
+function hostHtml(query, handshake, data) {
   return `<!doctype html><html><body style="margin:0"><script>
     const query = ${JSON.stringify(query)};
     const marks = (window.marks = { start: Date.now() });
-    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => location.origin + "/api/", 6: () => location.hash.slice(1), 7: () => {} };
+    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => location.origin + "/api/", 6: () => location.hash.slice(1), 7: () => {},
+      8: () => ({ getDocument: { __proxyFunctionId: 9 }, getDocuments: { __proxyFunctionId: 9 }, getValue: { __proxyFunctionId: 9 } }) };
+    // Extension data: answered after a delay, as a REST call to Azure DevOps would be, with "not found".
+    const slow = { 9: { message: "Document not found", status: 404 } };
     window.addEventListener("message", (event) => {
       let m; try { m = JSON.parse(event.data); } catch { return; }
       if (!m.instanceId && !m.methodName) return;
@@ -56,11 +63,13 @@ function hostHtml(query, handshake) {
         const id = m.params?.[0];
         if (id === "ms.vss-features.host-navigation-service") reply({ getQueryParams: { __proxyFunctionId: 1 }, setQueryParams: { __proxyFunctionId: 2 }, setDocumentTitle: { __proxyFunctionId: 3 }, navigate: { __proxyFunctionId: 4 },
           getHash: { __proxyFunctionId: 6 }, setHash: { __proxyFunctionId: 7 }, replaceHash: { __proxyFunctionId: 7 }, onHashChanged: { __proxyFunctionId: 7 } });
+        else if (id === "ms.vss-features.extension-data-service") reply({ getExtensionDataManager: { __proxyFunctionId: 8 } });
         else if (id === "ms.vss-features.location-service") reply({ getResourceAreaLocation: { __proxyFunctionId: 5 }, getServiceLocation: { __proxyFunctionId: 5 } });
         else reply(undefined, { message: "Service " + id + " is not in the harness" });
       } else if (name === "getAccessToken" || name === "getAppToken") reply({ token: "harness" });
       else if (name === "notifyLoadSucceeded") { marks.loaded = Date.now(); reply(); }
       else if (name === "notifyLoadFailed") { marks.failed = Date.now(); reply(); }
+      else if (slow[name?.slice(5)]) setTimeout(() => reply(undefined, slow[name.slice(5)]), ${data});
       else if (name?.startsWith("proxy")) reply(proxies[name.slice(5)]?.() ?? null);
       else reply(null);
     });
@@ -104,7 +113,7 @@ function serve() {
       if (url.pathname === "/host") {
         const query = url.searchParams.get("pr") ? { pr: url.searchParams.get("pr"), repo: url.searchParams.get("repo") } : {};
         res.writeHead(200, { "content-type": "text/html" });
-        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0)));
+        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0), Number(url.searchParams.get("data") ?? 0)));
       }
       if (url.pathname.startsWith("/api/")) {
         res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -124,6 +133,8 @@ function serve() {
 
 const SCENARIOS = [
   { name: "hosted hub", path: "/host", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
+  // Organization settings take a REST round trip in Azure DevOps; a warm visit's cached rows shouldn't wait for it.
+  { name: "hosted hub, slow extension data", path: "/host?data=400", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
   // The stub API has no pull request, so this one settles on the page's error box.
   { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "settled"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },

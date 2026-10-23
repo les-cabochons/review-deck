@@ -61,6 +61,8 @@ Medians of 5 runs in headless Chrome against a local server that adds 30 ms to e
 
 The stub API has no pull request, so the hosted PR scenario ends on the page's error box. Azure DevOps adds its own latency to the handshake and to every REST call, which the skeleton and the host notification no longer wait for.
 
+The hub also no longer waits for the organization's on/off setting for it (`renderUnlessOff` in `src/startup.ts`). That setting is extension data, a REST round trip, and the cached rows used to wait behind it on every load, including a reload after going back from a PR. The page now renders at once and gives way to the "turned off" notice if the setting says so. It waits only where the hub was off last time in this browser, so a turned-off hub doesn't flash its rows. With extension data answering after 400 ms (`/host?data=400`, the "slow extension data" scenario), the warm hub's React UI with its cached sections went from 497 / 525 ms (React / settled) to 107 / 166 ms. Cold, it went from 595 / 624 to 282 / 324.
+
 ## Measure startup
 
 Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files).
