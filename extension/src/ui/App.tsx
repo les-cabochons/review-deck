@@ -4,6 +4,7 @@ import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
 import { hubPatch, rememberPr } from "../data/hubCache";
+import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { Breadcrumb } from "./Breadcrumb";
@@ -49,12 +50,16 @@ export const HostLinks = React.createContext<{
 
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
 export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }>; source: PrSource }> = ({ host, route, source }) => {
-  const [data, setData] = React.useState<PrOverview | null>(null);
+  /** What this browser kept from opening the PR before: shown at once, while `source` loads the real thing. */
+  const [kept] = React.useState(() => readPrSnapshot(host.cacheScope, route.pr));
+  const [data, setData] = React.useState<PrOverview | null>(kept);
+  /** `data` is the kept copy: changes wait for the first load, so none is made from what may be out of date. */
+  const [stale, setStale] = React.useState(!!kept);
   const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<TabId>(() =>
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
-  const [selection, setSelection] = React.useState({ iteration: 0, compareTo: 0 });
+  const [selection, setSelection] = React.useState(() => latestComparison(kept));
   const [review, setReview] = React.useState<ReviewModel | null>(null);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = React.useState(false);
@@ -82,16 +87,21 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       .load()
       .then((d) => {
         setData(d);
-        setSelection({ iteration: d.iterations.at(-1)?.id ?? 1, compareTo: 0 });
+        setStale(false);
+        // Opened from the kept copy: a push since then moves to the new latest, unless the reader picked another comparison.
+        const latest = latestComparison(d);
+        setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
       })
       .catch((e: Error) => setError(e.message));
   }, [source]);
 
   // After opening the PR and after every change made here (votes, reviewers, tags), so the hub shows it in its new
-  // section straight away when you go back.
+  // section straight away when you go back, and the next open of this PR paints it at once.
   React.useEffect(() => {
-    if (data) rememberPr(host.cacheScope, hubPatch(data));
-  }, [host, data]);
+    if (!data || stale) return;
+    rememberPr(host.cacheScope, hubPatch(data));
+    writePrSnapshot(host.cacheScope, data);
+  }, [host, data, stale]);
 
   React.useEffect(() => {
     if (data) host.setTitle(`!${data.pr.id} ${data.pr.title}`);
@@ -222,7 +232,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
 
   return (
     <IdentityNames.Provider value={names}>
-      <ReviewActionsProvider source={source} onData={setData}>
+      <ReviewActionsProvider source={source} onData={setData} stale={stale}>
         <PendingReviewProvider storageKey={`${route.repo}.${route.pr}.${source.currentUser.id}`}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
@@ -291,6 +301,14 @@ const MentionProvider: React.FC<{ people: Identity[] }> = ({ people, children })
   const value = React.useMemo(() => ({ known: people, search: (q: string) => actions.searchReviewers(q) }), [people, actions]);
   return <MentionContext.Provider value={value}>{children}</MentionContext.Provider>;
 };
+
+/** The latest update against the PR's base, which the Files tab opens on; iteration 0 until the PR is known. */
+function latestComparison(data: PrOverview | null): { iteration: number; compareTo: number } {
+  return { iteration: data ? (data.iterations.at(-1)?.id ?? 1) : 0, compareTo: 0 };
+}
+
+const sameComparison = (a: { iteration: number; compareTo: number }, b: { iteration: number; compareTo: number }) =>
+  a.iteration === b.iteration && a.compareTo === b.compareTo;
 
 function knownPeople(data: PrOverview | null, me: Identity): Identity[] {
   if (!data) return [me];

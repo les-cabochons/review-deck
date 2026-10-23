@@ -63,9 +63,32 @@ The stub API has no pull request, so the hosted PR scenario ends on the page's e
 
 The hub also no longer waits for the organization's on/off setting for it (`renderUnlessOff` in `src/startup.ts`). That setting is extension data, a REST round trip, and the cached rows used to wait behind it on every load, including a reload after going back from a PR. The page now renders at once and gives way to the "turned off" notice if the setting says so. It waits only where the hub was off last time in this browser, so a turned-off hub doesn't flash its rows. With extension data answering after 400 ms (`/host?data=400`, the "slow extension data" scenario), the warm hub's React UI with its cached sections went from 497 / 525 ms (React / settled) to 107 / 166 ms. Cold, it went from 595 / 624 to 282 / 324.
 
+## Opening a pull request (October 23, 2026)
+
+Once the skeleton was fast, the PR page still showed it for about a second where Azure DevOps' own PR page is close to instant. Almost all of that is Azure DevOps' REST latency. The page shows the PR once seven calls answer (the PR, its updates, threads, commits, tags, work items and policies). Timed with `curl` against `cabochons`, each took 250 to 520 ms, even the ones that return 22 bytes, so the slowest of the seven sets the pace. Ahead of the first call, the host has to issue the extension's token and resolve each API's location. Each URL also needs a CORS preflight the first time (about 65 ms, then cached for an hour), because the page runs on the Marketplace CDN's origin. The CDN serves the page's files gzipped with a one-year cache, and `dev.azure.com` speaks HTTP/2, so neither the files nor connection limits are the bottleneck.
+
+The page can't make those calls faster, so it starts them sooner or doesn't wait for them:
+
+1. A link straight to a PR starts loading it as soon as the route is known (`AdoHost.prefetchPr`, from `src/index.ts`). The calls, and the token and location lookups ahead of them, then overlap loading and rendering the UI instead of following it.
+2. In the hub, a row the pointer rests on for 80 ms, or presses, starts loading its PR, so the wait overlaps the move to the click. The PR page takes that load if it is under 15 seconds old, and a prefetch that failed is tried again.
+3. The PR page keeps the last 10 PRs opened in this browser (`data/prCache.ts`, `localStorage`, per organization, project and user, ignored after 12 hours like the hub cache). Opening one again shows it at once and replaces it when the load lands. Until then its buttons are disabled, so no vote or completion is made from out-of-date data. The guided view starts from the kept copy's latest update and moves to a newer one if the load shows one was pushed since.
+
+The harness now plays this part of Azure DevOps too. Its REST stub returns one pull request, and runs over HTTP/2 on a second origin with CORS preflights, as `dev.azure.com` does (it falls back to HTTP/1.1 without `openssl`, which queues requests six at a time). The "slow REST" scenario answers every call after 400 ms. `prReact` is when the PR's page shows with its data, kept or loaded, and `prLive` when its buttons work, meaning the load has landed.
+
+Medians of 9 runs, in ms from navigation start. "Cold" means a first visit; "warm" is a second visit, which reopens the PR.
+
+| Scenario | Before: prReact / prLive | After: prReact / prLive |
+| --- | --- | --- |
+| PR link, REST at 0 ms, cold | 381 / 381 | 314 / 314 |
+| PR link, REST at 0 ms, warm | 146 / 146 | 122 / 153 |
+| PR link, REST at 400 ms, cold | 784 / 784 | 677 / 677 |
+| PR link, REST at 400 ms, warm | 549 / 549 | 125 / 560 |
+
+The harness doesn't measure the hub's hover prefetch, because its stub lists no pull requests.
+
 ## Measure startup
 
-Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files).
+Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.
 
 ```powershell
 npm run ext:build

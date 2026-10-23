@@ -22,7 +22,9 @@ export function useReviewActions(): ReviewActions {
 export const ReviewActionsProvider: React.FC<{
   source: PrSource;
   onData: (data: PrOverview) => void;
-}> = ({ source, onData, children }) => {
+  /** The page shows a copy kept from an earlier visit until the PR loads: changes wait for it. */
+  stale?: boolean;
+}> = ({ source, onData, stale = false, children }) => {
   const inFlight = React.useRef(false);
   const [pending, setPending] = React.useState(false);
   const [needsRefresh, setNeedsRefresh] = React.useState(false);
@@ -45,7 +47,7 @@ export const ReviewActionsProvider: React.FC<{
   };
 
   const run = async (write: () => Promise<void>) => {
-    if (inFlight.current || needsRefresh) return false;
+    if (inFlight.current || needsRefresh || stale) return false;
     inFlight.current = true;
     setPending(true);
     setError(null);
@@ -79,7 +81,7 @@ export const ReviewActionsProvider: React.FC<{
   };
 
   return (
-    <Context.Provider value={{ actions: source.actions, currentUser: source.currentUser, disabled: pending || needsRefresh, error, run, poll }}>
+    <Context.Provider value={{ actions: source.actions, currentUser: source.currentUser, disabled: pending || needsRefresh || stale, error, run, poll }}>
       <div className="write-feedback" aria-live="polite">
         {pending && <span role="status">Saving and refreshing…</span>}
         {error && (
