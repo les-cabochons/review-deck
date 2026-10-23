@@ -1,28 +1,12 @@
 // "Open in Review Deck" entry in the pull request action menu: navigates to the review hub
-// with the PR and repository ids as query parameters.
+// with the PR and repository ids as query parameters (app/prMenuAction.ts).
 import { CommonServiceIds, type IHostNavigationService } from "azure-devops-extension-api";
 import * as SDK from "azure-devops-extension-sdk";
+import { keptUnlessFailed, openReviewAction } from "./app/prMenuAction";
 
-interface PrActionContext {
-  pullRequest?: { pullRequestId: number; repository?: { id: string; project?: { name: string } } };
-  pullRequestId?: number;
-  repositoryId?: string;
-}
+// Asked for as soon as the handshake answers, so a click has it at hand; a click after a failure asks again.
+const navigation = keptUnlessFailed(() => SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService));
+navigation().catch(() => {}); // reported by the click that needs it
 
-SDK.register("open-review-action", {
-  execute: async (context: PrActionContext) => {
-    const prId = context.pullRequest?.pullRequestId ?? context.pullRequestId;
-    const repoId = context.pullRequest?.repository?.id ?? context.repositoryId;
-    if (!prId || !repoId) return;
-    const ext = SDK.getExtensionContext();
-    const project = SDK.getWebContext().project.name;
-    const host = SDK.getHost();
-    const nav = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-    const hub = `${ext.publisherId}.${ext.extensionId}.review-hub`;
-    nav.navigate(
-      `https://dev.azure.com/${host.name}/${encodeURIComponent(project)}/_apps/hub/${hub}?pr=${prId}&repo=${encodeURIComponent(repoId)}`,
-    );
-  },
-});
-
+SDK.register("open-review-action", openReviewAction(SDK, navigation));
 SDK.init();

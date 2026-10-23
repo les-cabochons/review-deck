@@ -10,6 +10,21 @@ export interface HostHistory {
   onHashChanged(callback: (hash: string) => void): void;
 }
 
+/**
+ * A link to a pull request in the Deck hub from outside it (the pull request menu, another project's hub). Its route
+ * arrives as `?pr=<id>&repo=<id>`, which HashRouter.connect moves into the hash.
+ */
+export function reviewHubUrl(
+  organization: string,
+  extension: { publisherId: string; extensionId: string },
+  project: string,
+  route: Extract<Route, { view: "pr" }>,
+): string {
+  const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
+  const hub = `${extension.publisherId}.${extension.extensionId}.review-hub`;
+  return `https://dev.azure.com/${encodeURIComponent(organization)}/${encodeURIComponent(project)}/_apps/hub/${hub}?${query}`;
+}
+
 /** `pr=12&repo=<id>` for a pull request, empty for the hub. */
 export function routeHash(route: Route): string {
   return route.view === "pr" ? new URLSearchParams({ pr: String(route.pr), repo: route.repo }).toString() : "";
