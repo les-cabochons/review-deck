@@ -2442,18 +2442,29 @@ kbd {
   border-bottom: 1px solid var(--line-soft);
   background: var(--surface);
 }
+/* Short of room, the directory gives way before the file name; the name only shrinks once the directory is gone. */
 .file-path {
+  display: flex;
   font-family: var(--mono);
   font-size: 12px;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+.file-path .dir,
+.file-path .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .file-path .dir {
+  flex: 0 1 auto;
   color: var(--fg2);
 }
+/* No shrink, even by a fraction of a pixel, or the name gets an ellipsis while the directory still has room. */
 .file-path .name {
+  flex: none;
+  max-width: 100%;
   font-weight: 600;
 }
 .file-status-pill {
@@ -2572,11 +2583,33 @@ kbd {
     flex: 1 1 100%;
     font-size: 18px;
   }
+  /* Full width, so the buttons wrap inside the page instead of pushing ⋯ past its edge. */
   .pr-actions {
+    flex: 1 1 100%;
+    min-width: 0;
     flex-wrap: wrap;
   }
   .breadcrumb {
     flex-wrap: wrap;
+  }
+}
+@media (max-width: 700px) {
+  /* Concern headers: the title keeps the width and the change count goes under it. */
+  .group-header {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .group-header .count {
+    grid-column: 3 / -1;
+  }
+  /* File headers: the path gets the first line, the stats and buttons the second. */
+  .file-header {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .file-header .file-path {
+    flex: 1 1 calc(100% - 30px);
   }
 }
 
