@@ -5,18 +5,22 @@ import { cx } from "./util";
 
 let dialogIds = 0;
 
-/** A centered dialog over a dimmed page, with a title bar and close button; Escape and the backdrop close it. */
+/**
+ * A dialog over a dimmed page, with a title bar and close button; Escape and the backdrop close it.
+ * `placement: "bottom"` docks it to the bottom edge as a sheet, for phones.
+ */
 export const ModalDialog: React.FC<{
   title: string;
   icon: string;
   className?: string;
+  placement?: "center" | "bottom";
   onClose: () => void;
-}> = ({ title, icon, className, onClose, children }) => {
+}> = ({ title, icon, className, placement = "center", onClose, children }) => {
   const dialog = React.useRef<HTMLDivElement>(null);
   useModal(dialog, onClose);
   const titleId = React.useMemo(() => `modal-dialog-title-${++dialogIds}`, []);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={cx("modal-backdrop", placement === "bottom" && "bottom")} onClick={onClose}>
       <div
         ref={dialog}
         className={cx("modal", className)}

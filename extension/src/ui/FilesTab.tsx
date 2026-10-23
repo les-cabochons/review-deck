@@ -21,6 +21,7 @@ import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewS
 import { viewedStatus } from "./viewed";
 import { FileHeader } from "./FileHeader";
 import { HostLinks } from "./App";
+import { ModalDialog } from "./ModalDialog";
 
 export type FileView = "grouped" | "alpha";
 
@@ -91,6 +92,20 @@ const FilesContent: React.FC<Props> = (props) => {
   React.useEffect(() => {
     if (props.focusGroup && review) scrollToId(`group-${props.focusGroup}`);
   }, [props.focusGroup, review]);
+  // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
+  const navigatorProps = (review: ReviewModel): NavigatorProps => ({
+    review,
+    view: shownView,
+    shown,
+    search,
+    onSearch: setSearch,
+    hidden,
+    onHidden: setHidden,
+    kinds,
+    comments: commentCounts,
+    collapsedGroups: collapsedNavGroups,
+    onToggleGroup: toggleNavGroup,
+  });
 
   return (
     <div className="files-tab">
@@ -145,21 +160,7 @@ const FilesContent: React.FC<Props> = (props) => {
             </div>
           )}
           <div className={cx("files-layout", !treeOpen && "tree-hidden")}>
-            {treeOpen && (
-              <Navigator
-                review={review}
-                view={shownView}
-                shown={shown}
-                search={search}
-                onSearch={setSearch}
-                hidden={hidden}
-                onHidden={setHidden}
-                kinds={kinds}
-                comments={commentCounts}
-                collapsedGroups={collapsedNavGroups}
-                onToggleGroup={toggleNavGroup}
-              />
-            )}
+            {treeOpen && <Navigator {...navigatorProps(review)} />}
             <div className="files-content">
               {shownView === "grouped" ? (
                 <GroupedView review={review} mode={mode} fileThreads={fileThreads} shown={shown} viewUrl={viewUrl} />
@@ -168,6 +169,7 @@ const FilesContent: React.FC<Props> = (props) => {
               )}
             </div>
           </div>
+          <NavigatorSheet {...navigatorProps(review)} />
         </LineCommentContext.Provider>
       )}
     </div>
@@ -319,13 +321,18 @@ interface NavigatorProps {
   comments: Map<string, number>;
   collapsedGroups: Set<string>;
   onToggleGroup: (id: string) => void;
+  /** Runs after a concern or file was picked and scrolled to (the phone sheet closes). */
+  onPick?: () => void;
 }
 
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
-const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup }) => {
+const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup, onPick }) => {
   const { result } = review;
   const { viewed, setFileCollapsed } = useFileReview();
-  const go = scrollToId;
+  const go = (id: string) => {
+    scrollToId(id);
+    onPick?.();
+  };
   const [nav, setNav] = React.useState<HTMLElement | null>(null);
   const query = search.trim().toLowerCase();
   const visible = (file: FileDiff) => shown(file.path) && (!query || file.path.toLowerCase().includes(query));
@@ -379,7 +386,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
                 </button>
               </div>
               <div id={`nav-group-tree-${g.id}`} hidden={collapsedGroups.has(g.id)}>
-                {!collapsedGroups.has(g.id) && <GroupTree review={review} group={g} files={files} comments={comments} />}
+                {!collapsedGroups.has(g.id) && <GroupTree review={review} group={g} files={files} comments={comments} onPick={onPick} />}
               </div>
             </div>
           ))}
@@ -403,6 +410,36 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
       )}
       {footer}
     </nav>
+  );
+};
+
+/**
+ * The navigator on phones, where the sidebar is hidden (below 800 px): a button at the bottom of the screen opens it
+ * as a bottom sheet, which closes once a concern or file is picked. Hidden by CSS on wider screens.
+ */
+const NavigatorSheet: React.FC<NavigatorProps> = (props) => {
+  const [open, setOpen] = React.useState(false);
+  const { viewed } = useFileReview();
+  const files = props.review.result.files;
+  const viewedCount = files.filter((f) => viewed.has(f.path)).length;
+  const grouped = props.view === "grouped";
+  const title = grouped ? "Concerns" : "Files";
+  const icon = grouped ? "ViewListGroup" : "SortLines";
+  return (
+    <>
+      <button type="button" className="navigator-sheet-button" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}>
+        <Icon iconName={icon} />
+        {title}
+        <span className="count">
+          {viewedCount} / {files.length} viewed
+        </span>
+      </button>
+      {open && (
+        <ModalDialog title={title} icon={icon} className="navigator-sheet" placement="bottom" onClose={() => setOpen(false)}>
+          <Navigator {...props} onPick={() => setOpen(false)} />
+        </ModalDialog>
+      )}
+    </>
   );
 };
 
@@ -507,7 +544,13 @@ function groupFiles(review: ReviewModel, group: Group): FileDiff[] {
   return review.result.files.filter((file) => paths.has(file.path));
 }
 
-const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]; comments: Map<string, number> }> = ({ review, group, files, comments }) => {
+const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]; comments: Map<string, number>; onPick?: () => void }> = ({
+  review,
+  group,
+  files,
+  comments,
+  onPick,
+}) => {
   const { result } = review;
   const { viewed, setFileCollapsed } = useFileReview();
   // Rough tree height before it renders: a row per file and per folder, capped like the tree itself.
@@ -523,6 +566,7 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
           const section = document.getElementById(`group-${group.id}`);
           section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
           requestAnimationFrame(() => scrollToId(`hunk-${group.hunkIds.find((id) => result.hunks.get(id)!.file.path === path)}`));
+          onPick?.();
         }}
       />
     </LazyMount>
