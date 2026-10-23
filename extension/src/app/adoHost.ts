@@ -38,6 +38,8 @@ const ORGANIZATION_DOCUMENT = "settings";
 const ORGANIZATION_REUSE_MS = 30_000;
 /** Saves tried when someone else saved the same document in between. */
 const SAVE_ATTEMPTS = 3;
+/** How long a prefetched pull request is fresh enough to open with; a row hovered long before its click loads again. */
+const PREFETCH_REUSE_MS = 15_000;
 /** Projects per page when listing the organization's. */
 const PROJECT_PAGE = 100;
 /** The "Collection" security namespace and its GENERIC_WRITE bit ("Edit instance-level information"), held by Project Collection Administrators. */
@@ -62,6 +64,8 @@ export class AdoHost implements AppHost {
   private backend: Promise<BackendService | null> | null = null;
   private releaseCatalog: Promise<ReleaseCatalog> | null = null;
   private organization: { read: number; settings: Promise<OrganizationSettings> } | null = null;
+  /** The pull request prefetchPr started, for the first prSource() that asks for it. */
+  private early: { repo: string; pr: number; source: AdoPrSource; at: number } | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
@@ -115,7 +119,27 @@ export class AdoHost implements AppHost {
   }
 
   async prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
+    const early = this.early;
+    this.early = null;
+    if (early && this.isEarly(early, route)) return early.source;
     return new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
+  }
+
+  /**
+   * The REST calls, and the host's token and API lookups ahead of them, run while the page's code loads (a link
+   * straight to a PR, src/index.ts) or while the pointer moves from the hub row to its click.
+   */
+  prefetchPr(route: Extract<Route, { view: "pr" }>): void {
+    // Another project's PR opens in that project's hub (navigate), which loads it itself.
+    if (route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) return;
+    if (this.early && this.isEarly(this.early, route)) return;
+    const source = new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
+    source.prefetch();
+    this.early = { repo: route.repo, pr: route.pr, source, at: Date.now() };
+  }
+
+  private isEarly(early: NonNullable<AdoHost["early"]>, route: Extract<Route, { view: "pr" }>): boolean {
+    return early.repo === route.repo && early.pr === route.pr && Date.now() - early.at < PREFETCH_REUSE_MS;
   }
 
   setTitle(title: string): void {

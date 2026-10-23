@@ -89,6 +89,11 @@ export interface AppHost {
   /** The repository picked in the Repos breadcrumb, or null if none is (or the host has no such notion). */
   currentRepository(): Promise<{ id: string; name: string } | null>;
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource>;
+  /**
+   * Starts loading a pull request its page is about to ask for (a link straight to it, a hub row under the
+   * pointer), so the next prSource() for it has its data on the way. Hosts whose data is local don't need it.
+   */
+  prefetchPr?(route: Extract<Route, { view: "pr" }>): void;
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
   backendService(): Promise<BackendService | null>;
