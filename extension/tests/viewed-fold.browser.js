@@ -17,6 +17,9 @@ async page => {
   // Mixed concerns need two clicks: the first marks every file, the second clears them.
   for (const box of await f.locator('.group-header-row .viewed-control input').all())
     for (let i = 0; i < 2 && (await box.evaluate((input) => input.checked || input.indeterminate)); i++) await box.click();
+  // Those clicks scrolled the page, and cards only mount near the viewport: go back to the top concerns.
+  await f.locator('body').evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(500);
   const r = {};
   // A file's chunks can sit on several cards. Ticking one card folds that card only, not the file's other chunks.
   const repeated = await f.locator('.group-section[id^="group-"]').evaluateAll(sections => {
@@ -48,6 +51,7 @@ async page => {
   const card = section.locator('article').first();
   const cardId = await card.getAttribute('id');
   const fileCard = f.locator(`article[id="${cardId}"]`);
+  await fileCard.scrollIntoViewIfNeeded();
   await fileCard.locator('.viewed-control input').click();
   await fileCard.locator('.file-collapse[aria-expanded="false"]').waitFor();
   r.fileFoldsOnViewed = true;
