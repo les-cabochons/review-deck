@@ -11,7 +11,7 @@ import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
 import type { ReleaseCatalog } from "../data/releases";
 import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
-import type { ReviewKey, SavedReview, SavedReviews } from "../review/saved";
+import { type ReviewKey, type SavedReview, type SavedReviews, savedFor, withSaved } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { featureContributionId, syncFeatureStates } from "./featureStates";
 import { HashRouter } from "./hashRoute";
@@ -22,7 +22,7 @@ import type { PreferenceStore } from "../ui/preferences";
 const PREFERENCES_KEY = "preferences";
 /** Extension data collection holding one settings document per project, keyed by project ID. */
 const SETTINGS_COLLECTION = "project-settings";
-/** Extension data collection holding each pull request's latest finished grouping (review/saved.ts). */
+/** Extension data collection holding each pull request's saved guided views, one document per PR (review/saved.ts). */
 const REVIEWS_COLLECTION = "saved-reviews";
 /** User-scoped extension data value holding your starred repository ids. */
 const FAVORITES_KEY = "favorite-repos";
@@ -36,7 +36,7 @@ const ORGANIZATION_COLLECTION = "organization-settings";
 const ORGANIZATION_DOCUMENT = "settings";
 /** How long a page reuses the organization's settings before reading them again, so an open page picks up changes. */
 const ORGANIZATION_REUSE_MS = 30_000;
-/** Saves tried when another administrator saved in between. */
+/** Saves tried when someone else saved the same document in between. */
 const SAVE_ATTEMPTS = 3;
 /** Projects per page when listing the organization's. */
 const PROJECT_PAGE = 100;
@@ -285,31 +285,51 @@ export class AdoHost implements AppHost {
   }
 
   /**
-   * In extension data, shared by everyone in the organization who opens the PR. One document per PR holds its
-   * latest grouping, so the collection grows only with the PRs reviewed. A grouping for another comparison, or
-   * saved by another extension version (the grouping code may have changed), is ignored and then replaced.
+   * In extension data, shared by everyone in the organization who opens the PR. One document per PR holds the
+   * comparisons last grouped (review/saved.ts), so the collection grows only with the PRs reviewed. Documents saved
+   * before (one comparison, no `comparisons`) are ignored and then replaced.
    */
   savedReviews(): SavedReviews {
-    const version = SDK.getExtensionContext().version;
     const id = (key: ReviewKey) => [this.project.id, key.repo, key.pr].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
+    const read = async (data: IExtensionDataManager, key: ReviewKey) => {
+      try {
+        return (await data.getDocument(REVIEWS_COLLECTION, id(key))) as { __etag?: number; comparisons?: unknown };
+      } catch (e) {
+        // Never saved.
+        if ((e as { status?: number }).status === 404) return null;
+        throw e;
+      }
+    };
     return {
       load: async (key) => {
         try {
-          const doc = (await (await this.data()).getDocument(REVIEWS_COLLECTION, id(key))) as { version?: string; iteration?: number; compareTo?: number; review?: unknown };
-          const fits = doc.version === version && doc.iteration === key.iteration && doc.compareTo === key.compareTo;
-          return fits ? (doc.review ?? null) : null;
+          return savedFor((await read(await this.data(), key))?.comparisons, key);
         } catch (e) {
-          // Never saved: 404.
-          if ((e as { status?: number }).status !== 404) console.warn("[review-deck] saved grouping unavailable:", e);
+          console.warn("[review-deck] saved guided view unavailable:", e);
           return null;
         }
       },
       save: async (key, review: SavedReview) => {
         try {
-          await (await this.data()).setDocument(REVIEWS_COLLECTION, { id: id(key), __etag: -1, version, iteration: key.iteration, compareTo: key.compareTo, review });
+          const data = await this.data();
+          for (let attempt = 1; ; attempt++) {
+            const doc = await read(data, key);
+            const comparisons = withSaved(doc?.comparisons, key, review);
+            if (!comparisons) return;
+            const next = { id: id(key), comparisons };
+            try {
+              // The etag makes the save fail if someone else saved since the read, instead of dropping their comparison.
+              if (doc) await data.setDocument(REVIEWS_COLLECTION, { ...next, __etag: doc.__etag });
+              else await data.createDocument(REVIEWS_COLLECTION, next);
+              return;
+            } catch (e) {
+              // Lost the race (merge with theirs) or a passing failure: read and try again.
+              if (attempt >= SAVE_ATTEMPTS) throw e;
+            }
+          }
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
-          console.warn("[review-deck] could not save the grouping:", e);
+          console.warn("[review-deck] could not save the guided view:", e);
         }
       },
     };
