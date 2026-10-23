@@ -81,7 +81,8 @@
           "light": "images/deck-light.png",
           "dark": "images/deck-dark.png"
         },
-        "order": 100
+        "order": 100,
+        "supportsMobile": true
       },
       "constraints": [
         {
@@ -106,7 +107,8 @@
           "light": "images/changelog-light.png",
           "dark": "images/changelog-dark.png"
         },
-        "order": 101
+        "order": 101,
+        "supportsMobile": true
       },
       "constraints": [
         {
