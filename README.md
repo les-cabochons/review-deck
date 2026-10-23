@@ -76,7 +76,8 @@ you also run a backend, add that origin to `allowed_origins` in `infra/variables
 You don't need an Azure DevOps organization to try it. The dev server wraps the page in a fake Azure
 DevOps frame, with mock data and in-memory writes.
 
-Prerequisites: Node.js 24 or later.
+Prerequisites: Node.js 24 or later (`nvm use` picks it from `.nvmrc`). With an older npm, `npm ci` fails
+on the lock file.
 
 ```sh
 npm install
