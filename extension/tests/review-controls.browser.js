@@ -36,51 +36,64 @@ async page => {
     await wait(() => group.querySelector(".hunk-card .viewed-control input"), "Chosen concern's cards did not mount");
     const groupCheckbox = group.querySelector(".group-header-row input");
     const fileCheckbox = group.querySelector(".hunk-card .viewed-control input");
-    const label = fileCheckbox.getAttribute("aria-label");
-    const path = label.slice(5, -10);
-    const fileInput = () => [...doc.querySelectorAll(".hunk-card .viewed-control input, .file-card .viewed-control input")]
-      .find(input => input.getAttribute("aria-label") === label);
+    const pathOf = input => input.closest("article").querySelector(".file-path").title;
+    const path = pathOf(fileCheckbox);
+    // Viewed is per chunk, so follow this card, not the file's other cards.
+    const cardId = fileCheckbox.closest("article").id;
+    const hunkId = cardId.slice("hunk-".length);
+    const fileInput = () => doc.getElementById(cardId)?.querySelector(".viewed-control input");
     if (groupCheckbox.checked || groupCheckbox.indeterminate) groupCheckbox.click();
     if (groupCheckbox.checked) groupCheckbox.click();
     await tick();
     const before = progress();
     fileInput().click();
-    await wait(() => progress() === before + 1, "Shared file progress was not counted once");
+    await wait(() => fileInput().checked, "Chunk was not marked viewed");
     assert(groupCheckbox.indeterminate && groupCheckbox.getAttribute("aria-checked") === "mixed", "Concern did not show mixed state");
-    assert([...group.querySelectorAll(".hunk-card .viewed-control input")].filter(input => input.getAttribute("aria-label") === label)
-      .every(input => input.checked), "Repeated file headers disagreed on Viewed state");
-    await wait(() => indicators().some(indicator => indicator.textContent.includes("✓")), "Grouped tree did not show a Viewed check");
+    assert([...group.querySelectorAll(".hunk-card .viewed-control input")].filter(input => pathOf(input) === path && input !== fileInput())
+      .every(input => !input.checked), "Ticking one chunk ticked the file's other chunks");
     const selectedTree = trees()[0];
     const folder = selectedTree.shadowRoot.querySelector('[data-item-type="folder"][aria-expanded="true"]');
     if (folder) folder.click();
     groupCheckbox.click();
     await wait(() => groupCheckbox.checked && !groupCheckbox.indeterminate, "Concern checkbox did not mark all files");
+    await wait(() => indicators().some(indicator => indicator.textContent.includes("✓")), "Grouped tree did not show a Viewed check");
     assert(trees()[0] === selectedTree, "Viewed update recreated the file tree");
     if (folder) assert(folder.getAttribute("aria-expanded") === "false", "Viewed update reset folder expansion");
     groupCheckbox.click();
     await wait(() => !groupCheckbox.checked && !groupCheckbox.indeterminate, "Concern checkbox did not unmark files");
     assert(!group.querySelector("button.pierre-hunk-header"), "Chunks still fold on their own");
-    // Ticking Viewed folds the file, like GitHub. Unticking the concern reopened it, so its cards remount first.
+    // Ticking Viewed folds the card, like GitHub. Unticking the concern reopened it, so its cards remount first.
     await wait(() => fileInput(), "Concern did not reopen when unmarked");
     fileInput().click();
-    const folded = () => [...group.querySelectorAll("button.file-collapse")].find(button => button.getAttribute("aria-label") === `Expand ${path}`);
-    await wait(() => folded() && !folded().closest("article").querySelector(".pierre-hunk-header"), "Viewed file did not fold");
+    const folded = () => doc.getElementById(cardId).querySelector("button.file-collapse").getAttribute("aria-expanded") === "false";
+    await wait(() => folded() && !doc.getElementById(cardId).querySelector(".pierre-hunk-header"), "Viewed chunk did not fold");
     await view("Files A–Z");
     const card = doc.getElementById(`file-${path}`);
     card.scrollIntoView({ block: "start" });
     await wait(() => card.querySelector(".viewed-control input"), "Alphabetical file did not mount");
-    assert(card.querySelector(".viewed-control input").checked, "Viewed state did not follow into alphabetical view");
+    // A–Z shows the whole file. It is viewed and folded once every chunk is, and mixed and open before that.
+    const alphaBox = card.querySelector(".viewed-control input");
+    const whole = alphaBox.checked;
+    assert(whole || alphaBox.indeterminate, "Viewed state did not follow into alphabetical view");
+    assert(progress() === before + (whole ? 1 : 0), "Progress counted a file before all its chunks were viewed");
     assert(!doc.querySelector(".group-chip"), "Repeated group chips remain");
     const alphaFold = card.querySelector("button.file-collapse");
-    assert(alphaFold.getAttribute("aria-expanded") === "false" && !card.querySelector(".pierre-hunk-header"), "File fold did not follow into alphabetical view");
-    alphaFold.click();
-    await wait(() => card.querySelector(".pierre-hunk-header"), "Alphabetical file did not unfold");
+    assert((alphaFold.getAttribute("aria-expanded") === "false") === whole, "File fold did not follow into alphabetical view");
+    if (whole) {
+      alphaFold.click();
+      await wait(() => card.querySelector(".pierre-hunk-header"), "Alphabetical file did not unfold");
+    }
     alphaFold.click();
     await wait(() => !card.querySelector(".pierre-hunk-header"), "Alphabetical file did not fold");
     toggle(1).click();
     await tick();
     assert(card.querySelector("button.file-collapse").getAttribute("aria-expanded") === "false", "Diff mode reset the file fold");
     toggle(1).click();
+    // The A–Z checkbox marks every chunk of the file, which completes it.
+    if (!whole) {
+      card.querySelector(".viewed-control input").click();
+      await wait(() => card.querySelector(".viewed-control input").checked && progress() === before + 1, "A–Z Viewed did not mark every chunk");
+    }
     await wait(() => indicators().some(indicator => indicator.textContent.includes("✓")), "Alphabetical tree did not show a Viewed check");
     const stats = doc.querySelector(".files-toolbar .stats");
     assert(doc.querySelectorAll(".files-toolbar .stats").length === 1 && !stats.textContent.includes("files"), "File counters were not merged");
@@ -97,10 +110,10 @@ async page => {
     setter.call(filter, "");
     filter.dispatchEvent(new win.Event("input", { bubbles: true }));
     const viewedKey = Object.keys(win.localStorage).find(key => key.startsWith("semantic-review.viewed.") && key.endsWith(".0.2"));
-    assert(viewedKey && Object.hasOwn(JSON.parse(win.localStorage.getItem(viewedKey)), path), "Viewed file was not persisted locally");
+    assert(viewedKey && Object.hasOwn(JSON.parse(win.localStorage.getItem(viewedKey)), hunkId), "Viewed chunk was not persisted locally");
     await view("Guided");
-    return { groupedAndAlphabetical: true, inlineAndSplit: true, sharedViewedState: true, mixedGroupCheckbox: true,
+    return { groupedAndAlphabetical: true, inlineAndSplit: true, perChunkViewedState: true, mixedGroupCheckbox: true,
       treeCheck: true, treeExpansionPreserved: true, collapsePreserved: true, mergedCounterAligned: true,
-      searchKeepsTotal: true, localPersistence: true, viewedKey, path, progress: progress() };
+      searchKeepsTotal: true, localPersistence: true, viewedKey, hunkId, wholeFileViewed: whole, progress: progress() };
 });
 }
