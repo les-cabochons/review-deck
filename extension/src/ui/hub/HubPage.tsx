@@ -45,7 +45,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const cacheScope = host.cacheScope;
   // The last list shown paints at once if it was for the saved repository choice. With the default or a "current"
   // choice, the repository it stands for (the breadcrumb's) is only known later; if it turns out different, the rows
-  // are dropped then.
+  // stay until that one's list lands.
   const [cached] = React.useState(() => {
     const snap = readHubSnapshot(cacheScope);
     const saved = parseSelection(readPreference("hub.selection", ""));
@@ -180,10 +180,12 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     reloadTags();
     loadPrs();
   };
-  // Another repository choice: don't show the previous one's pull requests meanwhile. Changed favorites keep the
-  // rows until the refresh lands.
+  // A repository choice you just made: don't show the previous one's pull requests meanwhile. One that changed by
+  // itself keeps the last rows until its list lands, like changed favorites: a "current" choice resolving to
+  // another breadcrumb repository than last time, or your synced choice arriving after the first paint. Clearing
+  // those swapped the cached rows for the skeleton on every load where that happened.
   React.useEffect(() => {
-    if (selectionKey && listed?.selection !== selectionKey) setPrs(null);
+    if (selectionKey && listed?.selection !== selectionKey && touched.current.has("hub.selection")) setPrs(null);
   }, [selectionKey]);
   // On first show, after a tag is renamed or deleted (so rows show the new names), and on coming back from a PR.
   React.useEffect(() => {
