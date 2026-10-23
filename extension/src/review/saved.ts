@@ -16,6 +16,8 @@ const FORMAT = 4;
 
 /** Comparisons kept per PR, most recently grouped first: the default one, plus the few others reviewers opened. */
 const MAX_COMPARISONS = 4;
+/** Characters the other comparisons may add to a PR's document, so a huge PR's stays small; the new one always fits. */
+const MAX_OTHERS_CHARS = 256_000;
 
 /** How long a guided view made while the backend failed is reused before the next open groups again. */
 const RETRY_FALLBACK_MS = 60 * 60 * 1000;
@@ -91,16 +93,27 @@ export function savedFor(comparisons: unknown, key: ReviewKey): unknown {
 }
 
 /**
- * A PR's saved views with `review` as `key`'s comparison's, first, then the others most recently grouped, so
- * switching comparisons doesn't evict the one everyone else opens.
+ * A PR's saved views with `review` as `key`'s comparison's, first, then as many of the others as fit (most recently
+ * grouped first), so switching comparisons doesn't evict the one everyone else opens. Null if there's nothing to
+ * save: `review` fell back, and a complete one made the same way is already saved for this comparison.
  */
-export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview, max = MAX_COMPARISONS): SavedComparison[] {
-  const others = Array.isArray(comparisons)
-    ? (comparisons as Partial<SavedComparison>[]).filter(
-        (c): c is SavedComparison => !!c?.review && typeof c.iteration === "number" && typeof c.compareTo === "number" && !(c.iteration === key.iteration && c.compareTo === key.compareTo),
-      )
+export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview): SavedComparison[] | null {
+  const saved = Array.isArray(comparisons)
+    ? (comparisons as Partial<SavedComparison>[]).filter((c): c is SavedComparison => !!c?.review && typeof c.iteration === "number" && typeof c.compareTo === "number")
     : [];
-  return [{ iteration: key.iteration, compareTo: key.compareTo, review }, ...others].slice(0, max);
+  const same = (c: SavedComparison) => c.iteration === key.iteration && c.compareTo === key.compareTo;
+  const current = saved.find(same)?.review;
+  // E.g. two reviewers grouped it at once and only one reached the backend: everyone keeps getting the complete one.
+  if (review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode)) return null;
+  const kept: SavedComparison[] = [{ iteration: key.iteration, compareTo: key.compareTo, review }];
+  let chars = 0;
+  for (const c of saved) {
+    if (same(c)) continue;
+    chars += JSON.stringify(c).length;
+    if (kept.length >= MAX_COMPARISONS || chars > MAX_OTHERS_CHARS) break;
+    kept.push(c);
+  }
+  return kept;
 }
 
 /** A saved guided view on top of the diff, or why the page groups the PR again instead (logged by buildReview). */
@@ -114,7 +127,7 @@ export type Restored = { result: ReviewResult } | { skipped: string };
 export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, now = Date.now()): Restored {
   const s = saved as Partial<SavedReview> | null | undefined;
   if (s?.format !== FORMAT) return { skipped: `it was saved in format ${s?.format ?? "none"}, and this version reads ${FORMAT}` };
-  if (s.mode?.semantic !== mode.semantic || s.mode.llmTitles !== mode.llmTitles) {
+  if (!sameMode(s.mode, mode)) {
     return { skipped: `it was made ${describeMode(s.mode)}, and the page now groups ${describeMode(mode)}` };
   }
   if (!Array.isArray(s.groups) || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string") return { skipped: "it is incomplete" };
@@ -137,6 +150,10 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
     warnings: [],
   };
   return { result };
+}
+
+function sameMode(a: Partial<ReviewMode> | undefined, b: ReviewMode): boolean {
+  return a?.semantic === b.semantic && a.llmTitles === b.llmTitles;
 }
 
 function describeMode(mode: Partial<ReviewMode> | undefined): string {

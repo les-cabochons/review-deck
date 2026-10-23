@@ -83,7 +83,7 @@ export async function buildReview(
   });
   for (const warning of result.warnings) console.warn("[review-deck]", warning);
   console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
-  if (options.saved) console.info(`[review-deck] guided view: ${restored ? "reused the saved one" : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}, saved for everyone`}`);
+  if (options.saved) console.info(`[review-deck] guided view: ${restored ? "reused the saved one" : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}`}`);
   if (!restored && options.saved) void options.saved.store.save(options.saved.key, packReview(result, reviewMode(backend, aiTitles)));
   return { result, changes, contents, comparison, analyzed: true };
 }

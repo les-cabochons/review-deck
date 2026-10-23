@@ -312,22 +312,19 @@ export class AdoHost implements AppHost {
       save: async (key, review: SavedReview) => {
         try {
           const data = await this.data();
-          let keep: number | undefined;
           for (let attempt = 1; ; attempt++) {
             const doc = await read(data, key);
-            const next = { id: id(key), comparisons: withSaved(doc?.comparisons, key, review, keep) };
+            const comparisons = withSaved(doc?.comparisons, key, review);
+            if (!comparisons) return;
+            const next = { id: id(key), comparisons };
             try {
               // The etag makes the save fail if someone else saved since the read, instead of dropping their comparison.
               if (doc) await data.setDocument(REVIEWS_COLLECTION, { ...next, __etag: doc.__etag });
               else await data.createDocument(REVIEWS_COLLECTION, next);
               return;
             } catch (e) {
+              // Lost the race (merge with theirs) or a passing failure: read and try again.
               if (attempt >= SAVE_ATTEMPTS) throw e;
-              // Not a lost race: maybe too large with the other comparisons (a huge PR), so keep just this one.
-              if (!isConflict(e)) {
-                if (next.comparisons.length === 1) throw e;
-                keep = 1;
-              }
             }
           }
         } catch (e) {
