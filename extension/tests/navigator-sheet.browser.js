@@ -26,7 +26,7 @@ async page => {
   }, selector);
 
   assert(await button.isVisible(), 'No navigator button at phone width');
-  assert(!(await page.locator('.files-toolbar .tree-toggle').isVisible()), 'The sidebar toggle shows at phone width');
+  assert(!(await page.locator('.files-layout .nav-hide').isVisible()), 'The sidebar\'s Hide file tree row shows at phone width');
   assert(!(await page.locator('.files-layout > .navigator').isVisible()), 'The sidebar shows at phone width');
 
   // A concern: the sheet lists every concern, closes on pick, and the concern is on screen.
@@ -35,6 +35,7 @@ async page => {
   const listed = await sheet.locator('.nav-group-title').count();
   const sections = await page.locator('.group-section[id^="group-"]').count();
   assert(listed === sections, `The sheet lists ${listed} concerns, the page has ${sections}`);
+  assert(await sheet.locator('.nav-hide').count() === 0, 'The sheet has the sidebar\'s Hide file tree row');
   const overflow = await sheet.locator('.navigator').evaluate(nav => nav.scrollWidth - nav.clientWidth);
   assert(overflow <= 0, `The sheet scrolls sideways by ${overflow} px`);
   const target = await page.locator('.group-section[id^="group-"]').nth(2).getAttribute('id');

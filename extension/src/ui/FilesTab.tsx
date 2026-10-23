@@ -1,4 +1,3 @@
-import { Button } from "azure-devops-ui/Button";
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -69,6 +68,14 @@ const FilesContent: React.FC<Props> = (props) => {
   const [hidden, setHidden] = useHiddenKinds();
   const [search, setSearch] = React.useState("");
   const [treeOpen, setTreeOpen] = useTreeOpen();
+  // Hiding swaps the tree for its rail and showing swaps it back, so focus moves to the control that took the place
+  // of the one pressed. Keyboard and screen reader users keep their place.
+  const setTreeOpenAndFocus = (open: boolean) => {
+    setTreeOpen(open);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(open ? ".files-layout .nav-hide" : ".files-layout .nav-rail")?.focus({ preventScroll: true }),
+    );
+  };
   const [collapsedNavGroups, setCollapsedNavGroups] = React.useState(new Set<string>());
   const toggleNavGroup = (id: string) => setCollapsedNavGroups(previous => {
     const next = new Set(previous);
@@ -115,8 +122,6 @@ const FilesContent: React.FC<Props> = (props) => {
         view={props.holdPreview ? "alpha" : view}
         onView={(v) => (v === "grouped" && props.holdPreview ? props.onShowGrouped() : props.onView(v))}
         ready={props.holdPreview && view === "grouped" ? groups : null}
-        treeOpen={treeOpen}
-        onTreeOpen={setTreeOpen}
       />
       {props.error && <div className="error-box">{props.error}</div>}
       {!review && props.error ? null : !review ? (
@@ -160,7 +165,11 @@ const FilesContent: React.FC<Props> = (props) => {
             </div>
           )}
           <div className={cx("files-layout", !treeOpen && "tree-hidden")}>
-            {treeOpen && <Navigator {...navigatorProps(review)} />}
+            {treeOpen ? (
+              <Navigator {...navigatorProps(review)} onHide={() => setTreeOpenAndFocus(false)} />
+            ) : (
+              <NavRail fileCount={review.result.files.length} onShow={() => setTreeOpenAndFocus(true)} />
+            )}
             <div className="files-content">
               {shownView === "grouped" ? (
                 <GroupedView review={review} mode={mode} fileThreads={fileThreads} shown={shown} viewUrl={viewUrl} />
@@ -176,7 +185,7 @@ const FilesContent: React.FC<Props> = (props) => {
   );
 };
 
-/** Whether the file tree sidebar is shown; hiding it gives the diffs the full width. */
+/** Whether the file tree sidebar is shown. Hidden, it leaves a slim rail and the diffs take the rest of the width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
   const [shown, setShown] = usePreference<"shown" | "hidden">("fileTree", "shown");
   const update = React.useCallback((next: boolean) => setShown(next ? "shown" : "hidden"), [setShown]);
@@ -184,7 +193,7 @@ function useTreeOpen(): [boolean, (open: boolean) => void] {
 }
 
 /** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
-const Toolbar: React.FC<Props & { ready: number | null; treeOpen: boolean; onTreeOpen: (open: boolean) => void }> = ({
+const Toolbar: React.FC<Props & { ready: number | null }> = ({
   review,
   iterations,
   selection,
@@ -198,8 +207,6 @@ const Toolbar: React.FC<Props & { ready: number | null; treeOpen: boolean; onTre
   onShowGrouped,
   onRegroup,
   groupingStale,
-  treeOpen,
-  onTreeOpen,
 }) => {
   const { disabled } = useReviewActions();
   const { viewedFiles } = useFileReview();
@@ -210,15 +217,6 @@ const Toolbar: React.FC<Props & { ready: number | null; treeOpen: boolean; onTre
   const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
   return (
     <div className="files-toolbar">
-      <Button
-        className="tree-toggle"
-        iconProps={{ iconName: treeOpen ? "ClosePane" : "OpenPane" }}
-        subtle
-        ariaLabel={treeOpen ? "Hide file tree" : "Show file tree"}
-        ariaPressed={treeOpen}
-        tooltipProps={{ text: treeOpen ? "Hide file tree" : "Show file tree" }}
-        onClick={() => onTreeOpen(!treeOpen)}
-      />
       <ModeToggle
         options={[
           { value: "grouped", text: "Guided", icon: "ViewListGroup" },
@@ -309,13 +307,17 @@ function scrollToId(id: string) {
   setTimeout(go, 300);
 }
 
-/** Space kept under the navigator, matching the stylesheet's `calc(100vh - 64px)` (48px sticky top + 16px). */
+/**
+ * Space kept under the navigator and its rail. It matches the stylesheet's `calc(100vh - 64px)`, which is the 48px
+ * sticky top plus this gap.
+ */
 const NAV_BOTTOM_GAP = 16;
 
 /**
- * Caps the sticky navigator at the part of the window below its top, so its bottom stays on screen before the page
- * scrolls past the PR header. The stylesheet's max-height only fits once the navigator is stuck under the toolbar.
- * It only does so while the navigator is sticky. In the phone sheet the navigator is static and the sheet sizes it.
+ * Caps the sticky navigator, or the rail that replaces it, at the part of the window below its top, so its bottom
+ * stays on screen before the page scrolls past the PR header. The stylesheet sizes both to fit only once they are
+ * stuck under the toolbar. It only does so while the element is sticky. In the phone sheet the navigator is static
+ * and the sheet sizes it.
  */
 function useFitViewport(element: HTMLElement | null) {
   React.useLayoutEffect(() => {
@@ -360,10 +362,12 @@ interface NavigatorProps {
   onToggleGroup: (id: string) => void;
   /** Runs after a concern or file was picked and scrolled to (the phone sheet closes). */
   onPick?: () => void;
+  /** Hides the sidebar. The phone sheet has its own close, so it leaves this out and gets no Hide row. */
+  onHide?: () => void;
 }
 
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
-const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup, onPick }) => {
+const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup, onPick, onHide }) => {
   const { result } = review;
   const { viewedHunks, viewedFiles, setCollapsed } = useFileReview();
   const go = (id: string) => {
@@ -400,6 +404,12 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
       </button>
     </div>
   );
+  // Pinned to the bottom edge, like the hub sidebar's collapse control.
+  const hide = onHide && (
+    <button type="button" className="nav-hide" aria-expanded onClick={onHide}>
+      <Icon iconName="DoubleChevronLeft" /> Hide file tree
+    </button>
+  );
   if (view === "grouped") {
     const sections = result.groups.map((g, i) => ({ g, i, files: groupFiles(review, g).filter(visible) })).filter(({ files }) => files.length > 0);
     return (
@@ -431,6 +441,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
         </LazyRoot.Provider>
         {sections.length === 0 && <div className="nav-empty">{empty}</div>}
         {footer}
+        {hide}
       </nav>
     );
   }
@@ -447,6 +458,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
         <div className="nav-empty">{empty}</div>
       )}
       {footer}
+      {hide}
     </nav>
   );
 };
@@ -478,6 +490,18 @@ const NavigatorSheet: React.FC<NavigatorProps> = (props) => {
         </ModalDialog>
       )}
     </>
+  );
+};
+
+/** The slim rail that replaces the hidden file tree and shows it again, like the hub's folded sidebar. */
+const NavRail: React.FC<{ fileCount: number; onShow: () => void }> = ({ fileCount, onShow }) => {
+  const [rail, setRail] = React.useState<HTMLElement | null>(null);
+  useFitViewport(rail);
+  return (
+    <button type="button" ref={setRail} className="nav-rail" aria-label="Show file tree" aria-expanded={false} title="Show file tree" onClick={onShow}>
+      <span className="nav-rail-label" aria-hidden="true">Files · {fileCount}</span>
+      <span className="nav-rail-icon"><Icon iconName="DoubleChevronRight" /></span>
+    </button>
   );
 };
 
