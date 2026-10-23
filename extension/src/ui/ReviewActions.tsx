@@ -23,8 +23,8 @@ export const ReviewActionsProvider: React.FC<{
   source: PrSource;
   onData: (data: PrOverview) => void;
   /** The page shows a copy kept from an earlier visit until the PR loads: changes wait for it. */
-  stale?: boolean;
-}> = ({ source, onData, stale = false, children }) => {
+  stale: boolean;
+}> = ({ source, onData, stale, children }) => {
   const inFlight = React.useRef(false);
   const [pending, setPending] = React.useState(false);
   const [needsRefresh, setNeedsRefresh] = React.useState(false);

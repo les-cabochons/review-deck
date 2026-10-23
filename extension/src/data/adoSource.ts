@@ -56,7 +56,7 @@ export class AdoPrSource implements PrSource {
   readonly actions: PrActions;
   private readonly git = getClient(GitRestClient);
   private readonly policy = getClient(PolicyRestClient);
-  private early: Promise<PrOverview> | null = null;
+  private prefetched: Promise<PrOverview> | null = null;
 
   constructor(
     private readonly projectId: string,
@@ -89,15 +89,15 @@ export class AdoPrSource implements PrSource {
 
   /** Starts the first load now (src/index.ts, while the page's code loads); the next load() returns it. */
   prefetch(): void {
-    this.early ??= this.fetch();
-    this.early.catch(() => {}); // reported by load()
+    this.prefetched ??= this.fetch();
+    this.prefetched.catch(() => {}); // reported by load()
   }
 
   load(): Promise<PrOverview> {
-    const early = this.early;
-    this.early = null;
+    const prefetched = this.prefetched;
+    this.prefetched = null;
     // A prefetch that failed (a network blip while hovering a row) is tried again now that it's asked for.
-    return early ? early.catch(() => this.fetch()) : this.fetch();
+    return prefetched ? prefetched.catch(() => this.fetch()) : this.fetch();
   }
 
   private async fetch(): Promise<PrOverview> {

@@ -65,7 +65,7 @@ export class AdoHost implements AppHost {
   private releaseCatalog: Promise<ReleaseCatalog> | null = null;
   private organization: { read: number; settings: Promise<OrganizationSettings> } | null = null;
   /** The pull request prefetchPr started, for the first prSource() that asks for it. */
-  private early: { repo: string; pr: number; source: AdoPrSource; at: number } | null = null;
+  private prefetched: { repo: string; pr: number; source: AdoPrSource; at: number } | null = null;
 
   private constructor(
     private readonly nav: IHostNavigationService,
@@ -90,7 +90,7 @@ export class AdoHost implements AppHost {
   }
 
   navigate(route: Route): void {
-    if (route.view === "pr" && route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) {
+    if (route.view === "pr" && this.inOtherProject(route)) {
       // Another project's PR: open it in that project's hub, so its settings and links apply.
       this.nav.navigate(this.reviewUrl(route));
       return;
@@ -119,10 +119,9 @@ export class AdoHost implements AppHost {
   }
 
   async prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
-    const early = this.early;
-    this.early = null;
-    if (early && this.isEarly(early, route)) return early.source;
-    return new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
+    const prefetched = this.freshPrefetch(route);
+    this.prefetched = null;
+    return prefetched ?? new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
   }
 
   /**
@@ -131,15 +130,20 @@ export class AdoHost implements AppHost {
    */
   prefetchPr(route: Extract<Route, { view: "pr" }>): void {
     // Another project's PR opens in that project's hub (navigate), which loads it itself.
-    if (route.project && route.project.toLowerCase() !== this.project.name.toLowerCase()) return;
-    if (this.early && this.isEarly(this.early, route)) return;
+    if (this.inOtherProject(route) || this.freshPrefetch(route)) return;
     const source = new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
     source.prefetch();
-    this.early = { repo: route.repo, pr: route.pr, source, at: Date.now() };
+    this.prefetched = { repo: route.repo, pr: route.pr, source, at: Date.now() };
   }
 
-  private isEarly(early: NonNullable<AdoHost["early"]>, route: Extract<Route, { view: "pr" }>): boolean {
-    return early.repo === route.repo && early.pr === route.pr && Date.now() - early.at < PREFETCH_REUSE_MS;
+  /** The source prefetchPr started for this PR, if it's recent enough to open with. */
+  private freshPrefetch(route: Extract<Route, { view: "pr" }>): AdoPrSource | null {
+    const p = this.prefetched;
+    return p && p.repo === route.repo && p.pr === route.pr && Date.now() - p.at < PREFETCH_REUSE_MS ? p.source : null;
+  }
+
+  private inOtherProject(route: Extract<Route, { view: "pr" }>): boolean {
+    return !!route.project && route.project.toLowerCase() !== this.project.name.toLowerCase();
   }
 
   setTitle(title: string): void {

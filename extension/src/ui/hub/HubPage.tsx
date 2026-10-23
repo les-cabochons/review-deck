@@ -264,14 +264,19 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   useSectionFlash(main, dataRevision, settled);
 
   const routeTo = (pr: PrSummary) => ({ view: "pr" as const, repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
-  const open = (pr: PrSummary) => pr.openable && host.navigate(routeTo(pr));
   // The row the pointer rests on is likely the next one opened: its PR starts loading on the way to the click.
   const prefetchTimer = React.useRef<ReturnType<typeof setTimeout>>();
-  const prefetch = (pr: PrSummary | null, delay = PREFETCH_DWELL_MS) => {
-    clearTimeout(prefetchTimer.current);
-    if (pr?.openable && host.prefetchPr) prefetchTimer.current = setTimeout(() => host.prefetchPr?.(routeTo(pr)), delay);
+  const cancelPrefetch = () => clearTimeout(prefetchTimer.current);
+  const prefetch = (pr: PrSummary, delay = PREFETCH_DWELL_MS) => {
+    cancelPrefetch();
+    if (pr.openable) prefetchTimer.current = setTimeout(() => host.prefetchPr(routeTo(pr)), delay);
   };
-  React.useEffect(() => () => clearTimeout(prefetchTimer.current), []);
+  React.useEffect(() => cancelPrefetch, []);
+  const open = (pr: PrSummary) => {
+    // Opened before the pointer rested long enough (Enter, a quick click): the page loads it, not a late prefetch.
+    cancelPrefetch();
+    if (pr.openable) host.navigate(routeTo(pr));
+  };
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -440,7 +445,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
                             onStack={() => showStack(pr)}
                             onHover={() => setSelected(index)}
                             onPrefetch={(delay) => prefetch(pr, delay)}
-                            onLeave={() => prefetch(null)}
+                            onLeave={cancelPrefetch}
                           />
                         );
                       })}

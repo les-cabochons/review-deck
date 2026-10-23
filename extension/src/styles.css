@@ -451,8 +451,10 @@ kbd {
   background: var(--canvas);
   padding: 8px 0;
 }
-/* Refresh in progress: a thin bar under the toolbar, after a short delay so quick refreshes don't flicker. */
-.hub-progress {
+/* Refresh in progress: a thin bar under the hub's toolbar or the PR's header (a kept copy reloading), after a short
+   delay so quick refreshes don't flicker. */
+.hub-progress,
+.refresh-progress {
   position: absolute;
   left: 0;
   right: 0;
@@ -462,7 +464,8 @@ kbd {
   opacity: 0;
   animation: hub-progress-in 0s 150ms forwards;
 }
-.hub-progress::before {
+.hub-progress::before,
+.refresh-progress::before {
   content: "";
   position: absolute;
   top: 0;
@@ -600,7 +603,8 @@ kbd {
   border-bottom-color: var(--accent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .hub-progress::before {
+  .hub-progress::before,
+  .refresh-progress::before {
     animation-duration: 3s;
   }
   .hub-refresh.busy .fabric-icon,
@@ -1044,6 +1048,7 @@ kbd {
   color: var(--fg3);
 }
 .pr-header {
+  position: relative;
   padding: 8px var(--page-x) 10px;
 }
 .pr-title-row {

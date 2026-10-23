@@ -79,15 +79,35 @@ test("Given a PR kept many hours ago, then it opens on the skeleton instead", ()
   assert.equal(readPrSnapshot("s", 7, storage, 13 * 3_600_000), null);
 });
 
-test("Given more PRs opened than are kept, then the ones opened longest ago are dropped from storage", () => {
+/** The PR items in storage, besides the index. */
+const items = (storage: ReturnType<typeof memoryStorage>) => [...storage.items.keys()].filter((k) => k.startsWith("review-deck.pr.v1:")).sort();
+
+test("Given more PRs opened than are kept, in any project or organization, then the ones opened longest ago are dropped from storage", () => {
   const storage = memoryStorage();
-  for (let id = 1; id <= 12; id++) writePrSnapshot("s", overview(id), storage, id);
+  for (let id = 1; id <= 12; id++) writePrSnapshot(id % 2 ? "org/a" : "org/b", overview(id), storage, id);
   // Opening an old one again makes it the most recent.
-  writePrSnapshot("s", overview(3), storage, 13);
-  writePrSnapshot("s", overview(13), storage, 14);
-  const kept = [...Array(14).keys()].filter((id) => readPrSnapshot("s", id, storage, 15));
-  assert.deepEqual(kept, [3, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
-  assert.equal([...storage.items.keys()].filter((k) => k.startsWith("review-deck.pr.v1:s:")).length, 10);
+  writePrSnapshot("org/a", overview(3), storage, 13);
+  writePrSnapshot("org/b", overview(14), storage, 14);
+  const kept = (scope: string) => [...Array(15).keys()].filter((id) => readPrSnapshot(scope, id, storage, 15));
+  assert.deepEqual(kept("org/a"), [3, 5, 7, 9, 11]);
+  assert.deepEqual(kept("org/b"), [6, 8, 10, 12, 14]);
+  assert.equal(items(storage).length, 10);
+});
+
+test("Given large PRs, then the ones opened longest ago go once they'd pass the total kept", () => {
+  const storage = memoryStorage();
+  for (let id = 1; id <= 5; id++) writePrSnapshot("s", overview(id, "x".repeat(400_000)), storage, id);
+  // 1.5M characters in all: three of 400K fit.
+  assert.deepEqual([...Array(6).keys()].filter((id) => readPrSnapshot("s", id, storage, 6)), [3, 4, 5]);
+  assert.equal(items(storage).length, 3);
+});
+
+test("Given PRs kept many hours ago, then the next save deletes them from storage", () => {
+  const storage = memoryStorage();
+  writePrSnapshot("s", overview(1), storage, 0);
+  writePrSnapshot("s", overview(2), storage, 1);
+  writePrSnapshot("s", overview(3), storage, 13 * 3_600_000);
+  assert.deepEqual(items(storage), ["review-deck.pr.v1:s:3"]);
 });
 
 test("Given full storage, then older PRs make room for the one just opened, and one too large to keep isn't", () => {
@@ -100,7 +120,7 @@ test("Given full storage, then older PRs make room for the one just opened, and 
   // Hundreds of long threads: not kept, and an older copy of it goes too.
   const big = memoryStorage();
   writePrSnapshot("s", overview(2), big, 3);
-  writePrSnapshot("s", overview(2, "x".repeat(1_000_001)), big, 4);
+  writePrSnapshot("s", overview(2, "x".repeat(500_001)), big, 4);
   assert.equal(readPrSnapshot("s", 2, big, 5), null);
   assert.equal(big.items.has("review-deck.pr.v1:s:2"), false);
 });
@@ -112,7 +132,7 @@ test("Given storage the browser denies, or garbage in it, then the PR opens on t
   writePrSnapshot("s", overview(7), denied);
   assert.equal(readPrSnapshot("s", 7, denied), null);
   const storage = memoryStorage();
-  storage().setItem("review-deck.pr.v1:s", "{not json");
+  storage().setItem("review-deck.pr.v1", "{not json");
   assert.equal(readPrSnapshot("s", 7, storage), null);
   writePrSnapshot("s", overview(7), storage);
   assert.notEqual(readPrSnapshot("s", 7, storage), null);

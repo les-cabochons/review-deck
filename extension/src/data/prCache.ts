@@ -1,77 +1,87 @@
+import { MAX_AGE_MS } from "./hubCache";
 import type { PrOverview } from "./model";
 
 /**
  * The pull requests this browser opened last, so opening one again (from the hub, a link, or a reload) paints it at
- * once while it reloads, instead of a skeleton for the second Azure DevOps' REST calls take. Per host scope
- * (organization, project and user), one localStorage item per PR plus an index of when each was kept, and ignored
- * once it is many hours old, as the hub's (hubCache.ts).
+ * once while it reloads, instead of a skeleton for the second Azure DevOps' REST calls take. One localStorage item per
+ * PR and host scope (organization, project and user), and one index of them all, which keeps their total well within
+ * what the browser allows: the hub's rows and pending review drafts share that storage. Ignored once many hours old,
+ * like the hub's (hubCache.ts), and dropped at the next save.
  */
 type CacheStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const KEY = "review-deck.pr.v1";
-/** Pull requests kept per scope, most recently opened first. */
+/** Pull requests kept in all, across organizations, projects and users. */
 const MAX_PRS = 10;
-/** A PR with this many characters of overview (hundreds of long threads) isn't kept: storage is a few MB in all. */
-const MAX_CHARS = 1_000_000;
-const MAX_AGE_MS = 12 * 3_600_000;
+/** Characters kept in all: browsers allow an origin about 5 MB of localStorage, and this is a fraction of it. */
+const MAX_TOTAL_CHARS = 1_500_000;
+/** A PR with more characters of overview than this (hundreds of long threads) isn't kept. */
+const MAX_CHARS = 500_000;
 const browserStore = () => window.localStorage;
 
-/** [PR id, when it was kept], most recent first. */
-type Index = [number, number][];
+/** One kept PR: `<scope>:<PR id>`, when it was kept, and its size. */
+interface Entry {
+  key: string;
+  at: number;
+  chars: number;
+}
 
 export function readPrSnapshot(scope: string, id: number, storage: () => CacheStorage = browserStore, now = Date.now()): PrOverview | null {
   try {
-    const kept = readIndex(storage(), scope).find(([pr]) => pr === id);
-    if (!kept || now - kept[1] >= MAX_AGE_MS) return null;
-    const raw = storage().getItem(itemKey(scope, id));
+    const kept = readIndex(storage()).find((e) => e.key === entryKey(scope, id));
+    if (!kept || now - kept.at >= MAX_AGE_MS) return null;
+    const raw = storage().getItem(itemKey(kept.key));
     return raw ? withDates(JSON.parse(raw) as PrOverview) : null;
   } catch {
     return null;
   }
 }
 
-/** Keeps what the PR page just loaded; drops the PRs opened longest ago beyond the few kept. */
+/** Keeps what the PR page just loaded, first; drops what's too old, and the PRs opened longest ago beyond the limits. */
 export function writePrSnapshot(scope: string, overview: PrOverview, storage: () => CacheStorage = browserStore, now = Date.now()): void {
   try {
     const store = storage();
-    const id = overview.pr.id;
-    const others = readIndex(store, scope).filter(([pr]) => pr !== id);
+    const key = entryKey(scope, overview.pr.id);
     const json = JSON.stringify(overview);
-    if (json.length > MAX_CHARS) {
-      store.removeItem(itemKey(scope, id));
-      store.setItem(indexKey(scope), JSON.stringify(others));
-      return;
+    const kept: Entry[] = json.length <= MAX_CHARS ? [{ key, at: now, chars: json.length }] : [];
+    let total = kept[0]?.chars ?? 0;
+    for (const e of readIndex(store)) {
+      if (e.key === key) continue;
+      if (now - e.at < MAX_AGE_MS && kept.length < MAX_PRS && total + e.chars <= MAX_TOTAL_CHARS) {
+        kept.push(e);
+        total += e.chars;
+      } else store.removeItem(itemKey(e.key));
     }
-    const index: Index = [[id, now], ...others];
-    for (const [pr] of index.splice(MAX_PRS)) store.removeItem(itemKey(scope, pr));
-    // Full storage: make room by dropping the oldest, down to this PR alone.
-    for (;;) {
+    while (kept[0]?.key === key) {
       try {
-        store.setItem(itemKey(scope, id), json);
+        store.setItem(itemKey(key), json);
         break;
-      } catch (e) {
-        const oldest = index.length > 1 ? index.pop() : undefined;
-        if (!oldest) throw e;
-        store.removeItem(itemKey(scope, oldest[0]));
+      } catch {
+        // Full all the same (the hub's rows, drafts): drop the oldest to make room, and at last this one.
+        store.removeItem(itemKey((kept.length > 1 ? kept.pop() : kept.shift())!.key));
       }
     }
-    store.setItem(indexKey(scope), JSON.stringify(index));
+    if (kept[0]?.key !== key) store.removeItem(itemKey(key));
+    store.setItem(KEY, JSON.stringify(kept));
   } catch {
-    // Denied or full storage: the next open shows the skeleton, as it does the first time.
+    // Denied storage: the next open shows the skeleton, as it does the first time.
   }
 }
 
-const indexKey = (scope: string) => `${KEY}:${scope}`;
-const itemKey = (scope: string, id: number) => `${KEY}:${scope}:${id}`;
+const entryKey = (scope: string, id: number) => `${scope}:${id}`;
+const itemKey = (key: string) => `${KEY}:${key}`;
 
-function readIndex(store: CacheStorage, scope: string): Index {
+/** The kept PRs, most recently opened first. */
+function readIndex(store: CacheStorage): Entry[] {
   let index: unknown = [];
   try {
-    index = JSON.parse(store.getItem(indexKey(scope)) ?? "[]");
+    index = JSON.parse(store.getItem(KEY) ?? "[]");
   } catch {
     // Garbage: start over.
   }
-  return Array.isArray(index) ? index.filter((e): e is [number, number] => Array.isArray(e) && typeof e[0] === "number" && typeof e[1] === "number") : [];
+  return Array.isArray(index)
+    ? index.filter((e): e is Entry => typeof e?.key === "string" && typeof e.at === "number" && typeof e.chars === "number")
+    : [];
 }
 
 /** JSON keeps dates as strings. */
