@@ -6,6 +6,8 @@ async page => {
   page.on('pageerror', error => errors.push(error.message));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.setViewportSize({ width: 412, height: 915 });
+  // From a blank page: a goto to the URL already open only changes the hash and keeps the page's state.
+  await page.goto('about:blank');
   await page.goto('http://127.0.0.1:5173/dist/review.html?local&pr=17901&repo=t3code#files');
   await page.locator('.file-header').first().waitFor();
   await page.locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
