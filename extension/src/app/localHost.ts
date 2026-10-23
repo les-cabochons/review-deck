@@ -5,7 +5,7 @@ import type { Identity, PrSource } from "../data/model";
 import { MockReleaseCatalog } from "../data/mockReleases";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService, RestackOutcome } from "../review/backend";
-import type { SavedReview, SavedReviews } from "../review/saved";
+import { type ReviewKey, type SavedReviews, savedFor, withSaved } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 
 const SETTINGS_KEY = "review-deck.local.projectSettings";
@@ -13,6 +13,9 @@ const TAGS_KEY = "review-deck.local.tagStyles";
 const FAVORITES_KEY = "review-deck.local.favoriteRepos";
 const BACKEND_KEY = "review-deck.local.backend";
 const ORGANIZATION_KEY = "review-deck.local.organizationSettings";
+const REVIEWS_KEY = "review-deck.local.savedReviews";
+/** Pull requests whose guided views the local page keeps, most recently grouped first (localStorage holds ~5 MB). */
+const SAVED_PRS = 20;
 
 /**
  * Local development host: routes live in this page's own query string (`?pr=17901&repo=t3code`),
@@ -23,7 +26,6 @@ export class LocalHost implements AppHost {
   readonly cacheScope = "local";
   private readonly listeners = new Listeners<Route>();
   private readonly prSources = new Map<number, Promise<PrSource>>();
-  private readonly reviews = new Map<string, SavedReview>();
   private readonly releaseCatalog = new MockReleaseCatalog();
 
   private constructor(private readonly list: MockPrListSource) {
@@ -149,12 +151,31 @@ export class LocalHost implements AppHost {
     return (await this.list.catalog()).map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  /** In memory, so a reload analyzes again with the code being worked on. */
+  /**
+   * In localStorage, like the extension data an organization shares, so reloading reuses a PR's guided view.
+   * After changing the grouping code, Regroup shows what it does now.
+   */
   savedReviews(): SavedReviews {
-    const id = (key: Parameters<SavedReviews["load"]>[0]) => JSON.stringify(key);
+    const id = (key: ReviewKey) => `${key.repo}#${key.pr}`;
+    const read = (): Record<string, unknown> => {
+      try {
+        return JSON.parse(localStorage.getItem(REVIEWS_KEY) ?? "{}") ?? {};
+      } catch {
+        return {};
+      }
+    };
     return {
-      load: async (key) => this.reviews.get(id(key)) ?? null,
-      save: async (key, review) => void this.reviews.set(id(key), review),
+      load: async (key) => savedFor(read()[id(key)], key),
+      save: async (key, review) => {
+        const { [id(key)]: comparisons, ...others } = read();
+        const kept = Object.entries(others).slice(0, SAVED_PRS - 1);
+        try {
+          localStorage.setItem(REVIEWS_KEY, JSON.stringify(Object.fromEntries([[id(key), withSaved(comparisons, key, review)], ...kept])));
+        } catch (e) {
+          // Over the quota (a huge PR): it is grouped on every open.
+          console.warn("[review-deck] could not save the guided view:", e);
+        }
+      },
     };
   }
 

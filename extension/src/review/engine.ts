@@ -23,7 +23,7 @@ const MAX_DIFF_LINES = 20_000;
 const FETCH_CONCURRENCY = 16;
 
 export interface BuildOptions {
-  /** Called once the diff is ready, before the semantic analysis (slow on huge PRs) finishes. */
+  /** Called once the diff is ready, before the semantic analysis (slow on huge PRs) finishes; not when a saved view fits. */
   onPreview?: (model: ReviewModel) => void;
   /** Grouping progress, while the worker runs. */
   onProgress?: (progress: AnalysisProgress) => void;
@@ -32,7 +32,7 @@ export interface BuildOptions {
   backend?: BackendService | null;
   /** The project allows sending changed lines to the LLM (ProjectSettings.aiTitles). */
   aiTitles?: boolean;
-  /** Reuses the grouping saved for this comparison, and saves a fresh one. */
+  /** Reuses the guided view saved for this comparison (by anyone), and saves a fresh one for everyone. */
   saved?: { store: SavedReviews; key: ReviewKey };
   /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it. */
   fresh?: boolean;
@@ -77,15 +77,20 @@ export async function buildReview(
 
   const aiTitles = options.aiTitles === true;
   const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles, saved: await saved, assetBase: new URL("../assets/", document.baseURI).toString() };
-  const { result, restored } = await runAnalysis(job, options.signal, (message) => {
+  const { result, restored, skipped } = await runAnalysis(job, options.signal, (message) => {
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
   for (const warning of result.warnings) console.warn("[review-deck]", warning);
   console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
-  const packed = !restored && options.saved ? packReview(result, reviewMode(backend, aiTitles)) : null;
-  if (packed) void options.saved!.store.save(options.saved!.key, packed);
+  if (options.saved) console.info(`[review-deck] guided view: ${restored ? "reused the saved one" : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}, saved for everyone`}`);
+  if (!restored && options.saved) void options.saved.store.save(options.saved.key, packReview(result, reviewMode(backend, aiTitles)));
   return { result, changes, contents, comparison, analyzed: true };
+}
+
+function whyGrouped(fresh: boolean | undefined, saved: unknown, skipped: string | undefined): string {
+  if (fresh) return "again on request";
+  return saved ? `again because the saved one doesn't fit: ${skipped ?? "unknown"}` : "for the first time (none saved for this comparison)";
 }
 
 /** Files and hunks straight from the diff (a few ms even for huge PRs), so the page can show them at once. */
@@ -108,7 +113,7 @@ function runAnalysis(
   job: AnalysisJob,
   signal: AbortSignal | undefined,
   onUpdate: (message: Extract<AnalysisMessage, { type: "diff" | "progress" }>) => void,
-): Promise<{ result: ReviewResult; restored: boolean }> {
+): Promise<{ result: ReviewResult; restored: boolean; skipped?: string }> {
   return new Promise((resolve, reject) => {
     const receive = (message: AnalysisMessage) => {
       if (message.type === "diff" || message.type === "progress") onUpdate(message);
