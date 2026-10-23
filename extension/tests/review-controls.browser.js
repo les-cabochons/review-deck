@@ -62,7 +62,7 @@ async page => {
     groupCheckbox.click();
     await wait(() => !groupCheckbox.checked && !groupCheckbox.indeterminate, "Concern checkbox did not unmark files");
     assert(!group.querySelector("button.pierre-hunk-header"), "Chunks still fold on their own");
-    // Ticking Viewed folds the file, like GitHub. Unticking the concern reopened it, so its cards remount first.
+    // Ticking Viewed folds the card, like GitHub. Unticking the concern reopened it, so its cards remount first.
     await wait(() => fileInput(), "Concern did not reopen when unmarked");
     fileInput().click();
     const folded = () => doc.getElementById(cardId).querySelector("button.file-collapse").getAttribute("aria-expanded") === "false";
@@ -71,7 +71,7 @@ async page => {
     const card = doc.getElementById(`file-${path}`);
     card.scrollIntoView({ block: "start" });
     await wait(() => card.querySelector(".viewed-control input"), "Alphabetical file did not mount");
-    // A–Z shows the whole file: viewed and folded once every chunk is, mixed and open before that.
+    // A–Z shows the whole file. It is viewed and folded once every chunk is, and mixed and open before that.
     const alphaBox = card.querySelector(".viewed-control input");
     const whole = alphaBox.checked;
     assert(whole || alphaBox.indeterminate, "Viewed state did not follow into alphabetical view");

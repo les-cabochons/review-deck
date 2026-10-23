@@ -2,8 +2,8 @@ import type { FileDiff } from "../../../src/core/types";
 import type { FileChange } from "../data/model";
 
 /**
- * Viewed chunks saved locally: hunk id (`<path>#<n>`) → the version of its file when it was ticked. The guided
- * view shows a file's chunks in different concerns, so each chunk is ticked on its own.
+ * Viewed chunks saved locally. Each key is a hunk id (`<path>#<n>`) and its value is the version of the chunk's file
+ * when it was ticked. The guided view shows a file's chunks in different concerns, so each chunk is ticked on its own.
  */
 export type ViewedHunks = Record<string, string>;
 
@@ -22,9 +22,13 @@ export function parseViewed(raw: string | null): ViewedHunks {
   }
 }
 
+function versionsByPath(changes: FileChange[]): Map<string, string> {
+  return new Map(changes.map(change => [change.path, fileVersion(change)]));
+}
+
 /** Ids of the chunks ticked at their file's current version. */
 export function viewedHunks(saved: ViewedHunks, files: FileDiff[], changes: FileChange[]): Set<string> {
-  const versions = new Map(changes.map(change => [change.path, fileVersion(change)]));
+  const versions = versionsByPath(changes);
   return new Set(files.flatMap(file => {
     const version = versions.get(file.path);
     return version === undefined ? [] : file.hunks.filter(hunk => saved[hunk.id] === version).map(hunk => hunk.id);
@@ -34,7 +38,7 @@ export function viewedHunks(saved: ViewedHunks, files: FileDiff[], changes: File
 export function setHunksViewed(saved: ViewedHunks, files: FileDiff[], changes: FileChange[], ids: string[], checked: boolean): ViewedHunks {
   const next = { ...saved };
   const selected = new Set(ids);
-  const versions = new Map(changes.map(change => [change.path, fileVersion(change)]));
+  const versions = versionsByPath(changes);
   for (const file of files) {
     const version = versions.get(file.path);
     if (version === undefined) continue;

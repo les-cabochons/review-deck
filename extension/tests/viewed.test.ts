@@ -29,13 +29,13 @@ test("Given a file with chunks in two concerns, when one chunk is marked viewed,
   assert.deepEqual(viewedStatus(["src/shared.ts#1"], viewed), { checked: false, mixed: false });
   assert.deepEqual(viewedStatus(["src/shared.ts#0", "src/shared.ts#1"], viewed), { checked: false, mixed: true });
   assert.equal(viewedFiles(files, viewed).has("src/shared.ts"), false);
+  assert.deepEqual(viewedStatus([], viewed), { checked: false, mixed: false });
 });
 
 test("Given every chunk of a file marked viewed across concerns, then the file counts as viewed", () => {
   let saved = setHunksViewed({}, files, changes, ["src/shared.ts#0", "src/other.ts#0"], true);
   saved = setHunksViewed(saved, files, changes, ["src/shared.ts#1"], true);
   assert.deepEqual([...viewedFiles(files, viewedHunks(saved, files, changes))], ["src/shared.ts", "src/other.ts"]);
-  assert.deepEqual(viewedStatus([], new Set()), { checked: false, mixed: false });
 });
 
 test("Given a mixed concern, when it is checked then unchecked, then its chunks update together and unrelated viewed chunks remain", () => {

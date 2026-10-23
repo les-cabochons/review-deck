@@ -9,8 +9,8 @@ import { parseViewed, setHunksViewed, viewedFiles, viewedHunks, viewedStatus } f
  * file's chunks, so ticking a card in one concern leaves the file's chunks in other concerns untouched.
  */
 interface FileReviewState {
-  /** Ids of the viewed chunks. */
-  viewed: Set<string>;
+  /** Ids of the viewed chunks (hunk ids, not file paths). */
+  viewedHunks: Set<string>;
   /** Paths of the files whose every chunk is viewed. */
   viewedFiles: Set<string>;
   setViewed(hunkIds: string[], checked: boolean): void;
@@ -18,7 +18,7 @@ interface FileReviewState {
    * Whether every chunk in `hunkIds` is folded to its file header. Deleted files' chunks and viewed chunks start
    * folded; ticking Viewed folds, unticking unfolds.
    */
-  collapsed(hunkIds: string[]): boolean;
+  isCollapsed(hunkIds: string[]): boolean;
   setCollapsed(hunkIds: string[], collapsed: boolean): void;
   /**
    * A concern's fold: the reader's choice, else `fallback` or whether every chunk in it was already viewed
@@ -52,7 +52,7 @@ export const FileReviewProvider: React.FC<{ storageKey: string; changes: FileCha
     });
     setCollapsed(hunkIds, checked);
   }, [files, changes, storageKey, setCollapsed]);
-  const collapsed = React.useCallback(
+  const isCollapsed = React.useCallback(
     (hunkIds: string[]) => hunkIds.every(id => foldChoices.get(id) ?? (deleted.has(id) || viewed.has(id))),
     [foldChoices, deleted, viewed],
   );
@@ -68,7 +68,7 @@ export const FileReviewProvider: React.FC<{ storageKey: string; changes: FileCha
   const setGroupCollapsed = React.useCallback((id: string, closed: boolean) => {
     setGroupChoices(previous => new Map(previous).set(id, closed));
   }, []);
-  return <Context.Provider value={{ viewed, viewedFiles: fullyViewed, setViewed, collapsed, setCollapsed, groupCollapsed, setGroupCollapsed }}>
+  return <Context.Provider value={{ viewedHunks: viewed, viewedFiles: fullyViewed, setViewed, isCollapsed, setCollapsed, groupCollapsed, setGroupCollapsed }}>
     {children}
   </Context.Provider>;
 };
@@ -81,8 +81,8 @@ export function useFileReview(): FileReviewState {
 
 /** Ticks the chunks in `hunkIds`; mixed when only some of them are viewed. */
 export const ViewedCheckbox: React.FC<{ hunkIds: string[]; label: string; onChange?: (checked: boolean) => void }> = ({ hunkIds, label, onChange }) => {
-  const { viewed, setViewed } = useFileReview();
-  const { checked, mixed } = viewedStatus(hunkIds, viewed);
+  const { viewedHunks, setViewed } = useFileReview();
+  const { checked, mixed } = viewedStatus(hunkIds, viewedHunks);
   const input = React.useRef<HTMLInputElement>(null);
   React.useLayoutEffect(() => { if (input.current) input.current.indeterminate = mixed; }, [mixed]);
   return <label className={`viewed-control${checked ? " is-viewed" : ""}`}>

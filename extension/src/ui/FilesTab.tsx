@@ -328,7 +328,7 @@ interface NavigatorProps {
 /** Graphite-style file list: a search box and a "Show" filter above the tree. */
 const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSearch, hidden, onHidden, kinds, comments, collapsedGroups, onToggleGroup, onPick }) => {
   const { result } = review;
-  const { viewed, viewedFiles, setCollapsed } = useFileReview();
+  const { viewedHunks, viewedFiles, setCollapsed } = useFileReview();
   const go = (id: string) => {
     scrollToId(id);
     onPick?.();
@@ -381,7 +381,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
                     {i + 1}
                   </span>
                   <span className="text">{g.title}</span>
-                  {viewedStatus(g.hunkIds, viewed).checked && <Icon iconName="CheckMark" className="nav-viewed" ariaLabel="Viewed" />}
+                  {viewedStatus(g.hunkIds, viewedHunks).checked && <Icon iconName="CheckMark" className="nav-viewed" ariaLabel="Viewed" />}
                   <span className="count">{g.hunkIds.length}</span>
                 </button>
               </div>
@@ -552,10 +552,10 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
   onPick,
 }) => {
   const { result } = review;
-  const { viewed, setCollapsed } = useFileReview();
+  const { viewedHunks, setCollapsed } = useFileReview();
   const hunksOf = (path: string) => group.hunkIds.filter((id) => result.hunks.get(id)!.file.path === path);
   // A file is checked here once its chunks in this concern are, whatever its chunks elsewhere.
-  const viewedHere = new Set(files.filter((f) => viewedStatus(hunksOf(f.path), viewed).checked).map((f) => f.path));
+  const viewedHere = new Set(files.filter((f) => viewedStatus(hunksOf(f.path), viewedHunks).checked).map((f) => f.path));
   // Rough tree height before it renders: a row per file and per folder, capped like the tree itself.
   const rows = files.length + new Set(files.map((f) => dirname(f.path))).size;
   return (
@@ -690,7 +690,7 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; sh
   showFileThreads,
   viewUrl,
 }) => {
-  const { collapsed: isCollapsed } = useFileReview();
+  const { isCollapsed } = useFileReview();
   const collapsed = isCollapsed([info.hunk.id]);
   const adds = info.hunk.lines.filter((l) => l.kind === "add").length;
   const dels = info.hunk.lines.filter((l) => l.kind === "del").length;
@@ -710,7 +710,7 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; sh
 };
 
 const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, viewUrl }) => {
-  const { collapsed: isCollapsed } = useFileReview();
+  const { isCollapsed } = useFileReview();
   const files = review.result.files.filter((f) => shown(f.path)).sort((a, b) => a.path.localeCompare(b.path));
   const visible = visibleLines(review.result.files);
   return (

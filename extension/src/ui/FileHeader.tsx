@@ -20,7 +20,7 @@ import { basename, dirname } from "./util";
  */
 export const FileHeader: React.FC<{
   file: FileDiff;
-  /** The chunks this card shows: all of the file's in A–Z, one in a guided card. */
+  /** The chunks this card shows. An A–Z card shows all of the file's chunks and a guided card shows one. */
   hunkIds: string[];
   adds: number;
   dels: number;
@@ -34,7 +34,7 @@ export const FileHeader: React.FC<{
   const { actions, disabled } = useReviewActions();
   const pending = usePendingReview();
   const [composing, setComposing] = React.useState(false);
-  const { collapsed: isCollapsed, setCollapsed } = useFileReview();
+  const { isCollapsed, setCollapsed } = useFileReview();
   const collapsed = isCollapsed(hunkIds);
   const drafts = pending.draftsAt(file.path).filter((d) => !isLineAnchor(d.thread.file));
   const canComment = !!comments?.canComment(file.path) && !disabled;

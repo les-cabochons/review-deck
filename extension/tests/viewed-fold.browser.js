@@ -14,10 +14,10 @@ async page => {
   const view = f.locator('.mode-toggle').first();
   if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
   // Start from a clean slate: nothing viewed.
-  // Mixed concerns need two clicks: the first marks every file, the second clears them.
+  // Mixed concerns need two clicks. The first marks every chunk and the second clears them.
   for (const box of await f.locator('.group-header-row .viewed-control input').all())
     for (let i = 0; i < 2 && (await box.evaluate((input) => input.checked || input.indeterminate)); i++) await box.click();
-  // Those clicks scrolled the page, and cards only mount near the viewport: go back to the top concerns.
+  // Those clicks scrolled the page, and cards only mount near the viewport, so go back to the top concerns.
   await f.locator('body').evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(500);
   const r = {};
@@ -54,14 +54,14 @@ async page => {
   await fileCard.scrollIntoViewIfNeeded();
   await fileCard.locator('.viewed-control input').click();
   await fileCard.locator('.file-collapse[aria-expanded="false"]').waitFor();
-  r.fileFoldsOnViewed = true;
+  r.cardFoldsOnViewed = true;
   await fileCard.locator('.viewed-control input').click();
   await fileCard.locator('.file-collapse[aria-expanded="true"]').waitFor();
-  r.fileUnfoldsOnUnviewed = true;
+  r.cardUnfoldsOnUnviewed = true;
   // Ticking every card one by one never folds the concern being read.
   for (const input of await section.locator('article .viewed-control input').all()) if (!(await input.isChecked())) await input.click();
   await page.waitForTimeout(300);
-  r.groupStaysOpenWhenFilesTicked = await header.getAttribute('aria-expanded') === 'true';
+  r.groupStaysOpenWhenCardsTicked = await header.getAttribute('aria-expanded') === 'true';
   // Clear the concern (only mounted cards were ticked, so it may be mixed), then tick it once.
   for (let i = 0; i < 2 && (await box.evaluate((input) => input.checked || input.indeterminate)); i++) await box.click();
   await page.waitForTimeout(300);
