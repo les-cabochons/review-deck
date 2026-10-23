@@ -313,8 +313,8 @@ function scrollToId(id: string) {
 const NAV_BOTTOM_GAP = 16;
 
 /**
- * Caps the sticky navigator at the visible part of the window. The stylesheet's max-height assumes it is already
- * stuck under the toolbar; before the page scrolls past the PR header it starts lower, so its bottom was off screen.
+ * Caps the sticky navigator at the part of the window below its top, so its bottom stays on screen before the page
+ * scrolls past the PR header. The stylesheet's max-height only fits once the navigator is stuck under the toolbar.
  * It only does so while the navigator is sticky. In the phone sheet the navigator is static and the sheet sizes it.
  */
 function useFitViewport(element: HTMLElement | null) {
