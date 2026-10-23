@@ -17,15 +17,34 @@ async page => {
   // Mixed concerns need two clicks: the first marks every file, the second clears them.
   for (const box of await f.locator('.group-header-row .viewed-control input').all())
     for (let i = 0; i < 2 && (await box.evaluate((input) => input.checked || input.indeterminate)); i++) await box.click();
+  const r = {};
+  // A file's chunks can sit on several cards. Ticking one card folds that card only, not the file's other chunks.
+  const repeated = await f.locator('.group-section[id^="group-"]').evaluateAll(sections => {
+    for (const s of sections) {
+      const cards = [...s.querySelectorAll('article')].filter(a => a.querySelector('.viewed-control input'));
+      const labels = cards.map(a => a.querySelector('.viewed-control input').getAttribute('aria-label'));
+      const label = labels.find((l, i) => labels.indexOf(l) !== i);
+      if (label) return cards.filter((_, i) => labels[i] === label).map(a => a.id);
+    }
+  });
+  if (!repeated) throw new Error('No mounted file with chunks on several cards');
+  const [ticked, ...siblings] = repeated.map(id => f.locator(`article[id="${id}"]`));
+  await ticked.locator('.viewed-control input').click();
+  await ticked.locator('.file-collapse[aria-expanded="false"]').waitFor();
+  r.siblingChunksStayOpen = true;
+  for (const sibling of siblings)
+    r.siblingChunksStayOpen &&= await sibling.locator('.file-collapse').getAttribute('aria-expanded') === 'true'
+      && !(await sibling.locator('.viewed-control input').isChecked());
+  await ticked.locator('.viewed-control input').click();
+  await ticked.locator('.file-collapse[aria-expanded="true"]').waitFor();
   // A concern with several files, so ticking one file doesn't complete the concern.
   const sectionId = await f.locator('.group-section[id^="group-"]').evaluateAll(sections =>
     sections.find(s => new Set([...s.querySelectorAll('.file-path')].map(p => p.title)).size > 1)?.id);
   const section = f.locator(`.group-section[id="${sectionId}"]`);
   const header = section.locator('.group-header');
   const box = section.locator('.group-header-row .viewed-control input');
-  const r = {};
   r.openAtStart = await header.getAttribute('aria-expanded') === 'true';
-  // Ticking a file's Viewed folds the file.
+  // Ticking a card's Viewed folds the card.
   const card = section.locator('article').first();
   const cardId = await card.getAttribute('id');
   const fileCard = f.locator(`article[id="${cardId}"]`);
@@ -35,7 +54,7 @@ async page => {
   await fileCard.locator('.viewed-control input').click();
   await fileCard.locator('.file-collapse[aria-expanded="true"]').waitFor();
   r.fileUnfoldsOnUnviewed = true;
-  // Ticking every file one by one never folds the concern being read.
+  // Ticking every card one by one never folds the concern being read.
   for (const input of await section.locator('article .viewed-control input').all()) if (!(await input.isChecked())) await input.click();
   await page.waitForTimeout(300);
   r.groupStaysOpenWhenFilesTicked = await header.getAttribute('aria-expanded') === 'true';
