@@ -4,6 +4,7 @@ import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
 import { hubPatch, rememberPr } from "../data/hubCache";
+import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { Breadcrumb } from "./Breadcrumb";
@@ -49,12 +50,20 @@ export const HostLinks = React.createContext<{
 
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
 export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }>; source: PrSource }> = ({ host, route, source }) => {
-  const [data, setData] = React.useState<PrOverview | null>(null);
+  /** What this browser kept from opening the PR before: shown at once, while `source` loads the real thing. */
+  const [kept] = React.useState(() => readPrSnapshot(host.cacheScope, route.pr));
+  const [data, setData] = React.useState<PrOverview | null>(kept);
+  /** `data` is the kept copy: changes wait for the first load, so none is made from what may be out of date. */
+  const [stale, setStale] = React.useState(!!kept);
   const [error, setError] = React.useState<string | null>(null);
+  /** Why loading failed while the kept copy shows; it stays, marked as possibly out of date, as the hub keeps its rows. */
+  const [refreshError, setRefreshError] = React.useState<string | null>(null);
+  const staleNow = React.useRef(stale);
+  staleNow.current = stale;
   const [tab, setTab] = React.useState<TabId>(() =>
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
-  const [selection, setSelection] = React.useState({ iteration: 0, compareTo: 0 });
+  const [selection, setSelection] = React.useState(() => latestComparison(kept));
   const [review, setReview] = React.useState<ReviewModel | null>(null);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = React.useState(false);
@@ -77,21 +86,37 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const live = React.useRef({ tab, view });
   live.current = { tab, view };
 
-  React.useEffect(() => {
-    source
-      .load()
-      .then((d) => {
-        setData(d);
-        setSelection({ iteration: d.iterations.at(-1)?.id ?? 1, compareTo: 0 });
-      })
-      .catch((e: Error) => setError(e.message));
-  }, [source]);
+  /** Loaded just now, here or after a change made through ReviewActions: the page is current again. */
+  const loaded = (d: PrOverview) => {
+    setData(d);
+    setStale(false);
+    setRefreshError(null);
+  };
+  const load = () => {
+    setRefreshError(null);
+    source.load().then(
+      (d) => {
+        loaded(d);
+        // Opened from the kept copy: a push since then moves to the new latest, unless the reader picked another comparison.
+        const latest = latestComparison(d);
+        setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
+      },
+      (e: Error) => {
+        if (!kept) setError(e.message);
+        // Unless a load since (a poll while completing) made the page current.
+        else if (staleNow.current) setRefreshError(e.message);
+      },
+    );
+  };
+  React.useEffect(load, [source]);
 
   // After opening the PR and after every change made here (votes, reviewers, tags), so the hub shows it in its new
-  // section straight away when you go back.
+  // section straight away when you go back, and the next open of this PR paints it at once.
   React.useEffect(() => {
-    if (data) rememberPr(host.cacheScope, hubPatch(data));
-  }, [host, data]);
+    if (!data || stale) return;
+    rememberPr(host.cacheScope, hubPatch(data));
+    writePrSnapshot(host.cacheScope, data);
+  }, [host, data, stale]);
 
   React.useEffect(() => {
     if (data) host.setTitle(`!${data.pr.id} ${data.pr.title}`);
@@ -222,13 +247,28 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
 
   return (
     <IdentityNames.Provider value={names}>
-      <ReviewActionsProvider source={source} onData={setData}>
+      <ReviewActionsProvider source={source} onData={loaded} stale={stale}>
         <PendingReviewProvider storageKey={`${route.repo}.${route.pr}.${source.currentUser.id}`}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
               <div className="review-page">
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
-                <PrHeader data={data} review={review} progress={progress} links={menuLinks} onToast={(message) => setToast({ message })} />
+                {refreshError && (
+                  <div className="error-box" role="alert">
+                    Could not refresh the pull request, so this may be out of date: {refreshError}{" "}
+                    <button className="link-button" onClick={load}>
+                      Try again
+                    </button>
+                  </div>
+                )}
+                <PrHeader
+                  data={data}
+                  review={review}
+                  progress={progress}
+                  refreshing={stale && !refreshError}
+                  links={menuLinks}
+                  onToast={(message) => setToast({ message })}
+                />
                 {stack && <StackBar view={stack} onOpen={openLayer} />}
                 <TabBar className="pr-tabs" selectedTabId={tab} onSelectedTabChanged={(id) => selectTab(id as TabId)} tabSize={TabSize.Tall}>
                   <Tab id="overview" name="Overview" />
@@ -292,6 +332,15 @@ const MentionProvider: React.FC<{ people: Identity[] }> = ({ people, children })
   return <MentionContext.Provider value={value}>{children}</MentionContext.Provider>;
 };
 
+type Comparison = ReviewModel["comparison"];
+
+/** The latest update against the PR's base, which the Files tab opens on; iteration 0 until the PR is known. */
+function latestComparison(data: PrOverview | null): Comparison {
+  return { iteration: data ? (data.iterations.at(-1)?.id ?? 1) : 0, compareTo: 0 };
+}
+
+const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;
+
 function knownPeople(data: PrOverview | null, me: Identity): Identity[] {
   if (!data) return [me];
   const all = [me, data.pr.createdBy, ...data.pr.reviewers, ...data.threads.flatMap((t) => t.comments.map((c) => c.author))];
@@ -332,9 +381,11 @@ const PrHeader: React.FC<{
   data: PrOverview;
   review: ReviewModel | null;
   progress: AnalysisProgress | null;
+  /** The kept copy shows while the PR loads. */
+  refreshing: boolean;
   links: PrMenuLinks;
   onToast: (message: string) => void;
-}> = ({ data, review, progress, links, onToast }) => {
+}> = ({ data, review, progress, refreshing, links, onToast }) => {
   const { pr } = data;
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
@@ -381,6 +432,7 @@ const PrHeader: React.FC<{
         )}
       </div>
       <CompletionNotice pr={pr} />
+      {refreshing && <div className="refresh-progress" role="progressbar" aria-label="Updating pull request" />}
     </header>
   );
 };

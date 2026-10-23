@@ -45,9 +45,13 @@ async function renderHosted() {
   );
   // Started now, so the hub's on/off check (page.tsx, which doesn't hold up the first render) answers sooner.
   void host.organizationSettings();
-  // The route is known now: a link straight to a pull request gets that page's skeleton while the UI loads.
+  // The route is known now: a link straight to a pull request gets that page's skeleton, and its data starts
+  // loading, while the UI loads.
   const route = host.route();
-  if (route.view === "pr" && isReview) root.innerHTML = prSkeleton({ id: route.pr });
+  if (route.view === "pr" && isReview) {
+    root.innerHTML = prSkeleton({ id: route.pr });
+    host.prefetchPr(route);
+  }
   const [{ renderHost }, { connectPreferences }] = await withTimeout(
     Promise.all([page, preferences]),
     "The review code could not finish loading. Check your connection and reload.",

@@ -56,6 +56,7 @@ export class AdoPrSource implements PrSource {
   readonly actions: PrActions;
   private readonly git = getClient(GitRestClient);
   private readonly policy = getClient(PolicyRestClient);
+  private prefetched: Promise<PrOverview> | null = null;
 
   constructor(
     private readonly projectId: string,
@@ -86,7 +87,20 @@ export class AdoPrSource implements PrSource {
     });
   }
 
-  async load(): Promise<PrOverview> {
+  /** Starts the first load now (src/index.ts, while the page's code loads); the next load() returns it. */
+  prefetch(): void {
+    this.prefetched ??= this.fetch();
+    this.prefetched.catch(() => {}); // reported by load()
+  }
+
+  load(): Promise<PrOverview> {
+    const prefetched = this.prefetched;
+    this.prefetched = null;
+    // A prefetch that failed (a network blip while hovering a row) is tried again now that it's asked for.
+    return prefetched ? prefetched.catch(() => this.fetch()) : this.fetch();
+  }
+
+  private async fetch(): Promise<PrOverview> {
     const { git, projectId: project, repositoryId: repo, pullRequestId: id } = this;
     const [pr, iterations, threads, commits, labels, workItems, policies] = await Promise.all([
       git.getPullRequest(repo, id, project),

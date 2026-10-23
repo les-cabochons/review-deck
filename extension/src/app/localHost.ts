@@ -96,6 +96,10 @@ export class LocalHost implements AppHost {
     return source;
   }
 
+  prefetchPr(): void {
+    // The mock data is on this server: nothing to start early.
+  }
+
   setTitle(title: string): void {
     document.title = title;
   }

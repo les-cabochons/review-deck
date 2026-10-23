@@ -28,6 +28,9 @@ import { ago, Avatar, cx, plural, voteInfo } from "../util";
 
 type Filter = "inbox" | SectionId;
 
+/** How long the pointer rests on a row before its PR starts loading: passing over rows on the way elsewhere doesn't. */
+const PREFETCH_DWELL_MS = 80;
+
 /** The saved set of closed sections, or the default when missing or malformed. */
 const parseCollapsed = (json: string): Set<SectionId> => {
   try {
@@ -260,7 +263,22 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const dataRevision = React.useMemo(() => ++revisions.current, [prs, details, groups]);
   useSectionFlash(main, dataRevision, settled);
 
-  const open = (pr: PrSummary) => pr.openable && host.navigate({ view: "pr", repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
+  const routeTo = (pr: PrSummary) => ({ view: "pr" as const, repo: pr.repository.id, pr: pr.id, project: pr.repository.projectName });
+  // The row the pointer rests on is likely the next one opened: its PR starts loading on the way to the click.
+  const prefetchTimer = React.useRef<ReturnType<typeof setTimeout>>();
+  const cancelPrefetch = () => clearTimeout(prefetchTimer.current);
+  const prefetch = (pr: PrSummary, delay = PREFETCH_DWELL_MS) => {
+    cancelPrefetch();
+    if (!pr.openable) return;
+    if (delay > 0) prefetchTimer.current = setTimeout(() => host.prefetchPr(routeTo(pr)), delay);
+    else host.prefetchPr(routeTo(pr));
+  };
+  React.useEffect(() => cancelPrefetch, []);
+  const open = (pr: PrSummary) => {
+    // Opened before the pointer rested long enough (Enter, a quick click): the page loads it, not a late prefetch.
+    cancelPrefetch();
+    if (pr.openable) host.navigate(routeTo(pr));
+  };
   // Keyboard: "/" search, j/k or arrows to move, Enter or o to open.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -428,6 +446,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
                             onOpen={() => open(pr)}
                             onStack={() => showStack(pr)}
                             onHover={() => setSelected(index)}
+                            onPrefetch={(delay) => prefetch(pr, delay)}
+                            onLeave={cancelPrefetch}
                           />
                         );
                       })}
@@ -481,7 +501,10 @@ const PrRow: React.FC<{
   /** Show the whole stack, from the stack chip. */
   onStack: () => void;
   onHover: () => void;
-}> = ({ pr, section, me, via, stack, selected, onOpen, onStack, onHover }) => {
+  /** Start loading the PR after `delay` ms (the pointer resting on the row) or at once (pressed). */
+  onPrefetch: (delay?: number) => void;
+  onLeave: () => void;
+}> = ({ pr, section, me, via, stack, selected, onOpen, onStack, onHover, onPrefetch, onLeave }) => {
   const state = STATE_ICON[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
@@ -506,7 +529,12 @@ const PrRow: React.FC<{
       data-section={section}
       className={cx("pr-row", selected && "selected", !pr.openable && "not-openable")}
       onClick={onOpen}
-      onMouseEnter={onHover}
+      onMouseEnter={() => {
+        onHover();
+        onPrefetch();
+      }}
+      onMouseLeave={onLeave}
+      onPointerDown={() => onPrefetch(0)}
       title={pr.openable ? undefined : "No local snapshot for this pull request (npm run ext:mock -- <id>)"}
     >
       <span className={cx("pr-state", state.className)} title={state.label}>

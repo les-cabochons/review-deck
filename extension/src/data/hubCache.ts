@@ -29,8 +29,8 @@ export interface HubPatch {
 type SnapshotStorage = Pick<Storage, "getItem" | "setItem">;
 
 const KEY = "review-deck.hub.v1";
-/** Opened the next morning, the hub shows a skeleton rather than yesterday's inbox. */
-const MAX_AGE_MS = 12 * 3_600_000;
+/** Opened the next morning, the hub shows a skeleton rather than yesterday's inbox (and the PR page, prCache.ts, too). */
+export const MAX_AGE_MS = 12 * 3_600_000;
 const browserStore = () => window.localStorage;
 
 const memory = new Map<string, HubSnapshot>();

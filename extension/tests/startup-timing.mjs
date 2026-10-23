@@ -7,12 +7,17 @@
 //   node extension/tests/startup-timing.mjs --shots .cache/shots   # screenshots of the skeletons and pages
 //
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
-// the scenario), the location service (REST calls go to this server's /api/, which returns empty lists), extension
+// the scenario), the location service (REST calls go to a second server, over HTTP/2 and cross-origin with CORS
+// preflights as dev.azure.com's are, which returns one pull request, PULL_REQUEST, and an empty list for everything
+// else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server without openssl), extension
 // data (nothing stored, answered after ?data= ms) and the access token. Every other service fails, as a locked-down
 // host would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold
 // browser profile and a warm one (second visit).
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
+import { createSecureServer } from "node:http2";
+import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { chromium } from "playwright-core";
 
@@ -39,11 +44,11 @@ const DARK = {
  * The fake host page. `query` is what the navigation service reports; `handshake` delays its answer, and `data`
  * every extension data call (organization settings, synced preferences), which finds nothing.
  */
-function hostHtml(query, handshake, data) {
+function hostHtml(query, handshake, data, apiRoot) {
   return `<!doctype html><html><body style="margin:0"><script>
     const query = ${JSON.stringify(query)};
     const marks = (window.marks = { start: Date.now() });
-    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => location.origin + "/api/", 6: () => location.hash.slice(1), 7: () => {},
+    const proxies = { 1: () => query, 2: () => {}, 3: () => {}, 4: () => {}, 5: () => ${JSON.stringify(apiRoot)}, 6: () => location.hash.slice(1), 7: () => {},
       8: () => ({ getDocument: { __proxyFunctionId: 9 }, getDocuments: { __proxyFunctionId: 9 }, getValue: { __proxyFunctionId: 9 } }) };
     // Extension data: answered after a delay, as a REST call to Azure DevOps would be, with "not found".
     const slow = { 9: { message: "Document not found", status: 404 } };
@@ -88,36 +93,42 @@ const FRAME_MARKS = `(() => {
     hubReact: ".hub-toolbar input[type=search]",
     hubRows: ".pr-row",
     prSkeleton: ".review-page",
+    // The PR's page with its data: from the copy kept in this browser (data/prCache.ts) or loaded.
     prReact: ".pr-actions button",
+    // Loaded: its buttons work (they wait while the kept copy shows).
+    prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
     settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
   };
   const check = () => {
     for (const [name, selector] of Object.entries(wanted)) if (!(name in marks) && document.querySelector(selector)) marks[name] = Date.now();
   };
-  new MutationObserver(check).observe(document, { childList: true, subtree: true });
+  // Attributes too: a button that becomes enabled is a landmark (prLive).
+  new MutationObserver(check).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "disabled", "aria-disabled"] });
   document.addEventListener("DOMContentLoaded", () => { marks.dom = Date.now(); check(); });
   check();
 })();`;
 
 /**
- * One origin for everything, so the browser's storage (theme, hub cache) carries between pages. /host?pr=&repo=
- * is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer.
+ * One origin for everything but the REST API, so the browser's storage (theme, hub cache) carries between pages.
+ * /host?pr=&repo= is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer.
  */
-function serve() {
+async function serve() {
   let apiDelay = 0;
+  // HTTP/1.1 would queue the page's REST calls six at a time, which dev.azure.com's HTTP/2 doesn't.
+  const tls = certificate();
+  const api = tls && createSecureServer({ ...tls, allowHTTP1: true }, (req, res) => answerApi(req, res, req.method === "OPTIONS" ? latency : apiDelay));
+  const apiOrigin = api && (await new Promise((ok) => api.listen(0, "127.0.0.1", () => ok(`https://127.0.0.1:${api.address().port}`))));
+  if (!api) console.warn("No openssl: the REST stub runs over HTTP/1.1, which queues requests six at a time.");
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://x");
     if (url.pathname === "/host") apiDelay = Number(url.searchParams.get("api") ?? 0);
-    const wait = url.pathname.startsWith("/api/") ? apiDelay : latency;
+    if (url.pathname.startsWith("/api/")) return answerApi(req, res, apiDelay);
     setTimeout(() => {
       if (url.pathname === "/host") {
         const query = url.searchParams.get("pr") ? { pr: url.searchParams.get("pr"), repo: url.searchParams.get("repo") } : {};
+        const apiRoot = apiOrigin ? `${apiOrigin}/api/` : `http://${req.headers.host}/api/`;
         res.writeHead(200, { "content-type": "text/html" });
-        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0), Number(url.searchParams.get("data") ?? 0)));
-      }
-      if (url.pathname.startsWith("/api/")) {
-        res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
-        return res.end(JSON.stringify({ count: 0, value: [] }));
+        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0), Number(url.searchParams.get("data") ?? 0), apiRoot));
       }
       const file = normalize(join(root, decodeURIComponent(url.pathname)));
       if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) {
@@ -126,17 +137,76 @@ function serve() {
       }
       res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream", "cache-control": "public, max-age=3600" });
       res.end(readFileSync(file));
-    }, wait);
+    }, latency);
   });
-  return new Promise((ok) => server.listen(0, "127.0.0.1", () => ok({ server, origin: `http://127.0.0.1:${server.address().port}` })));
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  return { origin: `http://127.0.0.1:${server.address().port}`, close: () => (server.close(), api?.close()) };
 }
+
+/** The REST stub, after `wait` ms; answers CORS preflights as dev.azure.com does (cached for an hour). */
+function answerApi(req, res, wait) {
+  const cors = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "OPTIONS,GET,POST,PATCH,PUT,DELETE",
+    "access-control-allow-headers": req.headers["access-control-request-headers"] ?? "authorization",
+    "access-control-max-age": "3600",
+  };
+  setTimeout(() => {
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, cors);
+      return res.end();
+    }
+    res.writeHead(200, { ...cors, "content-type": "application/json" });
+    res.end(JSON.stringify(/\/pullRequests\/\d+$/.test(new URL(req.url, "http://x").pathname) ? PULL_REQUEST : []));
+  }, wait);
+}
+
+/** A throwaway self-signed certificate (browsers speak HTTP/2 only over TLS), or null without openssl. */
+function certificate() {
+  const dir = mkdtempSync(join(tmpdir(), "startup-timing-"));
+  const [key, cert] = [join(dir, "key.pem"), join(dir, "cert.pem")];
+  try {
+    // On PATH, or Git for Windows' copy (not on PATH outside Git Bash).
+    for (const openssl of ["openssl", "C:/Program Files/Git/usr/bin/openssl.exe"]) {
+      try {
+        execFileSync(openssl, ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=127.0.0.1"], {
+          stdio: "ignore",
+          env: { ...process.env, MSYS_NO_PATHCONV: "1" },
+        });
+        return { key: readFileSync(key), cert: readFileSync(cert) };
+      } catch {
+        // Try the next.
+      }
+    }
+    return null;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** The one pull request the stub API knows, as GET pullRequests/{id} returns it. */
+const PULL_REQUEST = {
+  pullRequestId: 471,
+  title: "Retry failed uploads",
+  description: "Retries uploads that fail with a 5xx.",
+  status: 1,
+  isDraft: false,
+  createdBy: { id: "u2", displayName: "Ana Lima", uniqueName: "ana@contoso.com" },
+  creationDate: "2026-10-01T00:00:00Z",
+  sourceRefName: "refs/heads/retry-uploads",
+  targetRefName: "refs/heads/main",
+  repository: { id: "users-sdk", name: "users-sdk", project: { id: "p1", name: "Storefront" } },
+  reviewers: [],
+  mergeStatus: 3,
+};
 
 const SCENARIOS = [
   { name: "hosted hub", path: "/host", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
   // Organization settings take a REST round trip in Azure DevOps; a warm visit's cached rows shouldn't wait for it.
   { name: "hosted hub, slow extension data", path: "/host?data=400", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
-  // The stub API has no pull request, so this one settles on the page's error box.
-  { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "settled"], host: ["handshake", "loaded"] },
+  { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
+  { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
 ];
@@ -188,20 +258,20 @@ const median = (values) => {
 
 async function main() {
   if (!chrome) throw new Error("No Chrome found; pass --chrome <path to chrome.exe>");
-  const { server, origin } = await serve();
+  const { origin, close } = await serve();
   const browser = await chromium.launch({ executablePath: chrome, headless: true });
   try {
     if (shots) {
       await screenshots(browser, origin, shots);
       return;
     }
-    console.log(`root ${root}\n${runs} runs per scenario, ${latency} ms added to every response (REST: 0 ms). Medians, ms from navigation start.\n`);
+    console.log(`root ${root}\n${runs} runs per scenario, ${latency} ms added to every response (REST: 0 ms unless the scenario says). Medians, ms from navigation start.\n`);
     for (const scenario of SCENARIOS) {
       if (only && !scenario.name.includes(only)) continue;
       const cold = [];
       const warm = [];
       for (let i = 0; i < runs; i++) {
-        const context = await browser.newContext();
+        const context = await browser.newContext({ ignoreHTTPSErrors: true });
         cold.push(await measure(context, origin, scenario));
         warm.push(await measure(context, origin, scenario));
         await context.close();
@@ -212,14 +282,14 @@ async function main() {
     }
   } finally {
     await browser.close();
-    server.close();
+    close();
   }
 }
 
 /** Pictures of the skeletons (a slow handshake and REST API hold them on screen) and of the loaded pages. */
 async function screenshots(browser, origin, dir) {
   mkdirSync(dir, { recursive: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, ignoreHTTPSErrors: true });
   // A first visit, so the theme is kept: the skeletons below paint in it before the handshake.
   const first = await open(context, origin, "/host", true);
   await first.waitFor("settled");
