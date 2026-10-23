@@ -68,6 +68,14 @@ const FilesContent: React.FC<Props> = (props) => {
   const [hidden, setHidden] = useHiddenKinds();
   const [search, setSearch] = React.useState("");
   const [treeOpen, setTreeOpen] = useTreeOpen();
+  // Hiding swaps the tree for its rail and showing swaps it back, so focus moves to the control that took the place
+  // of the one pressed. Keyboard and screen reader users keep their place.
+  const showTree = (open: boolean) => {
+    setTreeOpen(open);
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(open ? ".files-layout .nav-hide" : ".files-layout .nav-rail")?.focus({ preventScroll: true }),
+    );
+  };
   const [collapsedNavGroups, setCollapsedNavGroups] = React.useState(new Set<string>());
   const toggleNavGroup = (id: string) => setCollapsedNavGroups(previous => {
     const next = new Set(previous);
@@ -158,9 +166,9 @@ const FilesContent: React.FC<Props> = (props) => {
           )}
           <div className={cx("files-layout", !treeOpen && "tree-hidden")}>
             {treeOpen ? (
-              <Navigator {...navigatorProps(review)} onHide={() => setTreeOpen(false)} />
+              <Navigator {...navigatorProps(review)} onHide={() => showTree(false)} />
             ) : (
-              <NavRail files={review.result.files.length} onShow={() => setTreeOpen(true)} />
+              <NavRail fileCount={review.result.files.length} onShow={() => showTree(true)} />
             )}
             <div className="files-content">
               {shownView === "grouped" ? (
@@ -177,7 +185,7 @@ const FilesContent: React.FC<Props> = (props) => {
   );
 };
 
-/** Whether the file tree sidebar is shown; hiding it gives the diffs the full width. */
+/** Whether the file tree sidebar is shown. Hidden, it leaves a slim rail and the diffs take the rest of the width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
   const [shown, setShown] = usePreference<"shown" | "hidden">("fileTree", "shown");
   const update = React.useCallback((next: boolean) => setShown(next ? "shown" : "hidden"), [setShown]);
@@ -483,12 +491,12 @@ const NavigatorSheet: React.FC<NavigatorProps> = (props) => {
 };
 
 /** The hidden file tree: a slim rail that shows it again, like the hub's folded sidebar. */
-const NavRail: React.FC<{ files: number; onShow: () => void }> = ({ files, onShow }) => {
+const NavRail: React.FC<{ fileCount: number; onShow: () => void }> = ({ fileCount, onShow }) => {
   const [rail, setRail] = React.useState<HTMLElement | null>(null);
   useFitViewport(rail);
   return (
     <button type="button" ref={setRail} className="nav-rail" aria-label="Show file tree" aria-expanded={false} title="Show file tree" onClick={onShow}>
-      <span className="nav-rail-label" aria-hidden="true">Files · {files}</span>
+      <span className="nav-rail-label" aria-hidden="true">Files · {fileCount}</span>
       <span className="nav-rail-icon"><Icon iconName="DoubleChevronRight" /></span>
     </button>
   );
