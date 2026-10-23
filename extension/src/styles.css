@@ -331,6 +331,10 @@ kbd {
   border-radius: 0;
   background: var(--surface);
 }
+/* The shared hover tint is translucent; lay it over the surface so the tags scrolling underneath stay hidden. */
+.hub-nav-item.hub-sidebar-toggle:hover {
+  background: linear-gradient(var(--palette-black-alpha-6, rgba(0, 0, 0, 0.06)), var(--palette-black-alpha-6, rgba(0, 0, 0, 0.06))) var(--surface);
+}
 /* Folded: icons only, with counts as small badges on them and tags as their dots. Wide screens only; narrower ones
    put the sidebar above the list. */
 @media (min-width: 801px) {
