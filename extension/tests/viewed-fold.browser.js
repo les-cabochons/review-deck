@@ -25,13 +25,16 @@ async page => {
   const repeated = await f.locator('.group-section[id^="group-"]').evaluateAll(sections => {
     for (const s of sections) {
       const cards = [...s.querySelectorAll('article')].filter(a => a.querySelector('.viewed-control input'));
-      const labels = cards.map(a => a.querySelector('.viewed-control input').getAttribute('aria-label'));
-      const label = labels.find((l, i) => labels.indexOf(l) !== i);
-      if (label) return cards.filter((_, i) => labels[i] === label).map(a => a.id);
+      const paths = cards.map(a => a.querySelector('.file-path').title);
+      const path = paths.find((p, i) => paths.indexOf(p) !== i);
+      if (path) return cards.filter((_, i) => paths[i] === path).map(a => a.id);
     }
   });
   if (!repeated) throw new Error('No mounted file with chunks on several cards');
   const [ticked, ...siblings] = repeated.map(id => f.locator(`article[id="${id}"]`));
+  // Each card's controls name its lines, so screen readers can tell the file's cards apart.
+  const names = await Promise.all([ticked, ...siblings].map(card => card.locator('.viewed-control input').getAttribute('aria-label')));
+  r.cardNamesDiffer = new Set(names).size === names.length;
   // A comment on the whole file shows on one card, so give the file one (the mock keeps it until the reload below).
   const path = await ticked.locator('.file-path').getAttribute('title');
   await ticked.getByRole('button', { name: `Comment on ${path}`, exact: true }).click();

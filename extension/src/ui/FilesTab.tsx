@@ -616,7 +616,7 @@ const GroupedView: React.FC<ViewProps> = (props) => {
       }
     }
     return new Set([...first].map(([path, id]) => firstUnfolded.get(path) ?? firstInOpenConcern.get(path) ?? id));
-  }, [review, result, shown, groupCollapsed, isCollapsed]);
+  }, [result, shown, groupCollapsed, isCollapsed]);
   return (
     <>
       {result.groups.map((g, i) =>
@@ -702,7 +702,7 @@ const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; sh
     <article className="hunk-card" id={`hunk-${info.hunk.id}`}>
       {/* The article stays as a scroll target; its contents mount near the viewport. */}
       <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode))}>
-      <FileHeader file={info.file} hunkIds={[info.hunk.id]} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>
+      <FileHeader file={info.file} hunk={info.hunk} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>
         <FileStatusPill file={info.file} />
         {info.isTest && <span className="tag">test</span>}
         {info.mechanical && <span className="tag">{info.mechanical.reason}</span>}
@@ -730,7 +730,7 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, view
         return (
           <article key={f.path} className="file-card" id={`file-${f.path}`}>
             <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : f.hunks.reduce((n, h) => n + estimateHunkHeight(h, mode), 0))}>
-            <FileHeader file={f} hunkIds={hunkIds} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads viewUrl={viewUrl(f)}>
+            <FileHeader file={f} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads viewUrl={viewUrl(f)}>
               <FileStatusPill file={f} />
             </FileHeader>
             {!collapsed && orphans.map((t) => (

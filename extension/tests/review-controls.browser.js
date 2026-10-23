@@ -36,8 +36,8 @@ async page => {
     await wait(() => group.querySelector(".hunk-card .viewed-control input"), "Chosen concern's cards did not mount");
     const groupCheckbox = group.querySelector(".group-header-row input");
     const fileCheckbox = group.querySelector(".hunk-card .viewed-control input");
-    const label = fileCheckbox.getAttribute("aria-label");
-    const path = label.slice(5, -10);
+    const pathOf = input => input.closest("article").querySelector(".file-path").title;
+    const path = pathOf(fileCheckbox);
     // Viewed is per chunk, so follow this card, not the file's other cards.
     const cardId = fileCheckbox.closest("article").id;
     const hunkId = cardId.slice("hunk-".length);
@@ -49,7 +49,7 @@ async page => {
     fileInput().click();
     await wait(() => fileInput().checked, "Chunk was not marked viewed");
     assert(groupCheckbox.indeterminate && groupCheckbox.getAttribute("aria-checked") === "mixed", "Concern did not show mixed state");
-    assert([...group.querySelectorAll(".hunk-card .viewed-control input")].filter(input => input.getAttribute("aria-label") === label && input !== fileInput())
+    assert([...group.querySelectorAll(".hunk-card .viewed-control input")].filter(input => pathOf(input) === path && input !== fileInput())
       .every(input => !input.checked), "Ticking one chunk ticked the file's other chunks");
     const selectedTree = trees()[0];
     const folder = selectedTree.shadowRoot.querySelector('[data-item-type="folder"][aria-expanded="true"]');
