@@ -70,3 +70,45 @@ function toError(cause: unknown): Error {
   const message = cause && typeof cause === "object" && "message" in cause ? String(cause.message) : String(cause);
   return new Error(message);
 }
+
+type FlagStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/**
+ * Opens a hub an organization can turn off without waiting to learn whether it did: that setting is a REST round
+ * trip, often the slowest step of startup, and the hub's cached rows would wait behind it. The page renders at
+ * once and gives way to `showOff` if the check says the feature is off (null means on). Only where it was off last
+ * time in this browser (remembered under `key`) does the page wait for the check, so a turned-off hub doesn't
+ * flash its content.
+ */
+export async function renderUnlessOff<T>(
+  off: Promise<T | null>,
+  key: string,
+  render: () => Promise<void> | void,
+  showOff: (reason: T) => void,
+  storage: () => FlagStorage = () => window.localStorage,
+): Promise<void> {
+  const remembered = off.then((reason) => {
+    try {
+      if (reason === null) storage().removeItem(key);
+      else storage().setItem(key, "off");
+    } catch {
+      // Denied storage: the next load renders at once and checks, as it does the first time.
+    }
+    return reason;
+  });
+  let wasOff = false;
+  try {
+    wasOff = storage().getItem(key) === "off";
+  } catch {
+    // As above.
+  }
+  if (wasOff) {
+    const reason = await remembered;
+    if (reason === null) await render();
+    else showOff(reason);
+    return;
+  }
+  await render();
+  const reason = await remembered;
+  if (reason !== null) showOff(reason);
+}

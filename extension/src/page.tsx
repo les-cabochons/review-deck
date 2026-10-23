@@ -2,6 +2,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import type { AppHost } from "./app/host";
 import { enabledFor, type Feature } from "./data/access";
+import { renderUnlessOff } from "./startup";
 import { FeatureOff } from "./ui/FeatureOff";
 import { Root } from "./ui/Root";
 import { SettingsPage } from "./ui/settings/SettingsPage";
@@ -19,14 +20,15 @@ const FEATURE_PAGES: Record<string, Feature> = { review: "deck", changelog: "cha
 
 export async function renderHost(host: AppHost) {
   const feature = FEATURE_PAGES[page ?? "review"];
-  if (feature) {
-    // Azure DevOps normally hides a turned-off hub; this covers links to it, and a hub its feature state didn't hide.
-    const policy = (await host.organizationSettings())[feature];
-    if (!enabledFor(policy, host.projectId)) {
-      ReactDOM.render(<FeatureOff feature={feature} policy={policy} />, root);
-      return;
-    }
-  }
+  if (!feature) return renderPage(host);
+  // Azure DevOps normally hides a turned-off hub; this covers links to it, and a hub its feature state didn't hide.
+  const off = host.organizationSettings().then((settings) => (enabledFor(settings[feature], host.projectId) ? null : settings[feature]));
+  await renderUnlessOff(off, `review-deck.off.v1:${host.cacheScope}:${feature}`, () => renderPage(host), (policy) =>
+    ReactDOM.render(<FeatureOff feature={feature} policy={policy} />, root),
+  );
+}
+
+async function renderPage(host: AppHost) {
   if (page === "changelog") {
     // Its own chunk, so the review page doesn't load it.
     const { ChangelogPage } = await import("./ui/changelog/ChangelogPage");

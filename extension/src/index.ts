@@ -43,7 +43,7 @@ async function renderHosted() {
     adoHost.then(({ AdoHost }) => AdoHost.create()),
     "Could not connect to Azure DevOps navigation. Reload to try again.",
   );
-  // Started now so the hub's on/off check (page.tsx) doesn't wait behind the UI chunks.
+  // Started now, so the hub's on/off check (page.tsx, which doesn't hold up the first render) answers sooner.
   void host.organizationSettings();
   // The route is known now: a link straight to a pull request gets that page's skeleton while the UI loads.
   const route = host.route();

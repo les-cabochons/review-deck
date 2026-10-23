@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { THEME_KEY } from "../src/skeletons";
-import { rememberHostTheme, startHostedPage, withTimeout } from "../src/startup";
+import { rememberHostTheme, renderUnlessOff, startHostedPage, withTimeout } from "../src/startup";
 import { connectPreferences, preferencesLoaded, readLocal, readPreference, writeLocal, writePreference } from "../src/ui/preferences";
 
 function host() {
@@ -151,4 +151,45 @@ test("Given pending-review drafts, then they stay in this browser and never reac
   writePreference("diffMode", "split", local.storage);
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.deepEqual(saves, [{ diffMode: "split" }]);
+});
+
+function flags(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    store: () => ({
+      getItem: (k: string) => values.get(k) ?? null,
+      setItem: (k: string, v: string) => void values.set(k, v),
+      removeItem: (k: string) => void values.delete(k),
+    }),
+  };
+}
+
+test("Given a hub whose on/off check is still loading, then the page renders without waiting for it", async () => {
+  const calls: string[] = [];
+  let answer!: (reason: string | null) => void;
+  const done = renderUnlessOff(new Promise<string | null>((ok) => (answer = ok)), "off:deck", () => void calls.push("rendered"), (r) => calls.push(`off: ${r}`), flags().store);
+  await Promise.resolve();
+  assert.deepEqual(calls, ["rendered"]);
+  answer(null);
+  await done;
+  assert.deepEqual(calls, ["rendered"]);
+});
+
+test("Given the check finds the feature off, then the page gives way to the notice and the next load waits for the check", async () => {
+  const calls: string[] = [];
+  const storage = flags();
+  await renderUnlessOff(Promise.resolve("org"), "off:deck", () => void calls.push("rendered"), (r) => calls.push(`off: ${r}`), storage.store);
+  assert.deepEqual(calls, ["rendered", "off: org"]);
+  assert.equal(storage.values.get("off:deck"), "off");
+});
+
+test("Given the feature was off last time, then nothing renders until the check answers", async () => {
+  const calls: string[] = [];
+  const storage = flags({ "off:deck": "off" });
+  await renderUnlessOff(Promise.resolve("org"), "off:deck", () => void calls.push("rendered"), (r) => calls.push(`off: ${r}`), storage.store);
+  assert.deepEqual(calls, ["off: org"]);
+  await renderUnlessOff(Promise.resolve(null), "off:deck", () => void calls.push("rendered"), (r) => calls.push(`off: ${r}`), storage.store);
+  assert.deepEqual(calls, ["off: org", "rendered"]);
+  assert.equal(storage.values.has("off:deck"), false);
 });
