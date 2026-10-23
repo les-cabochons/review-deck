@@ -70,7 +70,7 @@ const FilesContent: React.FC<Props> = (props) => {
   const [treeOpen, setTreeOpen] = useTreeOpen();
   // Hiding swaps the tree for its rail and showing swaps it back, so focus moves to the control that took the place
   // of the one pressed. Keyboard and screen reader users keep their place.
-  const showTree = (open: boolean) => {
+  const setTreeOpenAndFocus = (open: boolean) => {
     setTreeOpen(open);
     requestAnimationFrame(() =>
       document.querySelector<HTMLElement>(open ? ".files-layout .nav-hide" : ".files-layout .nav-rail")?.focus({ preventScroll: true }),
@@ -166,9 +166,9 @@ const FilesContent: React.FC<Props> = (props) => {
           )}
           <div className={cx("files-layout", !treeOpen && "tree-hidden")}>
             {treeOpen ? (
-              <Navigator {...navigatorProps(review)} onHide={() => showTree(false)} />
+              <Navigator {...navigatorProps(review)} onHide={() => setTreeOpenAndFocus(false)} />
             ) : (
-              <NavRail fileCount={review.result.files.length} onShow={() => showTree(true)} />
+              <NavRail fileCount={review.result.files.length} onShow={() => setTreeOpenAndFocus(true)} />
             )}
             <div className="files-content">
               {shownView === "grouped" ? (
@@ -307,7 +307,10 @@ function scrollToId(id: string) {
   setTimeout(go, 300);
 }
 
-/** Space kept under the navigator, matching the stylesheet's `calc(100vh - 64px)` (48px sticky top + 16px). */
+/**
+ * Space kept under the navigator and its rail. It matches the stylesheet's `calc(100vh - 64px)`, which is the 48px
+ * sticky top plus this gap.
+ */
 const NAV_BOTTOM_GAP = 16;
 
 /**
@@ -490,7 +493,7 @@ const NavigatorSheet: React.FC<NavigatorProps> = (props) => {
   );
 };
 
-/** The hidden file tree: a slim rail that shows it again, like the hub's folded sidebar. */
+/** The slim rail that replaces the hidden file tree and shows it again, like the hub's folded sidebar. */
 const NavRail: React.FC<{ fileCount: number; onShow: () => void }> = ({ fileCount, onShow }) => {
   const [rail, setRail] = React.useState<HTMLElement | null>(null);
   useFitViewport(rail);

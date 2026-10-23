@@ -36,7 +36,7 @@ async page => {
   });
   const hide = f.getByRole('button', { name: 'Hide file tree', exact: true });
   if (!(await onScreen(hide))) throw new Error('Hide file tree is off screen before the page scrolls');
-  // By keyboard: each control swaps for the other, and focus follows so the reader keeps their place.
+  // By keyboard, each control swaps for the other, and focus follows so the reader keeps their place.
   const focused = locator => locator.evaluate(el => el === el.ownerDocument.activeElement);
   await hide.press('Enter');
   const show = f.getByRole('button', { name: 'Show file tree', exact: true });
