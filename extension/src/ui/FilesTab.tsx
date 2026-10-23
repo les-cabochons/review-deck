@@ -16,7 +16,7 @@ import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
-import { readPreference, writePreference } from "./preferences";
+import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
 import { FileHeader } from "./FileHeader";
@@ -176,12 +176,9 @@ const FilesContent: React.FC<Props> = (props) => {
 
 /** Whether the file tree sidebar is shown; hiding it gives the diffs the full width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
-  const [open, setOpen] = React.useState(() => readPreference<string>("fileTree", "shown") !== "hidden");
-  const update = React.useCallback((next: boolean) => {
-    setOpen(next);
-    writePreference("fileTree", next ? "shown" : "hidden");
-  }, []);
-  return [open, update];
+  const [shown, setShown] = usePreference<"shown" | "hidden">("fileTree", "shown");
+  const update = React.useCallback((next: boolean) => setShown(next ? "shown" : "hidden"), [setShown]);
+  return [shown !== "hidden", update];
 }
 
 /** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
@@ -418,11 +415,9 @@ const FILE_KINDS: { kind: FileKind; label: string }[] = [
 ];
 
 function useHiddenKinds(): [Set<FileKind>, (kinds: Set<FileKind>) => void] {
-  const [hidden, setHidden] = React.useState(() => new Set(readPreference("hiddenFiles", "").split(",").filter(Boolean) as FileKind[]));
-  const update = React.useCallback((kinds: Set<FileKind>) => {
-    setHidden(kinds);
-    writePreference("hiddenFiles", [...kinds].join(","));
-  }, []);
+  const [saved, setSaved] = usePreference<string>("hiddenFiles", "");
+  const hidden = React.useMemo(() => new Set(saved.split(",").filter(Boolean) as FileKind[]), [saved]);
+  const update = React.useCallback((kinds: Set<FileKind>) => setSaved([...kinds].join(",")), [setSaved]);
   return [hidden, update];
 }
 

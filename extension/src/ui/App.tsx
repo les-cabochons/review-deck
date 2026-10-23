@@ -17,7 +17,7 @@ import { PrSkeleton } from "./PrSkeleton";
 import { PrMenu, type PrMenuLinks } from "./PrMenu";
 import { StackBar, StackPanel } from "./stack/StackPanel";
 import { useStack } from "./stack/useStack";
-import { readPreference, writePreference } from "./preferences";
+import { usePreference } from "./usePreference";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
 import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
@@ -37,17 +37,6 @@ interface ToastSpec {
 }
 
 const FilesTab = React.lazy(() => import("./FilesTab").then(module => ({ default: module.FilesTab })));
-
-function usePref<T extends string>(key: string, initial: T): [T, (v: T) => void] {
-  const [value, setValue] = React.useState<T>(() => readPreference(key, initial));
-  return [
-    value,
-    (v: T) => {
-      setValue(v);
-      writePreference(key, v);
-    },
-  ];
-}
 
 /** Links that depend on where the page runs (native ADO page, comment permalinks). */
 export const HostLinks = React.createContext<{
@@ -72,8 +61,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [fileThreads, setFileThreads] = React.useState<Thread[]>([]);
   const [threadError, setThreadError] = React.useState<string | null>(null);
   const [focusGroup, setFocusGroup] = React.useState<string | null>(null);
-  const [view, setView] = usePref<FileView>("fileView", "grouped");
-  const [mode, setMode] = usePref<DiffMode>("diffMode", "inline");
+  const [view, setView] = usePreference<FileView>("fileView", "grouped");
+  const [mode, setMode] = usePreference<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
   /** Bumped by "Regroup"; `freshNext` makes that run skip the saved grouping. */
   const [regroup, setRegroup] = React.useState(0);
