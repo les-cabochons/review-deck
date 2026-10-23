@@ -315,6 +315,7 @@ const NAV_BOTTOM_GAP = 16;
 /**
  * Caps the sticky navigator at the visible part of the window. The stylesheet's max-height assumes it is already
  * stuck under the toolbar; before the page scrolls past the PR header it starts lower, so its bottom was off screen.
+ * Only while it is sticky: in the phone sheet it is static and the sheet sizes it.
  */
 function useFitViewport(element: HTMLElement | null) {
   React.useLayoutEffect(() => {
@@ -322,6 +323,10 @@ function useFitViewport(element: HTMLElement | null) {
     let frame = 0;
     const fit = () => {
       frame = 0;
+      if (getComputedStyle(element).position !== "sticky") {
+        element.style.maxHeight = "";
+        return;
+      }
       const top = Math.max(element.getBoundingClientRect().top, 0);
       element.style.maxHeight = `${window.innerHeight - top - NAV_BOTTOM_GAP}px`;
     };
