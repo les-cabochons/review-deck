@@ -32,12 +32,23 @@ async page => {
   });
   if (!repeated) throw new Error('No mounted file with chunks on several cards');
   const [ticked, ...siblings] = repeated.map(id => f.locator(`article[id="${id}"]`));
+  // A comment on the whole file shows on one card, so give the file one (the mock keeps it until the reload below).
+  const path = await ticked.locator('.file-path').getAttribute('title');
+  await ticked.getByRole('button', { name: `Comment on ${path}`, exact: true }).click();
+  const composer = ticked.locator('.file-comments .comment-composer');
+  await composer.locator('[contenteditable], textarea').first().fill('Per-chunk fold check');
+  await composer.getByRole('button', { name: 'Add single comment' }).click();
+  const fileThread = card => card.locator('.file-comments .thread').filter({ hasText: 'Per-chunk fold check' });
+  await fileThread(ticked).waitFor();
   await ticked.locator('.viewed-control input').click();
   await ticked.locator('.file-collapse[aria-expanded="false"]').waitFor();
   r.siblingChunksStayOpen = true;
   for (const sibling of siblings)
     r.siblingChunksStayOpen &&= await sibling.locator('.file-collapse').getAttribute('aria-expanded') === 'true'
       && !(await sibling.locator('.viewed-control input').isChecked());
+  // The comment moves to the file's next open card instead of disappearing with the folded one.
+  await fileThread(siblings[0]).waitFor({ timeout: 3000 }).catch(() => null);
+  r.fileCommentMovesToOpenCard = await fileThread(siblings[0]).count() === 1;
   await ticked.locator('.viewed-control input').click();
   await ticked.locator('.file-collapse[aria-expanded="true"]').waitFor();
   // A concern with several files, so ticking one file doesn't complete the concern.

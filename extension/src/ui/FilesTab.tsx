@@ -596,23 +596,27 @@ const GroupedView: React.FC<ViewProps> = (props) => {
   const { result } = review;
   const visible = visibleLines(result.files);
   const orphans = [...fileThreads].flatMap(([path, ts]) => ts.filter(onLine).filter((t) => !isVisible(t, visible.get(path))).map((t) => ({ path, t })));
-  // File comments sit on each file's first card in an open concern, so folded concerns can't hide them.
-  // A file whose concerns are all folded keeps them on its first card, shown once that concern opens.
-  const { groupCollapsed } = useFileReview();
+  // File comments sit on each file's first unfolded card in an open concern, so neither a folded concern nor a
+  // ticked chunk hides them. Failing that, they go on the first card in an open concern, then on the file's first
+  // card, and show once it opens.
+  const { groupCollapsed, isCollapsed } = useFileReview();
   const firstCards = React.useMemo(() => {
     const first = new Map<string, string>();
-    const firstOpen = new Map<string, string>();
+    const firstInOpenConcern = new Map<string, string>();
+    const firstUnfolded = new Map<string, string>();
     for (const g of result.groups) {
       const open = !groupCollapsed(g.id, g.hunkIds, g.kind === "mechanical");
       for (const id of g.hunkIds) {
         const path = result.hunks.get(id)!.file.path;
         if (!shown(path)) continue;
         if (!first.has(path)) first.set(path, id);
-        if (open && !firstOpen.has(path)) firstOpen.set(path, id);
+        if (!open) continue;
+        if (!firstInOpenConcern.has(path)) firstInOpenConcern.set(path, id);
+        if (!firstUnfolded.has(path) && !isCollapsed([id])) firstUnfolded.set(path, id);
       }
     }
-    return new Set([...first].map(([path, id]) => firstOpen.get(path) ?? id));
-  }, [review, result, shown, groupCollapsed]);
+    return new Set([...first].map(([path, id]) => firstUnfolded.get(path) ?? firstInOpenConcern.get(path) ?? id));
+  }, [review, result, shown, groupCollapsed, isCollapsed]);
   return (
     <>
       {result.groups.map((g, i) =>
