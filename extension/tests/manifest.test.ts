@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 interface Contribution {
   id: string;
-  properties?: { supportsMobile?: boolean };
+  properties?: { supportsMobile?: boolean; icon?: unknown };
 }
 
 const manifest = JSON.parse(readFileSync("extension/vss-extension.json", "utf8")) as { contributions: Contribution[] };
@@ -16,4 +16,12 @@ test("the Deck and Changelog hubs declare supportsMobile", () => {
     const hub = manifest.contributions.find((c) => c.id === id);
     assert.equal(hub?.properties?.supportsMobile, true, id);
   }
+});
+
+// The marketplace logo (a 128 px black tile) looked like a stray picture among the menu's monochrome icons: the menu
+// item has the Deck hub's glyphs, one per theme.
+test("Open in Review Deck has the Deck hub's icon, for each theme", () => {
+  const icon = (id: string) => manifest.contributions.find((c) => c.id === id)?.properties?.icon;
+  assert.deepEqual(icon("open-review-action"), icon("review-hub"));
+  assert.deepEqual(icon("open-review-action"), { light: "images/deck-light.png", dark: "images/deck-dark.png" });
 });

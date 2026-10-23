@@ -14,7 +14,7 @@ import { type BackendService, restackPr, type RestackOutcome } from "../review/b
 import { type ReviewKey, type SavedReview, type SavedReviews, savedFor, withSaved } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { featureContributionId, syncFeatureStates } from "./featureStates";
-import { HashRouter } from "./hashRoute";
+import { HashRouter, reviewHubUrl } from "./hashRoute";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
 
@@ -410,9 +410,7 @@ export class AdoHost implements AppHost {
   }
 
   reviewUrl(route: Extract<Route, { view: "pr" }>): string {
-    const { publisherId, extensionId } = SDK.getExtensionContext();
-    const query = new URLSearchParams({ pr: String(route.pr), repo: route.repo });
-    return `${this.hostUrl}${encodeURIComponent(route.project ?? this.project.name)}/_apps/hub/${publisherId}.${extensionId}.review-hub?${query}`;
+    return reviewHubUrl(SDK.getHost().name, SDK.getExtensionContext(), route.project ?? this.project.name, route);
   }
 
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string {
