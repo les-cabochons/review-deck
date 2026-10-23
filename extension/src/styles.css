@@ -2567,8 +2567,10 @@ kbd {
   .files-layout {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* The navigator opens as a bottom sheet instead (.navigator-sheet-button). The toggle needs the extra class
+     to beat azure-devops-ui's .bolt-button display. */
   .navigator,
-  .tree-toggle {
+  .files-toolbar .tree-toggle.bolt-button {
     display: none;
   }
   /* phones: title on its own line, actions wrap below it */
@@ -2993,6 +2995,81 @@ kbd {
 }
 .modal-close:hover {
   background: var(--hover);
+}
+/* A dialog docked to the bottom edge (ModalDialog placement="bottom"). */
+.modal-backdrop.bottom {
+  align-items: flex-end;
+  padding: 0;
+}
+/* The Files tab's navigator as a bottom sheet on phones (NavigatorSheet in FilesTab.tsx); wider screens have the
+   sidebar, so the button only shows below 800 px. */
+.navigator-sheet-button {
+  display: none;
+}
+@media (max-width: 800px) {
+  .navigator-sheet-button {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 4;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--fg);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: var(--shadow-callout);
+    cursor: pointer;
+  }
+  .navigator-sheet-button .count {
+    color: var(--fg2);
+    font-weight: 400;
+  }
+  /* Room under the last file, so the button doesn't cover its controls. */
+  .files-content {
+    padding-bottom: 64px;
+  }
+  /* The toolbar wraps to three rows here: sticky, it hid a sixth of the screen and the concern a jump landed on.
+     The button above keeps the viewed count in sight instead. */
+  .files-toolbar {
+    position: static;
+  }
+  .group-section,
+  .hunk-card,
+  .file-card {
+    scroll-margin-top: 12px;
+  }
+}
+.modal.navigator-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  padding: 12px 12px 0;
+  border-radius: 12px 12px 0 0;
+}
+.navigator-sheet .modal-header {
+  flex: none;
+  margin-bottom: 8px;
+}
+/* Not the sidebar: no sticky box, not hidden below 800 px, and it scrolls the list itself. */
+.navigator-sheet .navigator {
+  display: block;
+  position: static;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  padding: 0 6px 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 /* "⋯" menu dialogs on the pull request page (share, change target, cherry-pick). */
 .pr-menu-dialog p {
