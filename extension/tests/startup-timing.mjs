@@ -93,9 +93,10 @@ const FRAME_MARKS = `(() => {
     hubReact: ".hub-toolbar input[type=search]",
     hubRows: ".pr-row",
     prSkeleton: ".review-page",
-    // The PR's page with its data: from the copy kept in this browser (data/prCache.ts) or loaded.
+    // The PR's page with its data: from the copy kept in this browser (data/prCache.ts), or the PR and its updates
+    // ahead of the rest (data/adoOverview.ts), or loaded.
     prReact: ".pr-actions button",
-    // Loaded: its buttons work (they wait while the kept copy shows).
+    // Loaded: its buttons work (they wait while the kept copy or the partial shows).
     prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
     settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
   };
@@ -110,19 +111,23 @@ const FRAME_MARKS = `(() => {
 
 /**
  * One origin for everything but the REST API, so the browser's storage (theme, hub cache) carries between pages.
- * /host?pr=&repo= is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer.
+ * /host?pr=&repo= is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer,
+ * ?jitter=<ms> adds up to that much to each at random (Azure DevOps' answers are uneven), and ?heavy=<ms> is the
+ * delay of the threads and commits calls instead (the big answers of a long discussion).
  */
 async function serve() {
-  let apiDelay = 0;
   // HTTP/1.1 would queue the page's REST calls six at a time, which dev.azure.com's HTTP/2 doesn't.
   const tls = certificate();
-  const api = tls && createSecureServer({ ...tls, allowHTTP1: true }, (req, res) => answerApi(req, res, req.method === "OPTIONS" ? latency : apiDelay));
+  const api = tls && createSecureServer({ ...tls, allowHTTP1: true }, (req, res) => answerApi(req, res));
   const apiOrigin = api && (await new Promise((ok) => api.listen(0, "127.0.0.1", () => ok(`https://127.0.0.1:${api.address().port}`))));
   if (!api) console.warn("No openssl: the REST stub runs over HTTP/1.1, which queues requests six at a time.");
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://x");
-    if (url.pathname === "/host") apiDelay = Number(url.searchParams.get("api") ?? 0);
-    if (url.pathname.startsWith("/api/")) return answerApi(req, res, apiDelay);
+    if (url.pathname === "/host") {
+      const number = (name) => Number(url.searchParams.get(name) ?? 0);
+      apiTiming = { delay: number("api"), jitter: number("jitter"), heavy: number("heavy") };
+    }
+    if (url.pathname.startsWith("/api/")) return answerApi(req, res);
     setTimeout(() => {
       if (url.pathname === "/host") {
         const query = url.searchParams.get("pr") ? { pr: url.searchParams.get("pr"), repo: url.searchParams.get("repo") } : {};
@@ -143,8 +148,19 @@ async function serve() {
   return { origin: `http://127.0.0.1:${server.address().port}`, close: () => (server.close(), api?.close()) };
 }
 
-/** The REST stub, after `wait` ms; answers CORS preflights as dev.azure.com does (cached for an hour). */
-function answerApi(req, res, wait) {
+/** The REST stub's timing, from the last /host visit (see serve). */
+let apiTiming = { delay: 0, jitter: 0, heavy: 0 };
+
+/** How long the stub takes to answer a REST call: `heavy` for the threads and commits when set, else `delay`, plus up to `jitter` at random. */
+function apiWait(pathname) {
+  const base = apiTiming.heavy && /\/(threads|commits)$/.test(pathname) ? apiTiming.heavy : apiTiming.delay;
+  return base + Math.random() * apiTiming.jitter;
+}
+
+/** The REST stub; answers CORS preflights as dev.azure.com does (cached for an hour), after the fixed latency. */
+function answerApi(req, res) {
+  const pathname = new URL(req.url, "http://x").pathname;
+  const wait = req.method === "OPTIONS" ? latency : apiWait(pathname);
   const cors = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "OPTIONS,GET,POST,PATCH,PUT,DELETE",
@@ -157,7 +173,7 @@ function answerApi(req, res, wait) {
       return res.end();
     }
     res.writeHead(200, { ...cors, "content-type": "application/json" });
-    res.end(JSON.stringify(/\/pullRequests\/\d+$/.test(new URL(req.url, "http://x").pathname) ? PULL_REQUEST : []));
+    res.end(JSON.stringify(/\/pullRequests\/\d+$/.test(pathname) ? PULL_REQUEST : []));
   }, wait);
 }
 
@@ -207,6 +223,10 @@ const SCENARIOS = [
   { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
   // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
   { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  // The same 250 to 520 ms, but each call its own: the page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
+  { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  // A long discussion: the threads and commits answer well after the small calls.
+  { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
 ];
@@ -306,10 +326,17 @@ async function screenshots(browser, origin, dir) {
   await pr.page.screenshot({ path: join(dir, "2-pr-skeleton-after-handshake.png") });
   await pr.page.close();
 
+  // The PR and its updates in, the threads and commits still on their way: the page's partial state.
+  const partial = await open(context, origin, "/host?pr=471&repo=users-sdk&api=300&heavy=8000", true);
+  await partial.waitFor("prReact");
+  await partial.page.waitForTimeout(500);
+  await partial.page.screenshot({ path: join(dir, "3-pr-partial.png") });
+  await partial.page.close();
+
   const local = await open(context, origin, "/dist/review.html?local=1&theme=dark", false);
   await local.waitFor("hubRows");
   await local.page.waitForTimeout(500);
-  await local.page.screenshot({ path: join(dir, "3-local-hub-loaded.png") });
+  await local.page.screenshot({ path: join(dir, "4-local-hub-loaded.png") });
   // Hold the PR's data back, to see its skeleton filled in from the hub's cache.
   await local.page.route("**/dev-data/demo-*.json", async (route) => {
     await new Promise((ok) => setTimeout(ok, 3000));
@@ -317,10 +344,10 @@ async function screenshots(browser, origin, dir) {
   });
   await local.page.locator(".pr-row").first().click();
   await local.page.waitForTimeout(600);
-  await local.page.screenshot({ path: join(dir, "4-local-pr-opening.png") });
+  await local.page.screenshot({ path: join(dir, "5-local-pr-opening.png") });
   await local.waitFor("prReact");
   await local.page.waitForTimeout(500);
-  await local.page.screenshot({ path: join(dir, "5-local-pr-loaded.png") });
+  await local.page.screenshot({ path: join(dir, "6-local-pr-loaded.png") });
   await context.close();
   console.log(`Screenshots in ${dir}`);
 }
