@@ -86,9 +86,31 @@ Medians of 9 runs, in ms from navigation start. "Cold" means a first visit; "war
 
 The harness doesn't measure the hub's hover prefetch, because its stub lists no pull requests. Its pull request also has no changed files, so the guided view built from the kept copy costs next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
 
+## The page draws after two calls, not seven (November 3, 2026)
+
+The PR page used to leave its skeleton once all seven REST calls had answered (the PR, its updates, threads, commits, tags, work items and policies), so the slowest call set the pace. The calls are uneven: on cabochons each takes 250 to 520 ms, and the threads of a long discussion or a long list of commits take more, because the answer is big. The seven still start together, but the page now draws in two stages (`data/adoOverview.ts`):
+
+1. Once the PR and its updates are in, the page shows the title, description, status, author, branches, reviewers and the updates in the timeline. Checks, tags, work items, the comments and votes in the timeline, and the Commits tab say they're loading. The overview is marked `partial`; it's never kept in the browser, and the buttons wait, as they do while the kept copy shows (`stale`), with the progress bar under the header. The Files tab's build starts here, from the latest update, so it no longer waits for the heavy calls either.
+2. Once the rest is in, the whole overview replaces it and the buttons work. If the rest fails, the partial page stays with a "Could not finish loading" box and a "Try again" link, as the kept copy does.
+
+Opened from the kept copy, the page skips the partial: the kept copy is complete, and the partial would take its comments away for a moment. The local mock answers at once, so it loads in one stage.
+
+The harness got two more PR scenarios. "Uneven REST" answers each call after 250 ms plus up to 270 ms at random (`?jitter=`), as the measured calls vary; "slow threads" answers the threads and commits after 900 ms and the rest after 300 ms (`?heavy=`), as a long discussion does. Medians of 9 cold runs (a first visit, nothing kept), in ms from navigation start; the skeleton shows at about 175 ms in all of them. `prReact` is when the page shows with its data, partial or whole, and `prLive` when the buttons work.
+
+| Scenario | Before: prReact / prLive | After: prReact / prLive |
+| --- | --- | --- |
+| PR link, REST at 0 ms | 271 / 271 | 256 / 259 |
+| PR link, REST at 400 ms | 660 / 660 | 652 / 656 |
+| PR link, uneven REST (250 to 520 ms) | 736 / 736 | 641 / 728 |
+| PR link, slow threads (300 ms; threads and commits 900 ms) | 1152 / 1152 | 562 / 1127 |
+
+With every call answering alike there's nothing to gain, and `prLive` stays where it was in every scenario: the whole still takes the slowest call. What changes is how long the skeleton stays: about 90 ms less when the calls are merely uneven, and 590 ms less when the threads are slow. The "uneven" numbers are one draw of random delays per run, so a rerun moves them by tens of milliseconds. What the real Azure DevOps calls look like on a PR with a long discussion hasn't been measured; the slow-threads scenario is the assumption this change rests on, and the partial costs nothing when it doesn't hold.
+
+`npm run ext:timing -- --shots .cache/shots` now also takes `3-pr-partial.png`, the page between the two stages.
+
 ## Measure startup
 
-Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.
+Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files; on a Mac, `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.
 
 ```powershell
 npm run ext:build
