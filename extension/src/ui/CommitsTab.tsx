@@ -4,6 +4,13 @@ import { Time } from "./util";
 
 /** Commits grouped by the update (iteration) that pushed them, newest first, like the native Commits tab. */
 export const CommitsTab: React.FC<{ data: PrOverview }> = ({ data }) => {
+  // The commits come with the rest of the page (PrOverview.partial).
+  if (data.partial)
+    return (
+      <div className="commits-tab">
+        <p className="muted">Loading commits…</p>
+      </div>
+    );
   const byId = new Map(data.commits.map((c) => [c.id, c]));
   const seen = new Set<string>();
   const sections = [...data.iterations]

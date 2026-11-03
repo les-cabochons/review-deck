@@ -1,54 +1,18 @@
 import { getClient } from "azure-devops-extension-api";
 import { NotificationRestClient } from "azure-devops-extension-api/Notification";
-import { type GitPullRequestCommentThread, GitRestClient } from "azure-devops-extension-api/Git";
-import { type PolicyEvaluationRecord, PolicyRestClient } from "azure-devops-extension-api/Policy";
+import { GitRestClient } from "azure-devops-extension-api/Git";
+import { PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
 import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
-import { createAdoActions, fromCompletionOptionsJson, isNoOne, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
-import { thread as threadFromJson } from "./mockSource";
-import {
-  asVote,
-  identityImageUrl,
-  mergeStatusFromNumber,
-  type ChangeType,
-  type FileChange,
-  type Identity,
-  type PolicyState,
-  type PolicyStatus,
-  type PrOverview,
-  type PrSource,
-  type PrStatus,
-  type PrActions,
-  type Thread,
-} from "./model";
-import type { ThreadJson } from "./snapshot";
+import { createAdoActions, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
+import { OverviewLoad, type OverviewReads, toThreads } from "./adoOverview";
+import { type ChangeType, type FileChange, type Identity, identityImageUrl, type PrOverview, type PrSource, type PrActions, type Thread } from "./model";
 
 // VersionControlChangeType flags
 const ADD = 1;
 const DELETE = 16;
 const RENAME = 8;
-/** PolicyEvaluationStatus by number. */
-const POLICY_STATE: PolicyState[] = ["queued", "running", "approved", "rejected", "notApplicable", "broken"];
-
-/** A policy evaluation from the REST API, normalized; shared with the PR list's details. */
-export function policyStatus(p: PolicyEvaluationRecord): PolicyStatus {
-  return {
-    id: p.evaluationId,
-    name: p.configuration?.type?.displayName ?? "Policy",
-    detail: typeof p.configuration?.settings?.displayName === "string" ? p.configuration.settings.displayName : undefined,
-    state: POLICY_STATE[p.status] ?? "queued",
-    blocking: !!p.configuration?.isBlocking,
-  };
-}
-const PR_STATUS: Record<number, PrStatus> = { 1: "active", 2: "abandoned", 3: "completed" };
-
-interface IdentityLike {
-  id?: string;
-  displayName?: string;
-  uniqueName?: string;
-  imageUrl?: string;
-}
 
 /** Reads and writes a pull request through the host's authenticated REST clients. */
 export class AdoPrSource implements PrSource {
@@ -56,7 +20,10 @@ export class AdoPrSource implements PrSource {
   readonly actions: PrActions;
   private readonly git = getClient(GitRestClient);
   private readonly policy = getClient(PolicyRestClient);
-  private prefetched: Promise<PrOverview> | null = null;
+  /** The page's seven reads, bound to this PR (adoOverview.ts loads them in the order the page shows them). */
+  private readonly reads: OverviewReads;
+  /** The load prefetch() started, for the next load(). */
+  private prefetched: OverviewLoad | null = null;
 
   constructor(
     private readonly projectId: string,
@@ -64,6 +31,16 @@ export class AdoPrSource implements PrSource {
     private readonly pullRequestId: number,
     readonly currentUser: Identity,
   ) {
+    const { git, policy } = this;
+    this.reads = {
+      pullRequest: () => git.getPullRequest(repositoryId, pullRequestId, projectId),
+      iterations: () => git.getPullRequestIterations(repositoryId, pullRequestId, projectId, true),
+      threads: () => git.getThreads(repositoryId, pullRequestId, projectId),
+      commits: () => git.getPullRequestCommits(repositoryId, pullRequestId, projectId),
+      labels: () => git.getPullRequestLabels(repositoryId, pullRequestId, projectId),
+      workItems: () => git.getPullRequestWorkItemRefs(repositoryId, pullRequestId, projectId),
+      policies: () => policy.getPolicyEvaluations(projectId, `vstfs:///CodeReview/CodeReviewId/${projectId}/${pullRequestId}`),
+    };
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
       notifications: getClient(NotificationRestClient),
       mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
@@ -87,77 +64,17 @@ export class AdoPrSource implements PrSource {
     });
   }
 
-  /** Starts the first load now (src/index.ts, while the page's code loads); the next load() returns it. */
+  /** Starts the first load now (src/index.ts, while the page's code loads; the hub, on hover); the next load() returns it. */
   prefetch(): void {
-    this.prefetched ??= this.fetch();
-    this.prefetched.catch(() => {}); // reported by load()
+    this.prefetched ??= new OverviewLoad(this.reads);
   }
 
-  load(): Promise<PrOverview> {
+  load(onPartial?: (overview: PrOverview) => void): Promise<PrOverview> {
     const prefetched = this.prefetched;
     this.prefetched = null;
+    if (!prefetched) return new OverviewLoad(this.reads).result(onPartial);
     // A prefetch that failed (a network blip while hovering a row) is tried again now that it's asked for.
-    return prefetched ? prefetched.catch(() => this.fetch()) : this.fetch();
-  }
-
-  private async fetch(): Promise<PrOverview> {
-    const { git, projectId: project, repositoryId: repo, pullRequestId: id } = this;
-    const [pr, iterations, threads, commits, labels, workItems, policies] = await Promise.all([
-      git.getPullRequest(repo, id, project),
-      git.getPullRequestIterations(repo, id, project, true),
-      git.getThreads(repo, id, project),
-      git.getPullRequestCommits(repo, id, project),
-      git.getPullRequestLabels(repo, id, project),
-      git.getPullRequestWorkItemRefs(repo, id, project),
-      this.policy.getPolicyEvaluations(project, `vstfs:///CodeReview/CodeReviewId/${project}/${id}`).catch(() => []),
-    ]);
-    return {
-      pr: {
-        id: pr.pullRequestId,
-        title: pr.title,
-        description: pr.description ?? "",
-        status: PR_STATUS[pr.status] ?? "active",
-        isDraft: !!pr.isDraft,
-        createdBy: identity(pr.createdBy),
-        creationDate: new Date(pr.creationDate),
-        sourceBranch: pr.sourceRefName.replace(/^refs\/heads\//, ""),
-        targetBranch: pr.targetRefName.replace(/^refs\/heads\//, ""),
-        repository: {
-          id: pr.repository.id,
-          name: pr.repository.name,
-          projectId: pr.repository.project.id,
-          projectName: pr.repository.project.name,
-        },
-        reviewers: (pr.reviewers ?? []).map((r) => ({ ...identity(r), vote: asVote(r.vote), isRequired: !!r.isRequired })),
-        labels: labels.filter((l) => l.active !== false).map((l) => l.name),
-        headCommit: pr.lastMergeSourceCommit?.commitId ?? iterations.at(-1)?.sourceRefCommit.commitId ?? "",
-        mergeStatus: mergeStatusFromNumber(pr.mergeStatus),
-        autoCompleteSetBy: realIdentity(pr.autoCompleteSetBy),
-        completionOptions: fromCompletionOptionsJson(pr.completionOptions),
-        completionQueued: pr.completionQueueTime ? new Date(pr.completionQueueTime) : undefined,
-        mergeFailure: pr.mergeFailureMessage || undefined,
-        closedBy: realIdentity(pr.closedBy),
-      },
-      iterations: iterations.map((it) => ({
-        id: it.id,
-        createdDate: new Date(it.createdDate),
-        author: identity(it.author),
-        description: it.description ?? "",
-        headCommit: it.sourceRefCommit.commitId,
-        baseCommit: it.commonRefCommit.commitId,
-        commitIds: (it.commits ?? []).map((c) => c.commitId),
-      })),
-      threads: threads.filter((t) => !t.isDeleted).map((t) => threadFromJson(toThreadJson(t))),
-      commits: commits.map((c) => ({
-        id: c.commitId,
-        message: c.comment,
-        authorName: c.author?.name ?? "",
-        authorEmail: c.author?.email ?? "",
-        date: new Date(c.author?.date ?? Date.now()),
-      })),
-      policies: policies.map(policyStatus),
-      workItems: workItems.map((w) => ({ id: w.id, url: w.url })),
-    };
+    return prefetched.result(onPartial).catch(() => new OverviewLoad(this.reads).result(onPartial));
   }
 
   async getChanges(iteration: number, compareTo: number): Promise<FileChange[]> {
@@ -196,60 +113,6 @@ export class AdoPrSource implements PrSource {
   }
 
   async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {
-    const threads = await this.git.getThreads(this.repositoryId, this.pullRequestId, this.projectId, iteration, compareTo || iteration);
-    return threads.filter((t) => !t.isDeleted).map((t) => threadFromJson(toThreadJson(t)));
+    return toThreads(await this.git.getThreads(this.repositoryId, this.pullRequestId, this.projectId, iteration, compareTo || iteration));
   }
-}
-
-function identity(i: IdentityLike | undefined): Identity {
-  return {
-    id: i?.id ?? "",
-    displayName: i?.displayName ?? "Unknown",
-    uniqueName: i?.uniqueName ?? "",
-    imageUrl: i?.imageUrl,
-  };
-}
-
-/** Optional identities (auto-complete, closed by) are missing or the empty identity when unset. */
-function realIdentity(i: IdentityLike | undefined): Identity | undefined {
-  return isNoOne(i?.id) ? undefined : identity(i);
-}
-
-/** Converts a REST thread into the snapshot JSON shape, so one mapper (mockSource.thread) handles both. */
-function toThreadJson(t: GitPullRequestCommentThread): ThreadJson {
-  const date = (d: Date | string | undefined) => (d ? new Date(d).toISOString() : new Date(0).toISOString());
-  return {
-    pullRequestThreadContext: t.pullRequestThreadContext
-      ? {
-          changeTrackingId: t.pullRequestThreadContext.changeTrackingId,
-          iterationContext: t.pullRequestThreadContext.iterationContext,
-        }
-      : undefined,
-    id: t.id,
-    publishedDate: date(t.publishedDate),
-    lastUpdatedDate: date(t.lastUpdatedDate),
-    status: t.status ?? 0,
-    threadContext: t.threadContext
-      ? {
-          filePath: t.threadContext.filePath,
-          leftFileStart: t.threadContext.leftFileStart ?? undefined,
-          leftFileEnd: t.threadContext.leftFileEnd ?? undefined,
-          rightFileStart: t.threadContext.rightFileStart ?? undefined,
-          rightFileEnd: t.threadContext.rightFileEnd ?? undefined,
-        }
-      : undefined,
-    comments: (t.comments ?? [])
-      .filter((c) => !c.isDeleted)
-      .map((c) => ({
-        id: c.id,
-        parentCommentId: c.parentCommentId,
-        author: { ...identity(c.author) },
-        content: c.content ?? "",
-        publishedDate: date(c.publishedDate),
-        lastUpdatedDate: date(c.lastUpdatedDate),
-        commentType: c.commentType ?? 1,
-        usersLiked: (c.usersLiked ?? []).map((u) => identity(u)),
-      })),
-    properties: (t.properties ?? {}) as ThreadJson["properties"],
-  };
 }

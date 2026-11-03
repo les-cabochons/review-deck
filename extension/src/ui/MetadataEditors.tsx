@@ -151,7 +151,9 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
           {duplicate && <p className="muted">This tag is already added.</p>}
         </form>
       )}
-      {!data.pr.labels.length ? (
+      {data.partial ? (
+        <p className="muted">Loading tags…</p>
+      ) : !data.pr.labels.length ? (
         <p className="muted">No tags</p>
       ) : (
         <div className="tags">

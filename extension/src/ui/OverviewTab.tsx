@@ -80,6 +80,8 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
 
   for (const it of data.iterations) {
     const commits = it.commitIds.map((id) => commitById.get(id)).filter(Boolean);
+    // The commits' messages come with the rest of the page (PrOverview.partial); the update knows how many it pushed.
+    const count = data.partial ? it.commitIds.length : commits.length;
     items.push({
       date: it.createdDate,
       key: `it${it.id}`,
@@ -100,7 +102,7 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
             )
           }
         >
-          {it.id === 1 ? "created update 1" : `pushed update ${it.id}`} with {plural(Math.max(commits.length, 1), "commit")}
+          {it.id === 1 ? "created update 1" : `pushed update ${it.id}`} with {plural(Math.max(count, 1), "commit")}
         </Event>
       ),
     });
@@ -158,6 +160,11 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
       {items.map((i) => (
         <li key={i.key}>{i.node}</li>
       ))}
+      {data.partial && (
+        <li className="muted" aria-busy="true">
+          Loading comments and votes…
+        </li>
+      )}
     </ol>
   );
 };
@@ -231,6 +238,12 @@ const POLICY_ICON: Record<string, { icon: string; tone: string; label: string }>
 };
 
 const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
+  if (data.partial)
+    return (
+      <Side title="Checks">
+        <p className="muted">Loading checks…</p>
+      </Side>
+    );
   const required = data.policies.filter((p) => p.blocking);
   const optional = data.policies.filter((p) => !p.blocking);
   const openThreads = data.threads.filter((t) => t.kind === "comment" && isOpen(t.status)).length;
@@ -270,7 +283,9 @@ const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
 
 const WorkItems: React.FC<{ data: PrOverview }> = ({ data }) => (
   <Side title="Work items" action="Link">
-    {data.workItems.length === 0 ? (
+    {data.partial ? (
+      <p className="muted">Loading work items…</p>
+    ) : data.workItems.length === 0 ? (
       <p className="muted">No work items linked</p>
     ) : (
       <ul className="work-items">
