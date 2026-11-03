@@ -159,6 +159,11 @@ export interface PrOverview {
   commits: Commit[];
   policies: PolicyStatus[];
   workItems: WorkItemRef[];
+  /**
+   * Only `pr` and `iterations` are in: the threads, commits, policies, work items and the PR's tags are still loading,
+   * so the page can draw before the slowest of Azure DevOps' calls answers. Never kept (prCache.ts) nor acted on.
+   */
+  partial?: true;
 }
 
 export interface NewThread {
@@ -209,7 +214,11 @@ export interface PrSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;
   readonly actions: PrActions;
-  load(): Promise<PrOverview>;
+  /**
+   * Loads the pull request. A source that loads in stages hands `onPartial` the PR and its updates as soon as they're
+   * in, marked `partial`, ahead of the rest; the promise resolves to the whole.
+   */
+  load(onPartial?: (overview: PrOverview) => void): Promise<PrOverview>;
   /** Changes between iteration `compareTo` (0 = PR base) and iteration `iteration`. */
   getChanges(iteration: number, compareTo: number): Promise<FileChange[]>;
   getBlob(objectId: string): Promise<string>;

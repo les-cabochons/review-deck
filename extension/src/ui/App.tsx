@@ -60,6 +60,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
   const staleNow = React.useRef(stale);
   staleNow.current = stale;
+  const dataNow = React.useRef(data);
+  dataNow.current = data;
   const [tab, setTab] = React.useState<TabId>(() =>
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
@@ -92,9 +94,16 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setStale(false);
     setRefreshError(null);
   };
+  /** The PR and its updates, in ahead of the rest (PrOverview.partial): shown like the kept copy, with changes waiting. */
+  const partial = (p: PrOverview) => {
+    setData(p);
+    setStale(true);
+    setSelection((s) => (s.iteration === 0 ? latestComparison(p) : s));
+  };
   const load = () => {
     setRefreshError(null);
-    source.load().then(
+    // The kept copy already covers the wait; without one, the partial takes over from the skeleton.
+    source.load(kept ? undefined : partial).then(
       (d) => {
         loaded(d);
         // Opened from the kept copy: a push since then moves to the new latest, unless the reader picked another comparison.
@@ -102,8 +111,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
       },
       (e: Error) => {
-        if (!kept) setError(e.message);
-        // Unless a load since (a poll while completing) made the page current.
+        // Nothing on screen to keep: the page's error. The kept copy or the partial stays, marked, unless a load since
+        // (a poll while completing) made the page current.
+        if (!dataNow.current) setError(e.message);
         else if (staleNow.current) setRefreshError(e.message);
       },
     );
@@ -178,7 +188,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const groupingStale = !!data && !!groupedWith && (groupedWith.title !== data.pr.title || groupedWith.description !== data.pr.description);
 
   React.useEffect(() => {
-    if (!data || !selection.iteration) return;
+    // The partial has no threads yet; the full load's are read for the comparison then.
+    if (!data || !selection.iteration || data.partial) return;
     let cancelled = false;
     setFileThreads([]);
     setThreadError(null);
@@ -255,7 +266,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
                 {refreshError && (
                   <div className="error-box" role="alert">
-                    Could not refresh the pull request, so this may be out of date: {refreshError}{" "}
+                    {data.partial ? "Could not finish loading the pull request" : "Could not refresh the pull request, so this may be out of date"}: {refreshError}{" "}
                     <button className="link-button" onClick={load}>
                       Try again
                     </button>

@@ -3,7 +3,7 @@ import { type GitPullRequest, type GitPullRequestSearchCriteria, GitRestClient, 
 import { CoreRestClient } from "azure-devops-extension-api/Core";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { activeComments, type DetailScope, type MyGroup, policyFacts, type PrListSource, type PrSummary } from "./list";
-import { policyStatus } from "./adoSource";
+import { policyStatus } from "./adoOverview";
 import type { CatalogProject, CatalogRepo, ListScope, RepoCatalog } from "./repoSelection";
 import { asVote, type Identity, identityImageUrl, type PrStatus, threadStatusFromNumber } from "./model";
 
