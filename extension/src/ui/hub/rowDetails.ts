@@ -100,16 +100,20 @@ export function useRowDetails(options: {
         if (inFlight.current.size >= DETAIL_WORKERS) break;
         if (inFlight.current.has(pr.id) || !detailsDue(fetched.get(pr.id), pr, scope, now)) continue;
         const asked = refreshes.current;
+        const since = Date.now();
         inFlight.current.set(pr.id, asked);
         const done = (extra: Partial<PrSummary> | null) => {
           inFlight.current.delete(pr.id);
-          // A request from before a Refresh still shows newer facts, but the reader asked for everything anew, so it
-          // doesn't count as fetched. Nor does it replace a record that already covers this scope (the PR page's).
-          // A failure counts as a full fetch, so it isn't retried in a loop: the next Refresh, or DETAILS_FRESH_MS, tries again.
-          if (asked === refreshes.current && detailsDue(fetched.get(pr.id), pr, scope, Date.now())) {
-            fetched.set(pr.id, { scope: extra ? scope : "full", at: Date.now(), row: rowKey(pr) });
+          // A record newer than this request is the PR page's patch (`merge`), which landed meanwhile. Its facts are
+          // newer than this answer's, so neither the answer nor its record replaces them.
+          const patched = (fetched.get(pr.id)?.at ?? 0) >= since;
+          if (!patched) {
+            // A request from before a Refresh still shows newer facts, but the reader asked for everything anew, so it
+            // doesn't count as fetched. A failure counts as a full fetch, so it isn't retried in a loop. The next
+            // Refresh, or DETAILS_FRESH_MS, tries again.
+            if (asked === refreshes.current) fetched.set(pr.id, { scope: extra ? scope : "full", at: Date.now(), row: rowKey(pr) });
+            if (extra) setDetails((m) => withDetails(m, pr.id, extra));
           }
-          if (extra) setDetails((m) => withDetails(m, pr.id, extra));
           fetchWantedRef.current();
         };
         source.details(pr, scope).then(done, () => done(null));
