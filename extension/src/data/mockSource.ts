@@ -301,10 +301,14 @@ export class MockPrSource implements PrSource {
     return out.sort((a, b) => a.path.localeCompare(b.path)).map((c) => ({ ...c, changeTrackingId: paths.indexOf(`/${c.path}`) + 1 }));
   }
 
-  async getBlob(objectId: string): Promise<string> {
-    const blob = this.snap.blobs[objectId];
-    if (blob === undefined) throw new Error(`blob ${objectId} not in snapshot`);
-    return blob;
+  async getBlobs(objectIds: string[]) {
+    const blobs = new Map<string, string>();
+    for (const id of objectIds) {
+      const blob = this.snap.blobs[id];
+      if (blob === undefined) throw new Error(`blob ${id} not in snapshot`);
+      blobs.set(id, blob);
+    }
+    return { blobs, stats: { cached: 0, zipped: 0, single: 0, calls: 0 } };
   }
 
   async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {

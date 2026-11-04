@@ -7,6 +7,8 @@ import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
 import { createAdoActions, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
 import { OverviewLoad, type OverviewReads, toThreads } from "./adoOverview";
+import { openBlobCache } from "./blobCache";
+import { BlobLoader } from "./blobs";
 import { type ChangeType, type FileChange, type Identity, identityImageUrl, type PrOverview, type PrSource, type PrActions, type Thread } from "./model";
 
 // VersionControlChangeType flags
@@ -24,6 +26,8 @@ export class AdoPrSource implements PrSource {
   private readonly reads: OverviewReads;
   /** The load prefetch() started, for the next load(). */
   private prefetched: OverviewLoad | null = null;
+  /** Both sides of the changed files: kept blobs first, then one zip call per batch (data/blobs.ts). */
+  private readonly blobs: BlobLoader;
 
   constructor(
     private readonly projectId: string,
@@ -41,6 +45,11 @@ export class AdoPrSource implements PrSource {
       workItems: () => git.getPullRequestWorkItemRefs(repositoryId, pullRequestId, projectId),
       policies: () => policy.getPolicyEvaluations(projectId, `vstfs:///CodeReview/CodeReviewId/${projectId}/${pullRequestId}`),
     };
+    this.blobs = new BlobLoader(
+      { zip: (ids) => git.getBlobsZip(ids, repositoryId, projectId), one: (id) => git.getBlobContent(repositoryId, id, projectId) },
+      // Per organization and user, not project: a blob's id names its content wherever it is.
+      openBlobCache(`${getHost().id}/${currentUser.id}`),
+    );
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
       notifications: getClient(NotificationRestClient),
       mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
@@ -107,9 +116,8 @@ export class AdoPrSource implements PrSource {
     return out.sort((a, b) => a.path.localeCompare(b.path));
   }
 
-  async getBlob(objectId: string): Promise<string> {
-    const buffer = await this.git.getBlobContent(this.repositoryId, objectId, this.projectId);
-    return new TextDecoder().decode(buffer);
+  getBlobs(objectIds: string[], signal?: AbortSignal) {
+    return this.blobs.load(objectIds, signal);
   }
 
   async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {
