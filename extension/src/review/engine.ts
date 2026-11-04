@@ -2,7 +2,7 @@ import type { ReviewResult } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
-import { type BackendService, warmBackend } from "./backend";
+import type { BackendService } from "./backend";
 import { packReview, type ReviewKey, reviewMode, type SavedReviews } from "./saved";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
@@ -53,7 +53,6 @@ export async function buildReview(
 ): Promise<ReviewModel> {
   const started = performance.now();
   const backend = options.backend ?? null;
-  if (backend) warmBackend(backend);
   // Read while the files download; restoreReview (in the worker) checks it still fits.
   const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
   const changes = await source.getChanges(iteration, compareTo);

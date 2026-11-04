@@ -2,7 +2,7 @@
 //   POST /api/embed   {"texts": string[]}  ->  {"model": string, "vectors": number[][]}  (semantic grouping signal)
 //   POST /api/titles  {"scope", "context", "groups"} -> {"titles": [{id, title, rationale}]}  (group titles, titles_model)
 //   GET  /api/usage?organization=&projectId=&projectName=  ->  the titles model (or null) and this month's spend and caps
-//   GET  /api/warm    loads the embedding model; the page calls it first so the cold start overlaps blob fetching.
+//   GET  /api/warm    loads the embedding model; the page calls it as it opens, so the cold start overlaps its own loading.
 //   GET  /api/stacks/hook?organization=  ->  {url, header, secret} for the auto-restack service hooks
 //   POST /api/hooks/ado?org=&ext=  Azure DevOps service hook (git.push, git.pullrequest.updated) -> restack queue
 //   POST /api/stacks/restack  {organization, projectId, repositoryId, pullRequestId, extensionId, adoToken} -> {outcomes, log}

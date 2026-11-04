@@ -99,3 +99,9 @@ npm run ext:timing -- --root .cache/baseline         # another build, e.g. main'
 ```
 
 Measure a production build: `npm run ext:dev` rewrites `extension/dist` as an unminified development bundle, which parses markedly slower. When a landmark never appears, the harness fails with the page's text, its pending requests and console errors.
+
+## Warming the backend at page load (November 3, 2026)
+
+A Windows Consumption function that sat idle for about 20 minutes cold-starts on its next request. Measured against the backend named in `infra/terraform.tfvars` without its key, so everything but the model load: 3.3 s for the first request after a quiet spell, 0.36 s for the next. The model (`backend/src/embed.ts`) loads in 0.1 s on an M2 Pro and takes a second or two more on the function's shared worker. The page used to call `/api/warm` when the guided view's build started, after the PR's REST calls had answered, and the embed call then waited for the rest of the cold start once the blobs were in.
+
+`renderHost` (`src/page.tsx`) now warms the backend as the review hub or a PR page opens, after the handshake and without waiting on it (`review/backend.ts` warmBackend). A direct link sends it about half a second earlier than before. A PR opened from the hub finds the backend warm after a few seconds spent in the list. Nothing is sent when the organization has no backend. The timing harness doesn't cover it, because its host has no backend.

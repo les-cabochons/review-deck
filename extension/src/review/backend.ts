@@ -121,9 +121,13 @@ export async function restackPr(
   return outcomes ?? [];
 }
 
-/** Starts the function's cold start (instance + model load) while the page is still fetching files. */
-export function warmBackend(service: BackendService): void {
-  fetch(`${service.url}/api/warm`, { headers: authorization(service) }).catch(() => {});
+/**
+ * Starts the function's cold start (instance and model load: seconds on a Consumption plan that sat idle) as soon as
+ * the page knows it has a backend, so it overlaps the hub's or the PR's own loading instead of the guided view's build.
+ * Nothing is sent without a backend, and nothing waits on the answer, not even a failure.
+ */
+export function warmBackend(backend: Promise<BackendService | null>): void {
+  void backend.then((service) => service && fetch(`${service.url}/api/warm`, { headers: authorization(service) })).catch(() => {});
 }
 
 function authorization(service: BackendService): Record<string, string> {

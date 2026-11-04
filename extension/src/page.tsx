@@ -2,6 +2,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import type { AppHost } from "./app/host";
 import { enabledFor, type Feature } from "./data/access";
+import { warmBackend } from "./review/backend";
 import { renderUnlessOff } from "./startup";
 import { FeatureOff } from "./ui/FeatureOff";
 import { Root } from "./ui/Root";
@@ -21,6 +22,8 @@ const FEATURE_PAGES: Record<string, Feature> = { review: "deck", changelog: "cha
 export async function renderHost(host: AppHost) {
   const feature = FEATURE_PAGES[page ?? "review"];
   if (!feature) return renderPage(host);
+  // The backend's cold start runs while the hub or the PR loads, not once the guided view's build asks for embeddings.
+  if (feature === "deck") warmBackend(host.backendService());
   // Azure DevOps normally hides a turned-off hub; this covers links to it, and a hub its feature state didn't hide.
   const off = host.organizationSettings().then((settings) => (enabledFor(settings[feature], host.projectId) ? null : settings[feature]));
   await renderUnlessOff(off, `review-deck.off.v1:${host.cacheScope}:${feature}`, () => renderPage(host), (policy) =>
