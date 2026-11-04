@@ -22,7 +22,7 @@ import { usePreference } from "./usePreference";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
 import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
-import { ReviewButton, VoteButton } from "./review/ReviewControls";
+import { EMPTY_REVIEW_FORM, ReviewButton, type ReviewForm, VoteButton } from "./review/ReviewControls";
 import { Avatar, cx, IdentityNames, plural, Time } from "./util";
 
 type TabId = "overview" | "files" | "commits";
@@ -395,6 +395,8 @@ const PrHeader: React.FC<{
   const header = React.useRef<HTMLElement>(null);
   const bar = React.useRef<HTMLDivElement>(null);
   const pinned = useScrolledBehind(header, bar);
+  /** One review for both Review buttons: a summary started in one is there when the other opens. */
+  const [reviewForm, setReviewForm] = React.useState<ReviewForm>(EMPTY_REVIEW_FORM);
   const statusPill = (
     <span className={cx("status-pill", status.className)}>
       <Icon iconName={status.icon} /> {status.label}
@@ -408,7 +410,7 @@ const PrHeader: React.FC<{
             {pr.title} <span className="pr-id">!{pr.id}</span>
           </h1>
           <div className="pr-actions">
-            <ReviewButton vote={vote} />
+            <ReviewButton vote={vote} form={reviewForm} onForm={setReviewForm} />
             <VoteButton vote={vote} />
             <CompletionButton data={data} />
             <PrMenu pr={pr} links={links} onToast={onToast} />
@@ -442,8 +444,8 @@ const PrHeader: React.FC<{
         {refreshing && <div className="refresh-progress" role="progressbar" aria-label="Updating pull request" />}
       </header>
       {/* GitHub's compact header: once the full one scrolls away, the state and the review controls stay in sight.
-          Always mounted, so a review summary being written survives scrolling back up. No ⋯ menu: it loads the
-          follow and favorite state, and the header's copy already does. */}
+          Its Review button edits the same summary and verdict as the header's. No ⋯ menu: it loads the follow and
+          favorite state, and the header's copy already does. */}
       <div className={cx("pr-bar", pinned && "pinned")} ref={bar}>
         {statusPill}
         <span className="pr-bar-title" title={pr.title}>
@@ -453,7 +455,7 @@ const PrHeader: React.FC<{
           {pr.sourceBranch} → {pr.targetBranch}
         </span>
         <div className="pr-bar-actions">
-          <ReviewButton vote={vote} />
+          <ReviewButton vote={vote} form={reviewForm} onForm={setReviewForm} />
           <VoteButton vote={vote} />
           <CompletionButton data={data} />
         </div>

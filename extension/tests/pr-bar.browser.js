@@ -1,7 +1,7 @@
 // Run through playwright-cli run-code --filename=extension/tests/pr-bar.browser.js.
 // Uses the demo data (`npm run ext:demo`). Scrolled down, the compact PR header stays at the top with the title and
 // the review controls, and nothing else that sticks (tab bar, files toolbar, navigator) or a concern a jump lands on
-// hides under it.
+// hides under it. Its Review button edits the same review as the full header's.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -63,11 +63,21 @@ async page => {
   assert(landed.top <= toolbarNow.bottom + 16, `The jump stopped short: the concern is at ${landed.top}px, the toolbar ends at ${toolbarNow.bottom}px`);
   result.jump = { concern: landed.top, toolbar: toolbarNow.bottom };
 
-  // Given a review being written from the compact header, scrolling back up keeps it on screen.
+  // Given a review started in the full header, the compact header's Review opens on the same summary and verdict.
+  await scrollTo(0);
+  await pause();
+  await f.locator('.pr-header .review-button button').click();
+  await f.locator('.pr-header .review-panel textarea').fill('One review, two buttons');
+  await f.locator('.pr-header .review-panel').getByRole('radio', { name: /^Wait for author/ }).check();
   await scrollTo(1500);
   await pause();
   await f.locator('.pr-bar .review-button button').click();
   await f.locator('.pr-bar .review-panel').waitFor();
+  assert(await f.locator('.pr-bar .review-panel textarea').inputValue() === 'One review, two buttons', 'The compact header opened another, empty review');
+  assert(await f.locator('.pr-bar .review-panel').getByRole('radio', { name: /^Wait for author/ }).isChecked(), 'The compact header lost the verdict');
+  assert(await f.locator('.pr-header .review-panel').count() === 0, 'Both review panels are open');
+
+  // Given that review open in the compact header, scrolling back up keeps it on screen.
   await scrollTo(0);
   await pause();
   assert(await shown(), 'The compact header hid its open review panel when scrolling back up');

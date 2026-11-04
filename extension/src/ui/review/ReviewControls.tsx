@@ -48,16 +48,24 @@ const VERDICTS: { vote: Vote | null; title: string; detail: string }[] = [
   { vote: -10, title: "Reject", detail: "These changes should not merge." },
 ];
 
+/** The summary and verdict of a review being written. A null verdict only comments. */
+export interface ReviewForm {
+  summary: string;
+  verdict: Vote | null;
+}
+
+export const EMPTY_REVIEW_FORM: ReviewForm = { summary: "", verdict: null };
+
 /**
  * "Review" (or "Finish review (n)" while drafts are pending): a panel to write a summary, pick a
- * verdict, and submit pending comments in one go, like GitHub's review flow.
+ * verdict, and submit pending comments in one go, like GitHub's review flow. The caller keeps the
+ * summary and verdict, so the header's button and the compact header's edit one review.
  */
-export const ReviewButton: React.FC<{ vote: Vote }> = ({ vote }) => {
+export const ReviewButton: React.FC<{ vote: Vote; form: ReviewForm; onForm: (form: ReviewForm) => void }> = ({ vote, form, onForm }) => {
   const pending = usePendingReview();
   const { actions, disabled, run } = useReviewActions();
   const [open, setOpen] = React.useState(false);
-  const [summary, setSummary] = React.useState("");
-  const [verdict, setVerdict] = React.useState<Vote | null>(null);
+  const { summary, verdict } = form;
   const box = React.useRef<HTMLDivElement>(null);
   const count = pending.drafts.length;
 
@@ -77,8 +85,7 @@ export const ReviewButton: React.FC<{ vote: Vote }> = ({ vote }) => {
     if (nothing) return;
     const ok = await run(() => pending.submit(actions, { vote: verdict === vote ? null : verdict, summary }));
     if (ok) {
-      setSummary("");
-      setVerdict(null);
+      onForm(EMPTY_REVIEW_FORM);
       setOpen(false);
     }
   };
@@ -100,7 +107,7 @@ export const ReviewButton: React.FC<{ vote: Vote }> = ({ vote }) => {
           <MarkdownEditor
             label="Review summary"
             value={summary}
-            onChange={setSummary}
+            onChange={(text) => onForm({ ...form, summary: text })}
             placeholder="Leave a summary (optional)"
             autoFocus
             minRows={3}
@@ -111,7 +118,7 @@ export const ReviewButton: React.FC<{ vote: Vote }> = ({ vote }) => {
             <legend className="sr-only">Verdict</legend>
             {VERDICTS.map((v) => (
               <label key={String(v.vote)} className={cx("verdict", verdict === v.vote && "selected")}>
-                <input type="radio" name="verdict" checked={verdict === v.vote} onChange={() => setVerdict(v.vote)} />
+                <input type="radio" name="verdict" checked={verdict === v.vote} onChange={() => onForm({ ...form, verdict: v.vote })} />
                 <span>
                   <strong>
                     {v.title}
