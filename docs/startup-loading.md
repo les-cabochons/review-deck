@@ -84,7 +84,7 @@ Medians of 9 runs, in ms from navigation start. "Cold" means a first visit; "war
 | PR link, REST at 400 ms, cold | 784 / 784 | 677 / 677 |
 | PR link, REST at 400 ms, warm | 549 / 549 | 125 / 560 |
 
-The harness didn't measure the hub's hover prefetch, because its stub listed no pull requests then (it lists 20 since November 4, 2026). Its pull request also has no changed files, so the guided view built from the kept copy costs next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
+The harness didn't measure the hub's hover prefetch, because its stub listed no pull requests then (it lists 20 since November 4, 2026). Its pull request also had no changed files then (it has two since November 3, 2026), so the guided view built from the kept copy cost next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
 
 ## The page draws after two calls, not seven (November 3, 2026)
 
@@ -116,9 +116,32 @@ After the overview, the Files tab's wait was the blobs, with two REST calls per 
 2. The rest come in one zip call per 200 blobs (`getBlobsZip`, up to four calls at once), read with the browser's `DecompressionStream`. A 40-file PR is one call.
 3. A blob the zip didn't carry is read on its own, as before. If a zip ever comes back with entries not named by blob id, zipping stops for the page and every blob is read on its own, so the worst case is one wasted call. The build's `review built` log line says how many blobs came from each source.
 
-Neither the hub cache nor the kept PR copies are involved. The cache holds file contents only. Not measured against Azure DevOps from here (no organization reachable); the expected effect follows from the call count, one round instead of files ÷ 8, and the harness's REST stub has no files to time it with.
+Neither the hub cache nor the kept PR copies are involved. The cache holds file contents only. Not measured against Azure DevOps from here (no organization reachable); the expected effect follows from the call count, one round instead of files ÷ 8, and the harness's REST stub had no files to time it with (it has two since the next section).
 
 Kept hub rows and PR copies also live a month now instead of 12 hours. Nothing acts on them (buttons wait for the load, the list refreshes at once), so the limit only guards a refresh that fails, and that case now says how old what's on screen is.
+
+## The Files tab's reads start with the prefetch (November 3, 2026)
+
+A link straight to a pull request starts the page's seven REST calls as soon as the route is known (`AdoHost.prefetchPr`, from `src/index.ts`), but the Files tab's two reads, the latest update's changes and then both sides of every changed file, started well after the page had drawn. They ran in the page's React effect, which runs once the partial is on screen and then waits for the analysis engine's chunk and for the backend and project settings. Those two settings are extension data, a REST round trip each in Azure DevOps, so the reads followed the partial by about one round trip. They now start in the prefetch itself, as soon as the PR and its updates are in (`AdoPrSource.prefetch({ files: true })`), and the build takes them over (`data/fileReads.ts`):
+
+1. Whichever asks first starts a read, the prefetch or the build, and the other takes it instead of reading again. The prefetch's reads stay until the build takes them; a build's own read is forgotten once it settles, so nothing accumulates. A read that failed is forgotten too, so the build tries again and reports it. A build cancelled while holding a read (another comparison picked, the page left) stops what's left of it, as nobody else will take it.
+2. Opened from the kept copy, the build starts at mount from the copy's latest update and reads for itself; if a push since then moved the latest, the prefetch's reads for the new one wait until the page moves to it.
+3. Only a link straight to the PR asks for the files. A hovered hub row isn't always opened, and a zip call per hover would be too much, so the hover prefetch loads the overview only.
+
+The harness's stub pull request now has one update that changes two files, whose contents its blobs zip call returns, and the hosted PR scenarios open on the Files tab and wait for the diff (`prDiff`, the first file header). A fifth scenario answers extension data after 400 ms as well (`?data=400`), as Azure DevOps does. Medians of 9 runs, in ms from navigation start; "warm" reopens the PR from its kept copy, whose build starts at mount.
+
+| Scenario | Before: prReact / prDiff | After: prReact / prDiff |
+| --- | --- | --- |
+| PR link, REST at 0 ms, cold | 239 / 444 | 241 / 422 |
+| PR link, REST at 0 ms, warm | 54 / 127 | 57 / 129 |
+| PR link, REST at 400 ms, cold | 638 / 1654 | 644 / 1638 |
+| PR link, REST at 400 ms, warm | 56 / 524 | 57 / 530 |
+| PR link, uneven REST (250 to 520 ms), cold | 710 / 1700 | 727 / 1654 |
+| PR link, slow threads (300 ms; threads and commits 900 ms), cold | 533 / 1341 | 546 / 1340 |
+| PR link, REST and extension data at 400 ms, cold | 652 / 2044 | 650 / 1658 |
+| PR link, REST and extension data at 400 ms, warm | 60 / 925 | 57 / 929 |
+
+With extension data answering at once, all the reads had to wait for was the engine chunk's download, and the diff lands 15 to 45 ms sooner cold (the uneven scenario moves by that much between reruns anyway). With extension data at 400 ms, the case Azure DevOps is in, the diff lands 386 ms sooner. The reads no longer wait for the settings, which answer while the blobs are on their way. Warm visits don't change, as the kept copy's build starts at mount and its reads come first either way, and the diff then waits on the changes call, the blobs being kept in the browser. What the extension data calls cost on cabochons hasn't been timed from here; the 400 ms is the assumption the hub's "slow extension data" scenario rests on, and the change costs nothing where it doesn't hold.
 
 ## Fewer calls going back to the hub and opening a PR (November 4, 2026)
 
