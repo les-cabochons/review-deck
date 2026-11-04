@@ -3,7 +3,7 @@ import { Tab, TabBar, TabSize } from "azure-devops-ui/Tabs";
 import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
-import { hubPatch, rememberPr } from "../data/hubCache";
+import { hubPatch, prFromRow, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
@@ -55,9 +55,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [keptPr] = React.useState(() => readPrSnapshot(host.cacheScope, route.pr));
   const kept = keptPr?.overview ?? null;
   const keptAt = keptPr?.at ?? null;
-  const [data, setData] = React.useState<PrOverview | null>(kept);
-  /** `data` is the kept copy: changes wait for the first load, so none is made from what may be out of date. */
-  const [stale, setStale] = React.useState(!!kept);
+  /** Without a kept copy, the PR as its hub row knows it, drawn at once as a partial while `source` loads. */
+  const [data, setData] = React.useState<PrOverview | null>(() => kept ?? prFromRow(host.cacheScope, route.pr));
+  /** `data` is the kept copy or a partial. Changes wait for the first load, so none is made from what may be out of date. */
+  const [stale, setStale] = React.useState(!!data);
   const [error, setError] = React.useState<string | null>(null);
   /** Why loading failed while the kept copy shows; it stays, marked as possibly out of date, as the hub keeps its rows. */
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
@@ -68,7 +69,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [tab, setTab] = React.useState<TabId>(() =>
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
-  const [selection, setSelection] = React.useState(() => latestComparison(kept));
+  const [selection, setSelection] = React.useState(() => latestComparison(data));
   /** The comparison the page last picked on its own, which a later load may move on from (`followLatest`). */
   const picked = React.useRef(selection);
   const [review, setReview] = React.useState<ReviewModel | null>(null);
@@ -118,11 +119,12 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   };
   const load = () => {
     setRefreshError(null);
-    // The kept copy already covers the wait; without one, the partial takes over from the skeleton.
+    // The kept copy already covers the wait; without one, the partial takes over from the skeleton or the hub's row.
     source.load(kept ? undefined : partial).then(
       (d) => {
         loaded(d);
         // A push since the kept copy, or since a partial load that failed and is retried, moves to the new latest.
+        // So does the first load of a page drawn from the hub's row, which knew no update.
         showLatest(d);
       },
       (e: Error) => {
