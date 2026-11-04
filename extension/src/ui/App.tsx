@@ -5,8 +5,9 @@ import * as React from "react";
 import type { AppHost, Route } from "../app/host";
 import { hubPatch, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
-import { type Identity, latestIteration, type PrOverview, type PrSource, type Thread } from "../data/model";
+import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
+import { followLatest, latestComparison } from "./comparison";
 import { Breadcrumb } from "./Breadcrumb";
 import { CommitsTab } from "./CommitsTab";
 import type { DiffMode } from "./DiffHunk";
@@ -68,6 +69,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
   const [selection, setSelection] = React.useState(() => latestComparison(kept));
+  /** The comparison the page last picked on its own, which a later load may move on from (`followLatest`). */
+  const picked = React.useRef(selection);
   const [review, setReview] = React.useState<ReviewModel | null>(null);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = React.useState(false);
@@ -96,6 +99,13 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setStale(false);
     setRefreshError(null);
   };
+  /** A load said which update is the latest: show it, unless the reader chose another comparison. */
+  const showLatest = (d: PrOverview) => {
+    const before = picked.current;
+    const latest = latestComparison(d);
+    picked.current = latest;
+    setSelection((s) => followLatest(s, before, latest));
+  };
   /**
    * The PR and its updates, in ahead of the rest (PrOverview.partial). Shown like the kept copy, with changes waiting.
    * Stale goes first. React 16 renders each update of a promise callback on its own, and a render with the partial
@@ -104,7 +114,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const partial = (p: PrOverview) => {
     setStale(true);
     setData(p);
-    setSelection((s) => (s.iteration === 0 ? latestComparison(p) : s));
+    showLatest(p);
   };
   const load = () => {
     setRefreshError(null);
@@ -112,9 +122,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     source.load(kept ? undefined : partial).then(
       (d) => {
         loaded(d);
-        // Opened from the kept copy: a push since then moves to the new latest, unless the reader picked another comparison.
-        const latest = latestComparison(d);
-        setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
+        // A push since the kept copy, or since a partial load that failed and is retried, moves to the new latest.
+        showLatest(d);
       },
       (e: Error) => {
         // With nothing on screen to keep, the page shows the error. The kept copy or the partial stays, marked, unless
@@ -349,15 +358,6 @@ const MentionProvider: React.FC<{ people: Identity[] }> = ({ people, children })
   const value = React.useMemo(() => ({ known: people, search: (q: string) => actions.searchReviewers(q) }), [people, actions]);
   return <MentionContext.Provider value={value}>{children}</MentionContext.Provider>;
 };
-
-type Comparison = ReviewModel["comparison"];
-
-/** The latest update against the PR's base, which the Files tab opens on; iteration 0 until the PR is known. */
-function latestComparison(data: PrOverview | null): Comparison {
-  return { iteration: data ? latestIteration(data) : 0, compareTo: 0 };
-}
-
-const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;
 
 function knownPeople(data: PrOverview | null, me: Identity): Identity[] {
   if (!data) return [me];
