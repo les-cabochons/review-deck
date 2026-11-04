@@ -87,33 +87,35 @@ export function useRowDetails(options: {
   });
 
   const fetchWanted = () => {
-    if (!source?.details || !active) return;
-    const { own, rows } = page.current;
-    const near = (id: number) => !canObserve || nearView.current.has(id);
-    const shown = new Set(rows.map((p) => p.id));
-    const wanted: { pr: PrSummary; scope: DetailScope }[] = [
-      ...own.map((pr) => ({ pr, scope: shown.has(pr.id) && near(pr.id) ? ("full" as const) : ("review" as const) })),
-      ...rows.filter((p) => near(p.id)).map((pr) => ({ pr, scope: "full" as const })),
-    ];
-    const now = Date.now();
-    for (const { pr, scope } of wanted) {
-      if (inFlight.current.size >= DETAIL_WORKERS) break;
-      if (inFlight.current.has(pr.id) || !detailsDue(fetched.get(pr.id), pr, scope, now)) continue;
-      const asked = refreshes.current;
-      inFlight.current.set(pr.id, asked);
-      const done = (extra: Partial<PrSummary> | null) => {
-        inFlight.current.delete(pr.id);
-        // A request from before a Refresh still shows newer facts, but the reader asked for everything anew, so it
-        // doesn't count as fetched. Nor does it replace a record that already covers this scope (the PR page's).
-        // A failure counts as a full fetch, so it isn't retried in a loop: the next Refresh, or DETAILS_FRESH_MS, tries again.
-        if (asked === refreshes.current && detailsDue(fetched.get(pr.id), pr, scope, Date.now())) {
-          fetched.set(pr.id, { scope: extra ? scope : "full", at: Date.now(), row: rowKey(pr) });
-        }
-        if (extra) setDetails((m) => withDetails(m, pr.id, extra));
-        fetchWantedRef.current();
-      };
-      source.details(pr, scope).then(done, () => done(null));
+    if (source?.details && active) {
+      const { own, rows } = page.current;
+      const near = (id: number) => !canObserve || nearView.current.has(id);
+      const shown = new Set(rows.map((p) => p.id));
+      const wanted: { pr: PrSummary; scope: DetailScope }[] = [
+        ...own.map((pr) => ({ pr, scope: shown.has(pr.id) && near(pr.id) ? ("full" as const) : ("review" as const) })),
+        ...rows.filter((p) => near(p.id)).map((pr) => ({ pr, scope: "full" as const })),
+      ];
+      const now = Date.now();
+      for (const { pr, scope } of wanted) {
+        if (inFlight.current.size >= DETAIL_WORKERS) break;
+        if (inFlight.current.has(pr.id) || !detailsDue(fetched.get(pr.id), pr, scope, now)) continue;
+        const asked = refreshes.current;
+        inFlight.current.set(pr.id, asked);
+        const done = (extra: Partial<PrSummary> | null) => {
+          inFlight.current.delete(pr.id);
+          // A request from before a Refresh still shows newer facts, but the reader asked for everything anew, so it
+          // doesn't count as fetched. Nor does it replace a record that already covers this scope (the PR page's).
+          // A failure counts as a full fetch, so it isn't retried in a loop: the next Refresh, or DETAILS_FRESH_MS, tries again.
+          if (asked === refreshes.current && detailsDue(fetched.get(pr.id), pr, scope, Date.now())) {
+            fetched.set(pr.id, { scope: extra ? scope : "full", at: Date.now(), row: rowKey(pr) });
+          }
+          if (extra) setDetails((m) => withDetails(m, pr.id, extra));
+          fetchWantedRef.current();
+        };
+        source.details(pr, scope).then(done, () => done(null));
+      }
     }
+    // Also while a PR page covers the hub: a request that lands meanwhile must still turn the "Updating…" bar off.
     setLoading(inFlight.current.size > 0);
   };
   const fetchWantedRef = React.useRef(fetchWanted);
