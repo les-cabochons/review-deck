@@ -82,6 +82,14 @@ export function listAroundPr(snap: HubSnapshot | null, prId: number, now = Date.
   return covered ? snap : null;
 }
 
+/**
+ * What the hub shows now, held for this page only. A PR opened from it right away draws from its row before
+ * writeHubSnapshot's slower save to the browser's storage has run.
+ */
+export function holdHubSnapshot(scope: string, snap: HubSnapshot): void {
+  memory.set(scope, snap);
+}
+
 export function writeHubSnapshot(scope: string, snap: HubSnapshot, storage: () => SnapshotStorage = browserStore): void {
   memory.set(scope, snap);
   try {
