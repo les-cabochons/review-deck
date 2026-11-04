@@ -30,7 +30,8 @@ Pieces:
   - `POST /api/titles {"context", "groups"}` returns `{"titles": [{id, title, rationale}], "cached"}`, in reading order.
     The function builds the prompt itself from the hunks' changed lines, with at most 40 groups and 200 hunks.
   - `POST /api/embed {"texts": [...]}` returns `{"vectors": [[...384 floats]]}` for at most 2,000 texts.
-  - `GET /api/warm` loads the embedding model. The page calls it first, so the cold start overlaps fetching files.
+  - `GET /api/warm` loads the embedding model. The page calls it as the hub or a PR opens, so the cold start overlaps
+    the page's own loading instead of the guided view's build.
   - `GET /api/stacks/hook`, `POST /api/hooks/ado` and `POST /api/stacks/restack` run auto-restack and the
     Restack action; see [stacks.md](stacks.md).
   - Every call needs `Authorization: Bearer <API_KEY>`: the backend's key (Terraform output `api_key`), which an
