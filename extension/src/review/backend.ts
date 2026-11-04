@@ -123,11 +123,14 @@ export async function restackPr(
 
 /**
  * Starts the function's cold start (instance and model load: seconds on a Consumption plan that sat idle) as soon as
- * the page knows it has a backend, so it overlaps the hub's or the PR's own loading instead of the guided view's build.
- * Nothing is sent without a backend, and nothing waits on the answer, not even a failure.
+ * the page knows it has a backend it may use, so it overlaps the hub's or the PR's own loading instead of the guided
+ * view's build. Nothing is sent without a backend, nor when `enabled` says the Deck is off for the project (a link to
+ * a turned-off hub leaves the function asleep), and nothing waits on the answer, not even a failure.
  */
-export function warmBackend(backend: Promise<BackendService | null>): void {
-  void backend.then((service) => service && fetch(`${service.url}/api/warm`, { headers: authorization(service) })).catch(() => {});
+export function warmBackend(backend: Promise<BackendService | null>, enabled: Promise<boolean>): void {
+  void Promise.all([backend, enabled])
+    .then(([service, on]) => (on && service ? fetch(`${service.url}/api/warm`, { headers: authorization(service) }) : null))
+    .catch(() => {});
 }
 
 function authorization(service: BackendService): Record<string, string> {
