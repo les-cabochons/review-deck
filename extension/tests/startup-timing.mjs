@@ -15,7 +15,7 @@
 // else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server without openssl), extension data
 // (nothing stored, answered after ?data= ms) and the access token. Every other service fails, as a locked-down host
 // would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold browser
-// profile and a warm one (second visit).
+// profile and a warm one (second visit). The hub-to-PR scenarios count from the click on the PR's hub row instead.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -115,6 +115,8 @@ const FRAME_MARKS = `(() => {
   const check = () => {
     for (const [name, selector] of Object.entries(wanted)) if (!(name in marks) && document.querySelector(selector)) marks[name] = Date.now();
   };
+  // The click on a hub row, which the hub-to-PR scenarios count from.
+  document.addEventListener("pointerdown", () => { marks.press ??= Date.now(); }, true);
   // Attributes too: a button that becomes enabled is a landmark (prLive).
   new MutationObserver(check).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "disabled", "aria-disabled"] });
   document.addEventListener("DOMContentLoaded", () => { marks.dom = Date.now(); check(); });
@@ -363,6 +365,11 @@ const SCENARIOS = [
   { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&tab=files&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // Extension data (the backend and project settings the Files tab's build waits for) is a REST round trip in Azure DevOps too.
   { name: "hosted PR, slow REST and extension data", path: "/host?pr=471&repo=users-sdk&tab=files&api=400&data=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
+  // From the hub to PULL_REQUEST, in ms from the click on its row, with the uneven REST of above. A quick click (or
+  // Enter), where the press starts the PR's load and the click opens it. Then the pointer resting on the row first,
+  // so the hover prefetch (80 ms after it arrives) has a head start. "warm" opens it again, from the kept copy.
+  { name: "hub to PR, quick click", path: "/host?api=250&jitter=270", hubToPr: { dwell: 0 }, frame: ["prSkeleton", "prReact", "prLive"], host: [] },
+  { name: "hub to PR, hover 300 ms", path: "/host?api=250&jitter=270", hubToPr: { dwell: 300 }, frame: ["prSkeleton", "prReact", "prLive"], host: [] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
 ];
@@ -395,6 +402,7 @@ async function open(context, origin, path, hosted) {
 }
 
 async function measure(context, origin, scenario) {
+  if (scenario.hubToPr) return measureHubToPr(context, origin, scenario);
   const { page, frame, started, waitFor } = await open(context, origin, scenario.path, scenario.host.length > 0);
   // Every landmark, not just the last: the diff and the buttons can land in either order.
   for (const mark of scenario.frame) await waitFor(mark);
@@ -404,6 +412,25 @@ async function measure(context, origin, scenario) {
   const result = {};
   for (const m of scenario.host) if (hostMarks[m]) result[m] = hostMarks[m] - start;
   for (const m of scenario.frame) if (frameMarks[m]) result[m] = frameMarks[m] - start;
+  await page.close();
+  return result;
+}
+
+/** Opens the hub, waits a reader's second once its rows are in, then opens PULL_REQUEST from its row as the scenario says. */
+async function measureHubToPr(context, origin, scenario) {
+  const { page, frame, waitFor } = await open(context, origin, scenario.path, true);
+  await waitFor("hubRows");
+  await page.waitForTimeout(1000);
+  const row = frame.locator(`.pr-row[data-pr="${PULL_REQUEST.pullRequestId}"]`);
+  if (scenario.hubToPr.dwell) {
+    await row.hover();
+    await page.waitForTimeout(scenario.hubToPr.dwell);
+  }
+  await row.click();
+  await waitFor(scenario.frame.at(-1));
+  const marks = await frame.evaluate(() => window.frameMarks ?? {});
+  const result = {};
+  for (const m of scenario.frame) if (marks[m]) result[m] = marks[m] - marks.press;
   await page.close();
   return result;
 }
