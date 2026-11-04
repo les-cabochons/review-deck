@@ -361,6 +361,8 @@ const SCENARIOS = [
   { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // A long discussion, so the threads and commits answer well after the small calls.
   { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&tab=files&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
+  // Extension data (the backend and project settings the Files tab's build waits for) is a REST round trip in Azure DevOps too.
+  { name: "hosted PR, slow REST and extension data", path: "/host?pr=471&repo=users-sdk&tab=files&api=400&data=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
 ];
