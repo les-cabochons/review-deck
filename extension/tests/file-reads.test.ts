@@ -148,6 +148,21 @@ test("Given the page left while the build waited for the prefetched changes, the
   assert.equal(s.blobs[0].signal.aborted, true);
 });
 
+test("Given a build cancelled while waiting for its changes, when another build already reads the same blobs, then the cancelled build leaves that read alone", async () => {
+  const s = stub();
+  const old = new AbortController();
+  // The reader picks another comparison with the same files (a rename only) while the first build waits for its changes.
+  const cancelled = s.reads.getChanges(1, 0).then((changes) => s.reads.getBlobs(blobIds(changes), old.signal));
+  old.abort();
+  const current = s.reads.getBlobs(IDS, new AbortController().signal);
+  s.changes[0].answer.resolve(CHANGES);
+  await assert.rejects(cancelled, { name: "AbortError" });
+  assert.equal(s.blobs.length, 1);
+  assert.equal(s.blobs[0].signal.aborted, false);
+  s.blobs[0].answer.resolve(LOADED);
+  assert.equal(await current, LOADED);
+});
+
 test("Given a build from the kept copy whose reads are done before the PR's updates land, then the prefetch reads nothing again", async () => {
   const s = stub();
   const changes = s.reads.getChanges(2, 0);

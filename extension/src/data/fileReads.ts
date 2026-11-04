@@ -14,6 +14,8 @@ interface Shared<T> {
   promise: Promise<T>;
   /** Stops what's left of the read once the build holding it is cancelled. */
   controller: AbortController;
+  /** Started by the prefetch and not taken yet, so no build holds it. */
+  primed: boolean;
 }
 
 /**
@@ -59,9 +61,9 @@ export class FileReads {
     this.asked.add(key);
     if (signal?.aborted) {
       // A build cancelled between its two reads (the page left while the changes were on their way) starts nothing,
-      // and the blobs read primed for it stops: nobody else will take it.
+      // and the blobs read primed for it stops, as nobody else will take it. A read another build started stays.
       const primed = this.blobs.get(key);
-      if (primed) stop(this.blobs, key, primed);
+      if (primed?.primed) stop(this.blobs, key, primed);
       throw signal.reason;
     }
     return this.share(this.blobs, key, (s) => this.source.blobs(objectIds, s), false, signal);
@@ -77,7 +79,7 @@ export class FileReads {
     if (entry) shared.delete(key);
     else {
       const controller = new AbortController();
-      const started: Shared<T> = { promise: read(controller.signal), controller };
+      const started: Shared<T> = { promise: read(controller.signal), controller, primed: keep };
       entry = started;
       shared.set(key, started);
       const forget = () => void (shared.get(key) === started && shared.delete(key));
