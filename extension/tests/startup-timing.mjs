@@ -11,16 +11,18 @@
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
 // the scenario), the location service (REST calls go to a second server, over HTTP/2 and cross-origin with CORS
 // preflights as dev.azure.com's are, which lists the hub's pull requests, PULL_REQUESTS, returns one of them by id,
-// and an empty list for everything else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server
-// without openssl), extension data (nothing stored, answered after ?data= ms) and the access token. Every other
-// service fails, as a locked-down host would. Times are milliseconds from the moment the iframe starts loading,
-// medians over the runs, for a cold browser profile and a warm one (second visit).
+// with one update that changes two files, FILES, whose contents come as a zip, and an empty list for everything
+// else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server without openssl), extension data
+// (nothing stored, answered after ?data= ms) and the access token. Every other service fails, as a locked-down host
+// would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold browser
+// profile and a warm one (second visit).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { createSecureServer } from "node:http2";
 import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
+import { deflateRawSync } from "node:zlib";
 import { chromium } from "playwright-core";
 
 const args = new Map();
@@ -46,9 +48,10 @@ const DARK = {
 
 /**
  * The fake host page. `query` is what the navigation service reports; `handshake` delays its answer, and `data`
- * every extension data call (organization settings, synced preferences), which finds nothing.
+ * every extension data call (organization settings, synced preferences), which finds nothing. `tab` opens the PR's
+ * page on that tab (its hash, as the page keeps the tab there).
  */
-function hostHtml(query, handshake, data, apiRoot) {
+function hostHtml(query, handshake, data, apiRoot, tab) {
   return `<!doctype html><html><body style="margin:0"><script>
     const query = ${JSON.stringify(query)};
     const marks = (window.marks = { start: Date.now() });
@@ -84,7 +87,7 @@ function hostHtml(query, handshake, data, apiRoot) {
     });
     const frame = document.createElement("iframe");
     frame.style.cssText = "width:100vw;height:100vh;border:0;display:block";
-    frame.src = "/dist/review.html";
+    frame.src = ${JSON.stringify(`/dist/review.html${tab ? `#${tab}` : ""}`)};
     document.body.appendChild(frame);
   </script></body></html>`;
 }
@@ -100,6 +103,8 @@ const LANDMARKS = {
   prReact: ".pr-actions button",
   // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
   prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
+  // The Files tab shows the diff, so the update's changes and both sides of every file are in (review/engine.ts).
+  prDiff: ".file-header",
   settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
 };
 
@@ -118,10 +123,10 @@ const FRAME_MARKS = `(() => {
 
 /**
  * One origin for everything but the REST API, so the browser's storage (theme, hub cache) carries between pages.
- * /host?pr=&repo= is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer,
- * ?jitter=<ms> adds up to that much to each at random (Azure DevOps' answers are uneven), ?heavy=<ms> is the
- * delay of the threads and commits calls instead (the big answers of a long discussion), and ?fail=threads answers
- * the threads call with a 500.
+ * /host?pr=&repo= is the fake host (&tab=files opens the PR on its Files tab). ?handshake=<ms> delays its handshake
+ * and ?api=<ms> every later REST answer, ?jitter=<ms> adds up to that much to each at random (Azure DevOps' answers
+ * are uneven), ?heavy=<ms> is the delay of the threads and commits calls instead (the big answers of a long
+ * discussion), and ?fail=threads answers the threads call with a 500.
  */
 async function serve() {
   // HTTP/1.1 would queue the page's REST calls six at a time, which dev.azure.com's HTTP/2 doesn't.
@@ -141,7 +146,7 @@ async function serve() {
         const query = url.searchParams.get("pr") ? { pr: url.searchParams.get("pr"), repo: url.searchParams.get("repo") } : {};
         const apiRoot = apiOrigin ? `${apiOrigin}/api/` : `http://${req.headers.host}/api/`;
         res.writeHead(200, { "content-type": "text/html" });
-        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0), Number(url.searchParams.get("data") ?? 0), apiRoot));
+        return res.end(hostHtml(query, Number(url.searchParams.get("handshake") ?? 0), Number(url.searchParams.get("data") ?? 0), apiRoot, url.searchParams.get("tab")));
       }
       const file = normalize(join(root, decodeURIComponent(url.pathname)));
       if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) {
@@ -189,17 +194,29 @@ function answerApi(req, res) {
       res.writeHead(500, { ...cors, "content-type": "application/json" });
       return res.end(JSON.stringify({ message: "Failed by the harness" }));
     }
-    res.writeHead(200, { ...cors, "content-type": "application/json" });
-    res.end(JSON.stringify(answer(url)));
+    const { type, body } = restAnswer(req.method, url);
+    res.writeHead(200, { ...cors, "content-type": type });
+    res.end(body);
   }, wait);
 }
 
-/** What the stub returns: a pull request by id, the hub's rows for a list of active pull requests, nothing otherwise. */
-function answer(url) {
-  const one = /\/pullRequests\/(\d+)$/.exec(url.pathname);
-  if (one) return PULL_REQUESTS.find((p) => p.pullRequestId === Number(one[1])) ?? PULL_REQUEST;
-  if (/\/pullrequests$/i.test(url.pathname) && url.searchParams.get("searchCriteria.status") === "1") return PULL_REQUESTS;
-  return [];
+/**
+ * What the stub returns for a REST call: a pull request by id, the hub's rows for a list of active pull requests,
+ * a pull request's one update, that update's changes, the blobs, or an empty list.
+ */
+function restAnswer(method, url) {
+  const { pathname } = url;
+  const json = (value) => ({ type: "application/json", body: JSON.stringify(value) });
+  const one = /\/pullRequests\/(\d+)$/.exec(pathname);
+  if (one) return json(PULL_REQUESTS.find((p) => p.pullRequestId === Number(one[1])) ?? PULL_REQUEST);
+  if (/\/pullrequests$/i.test(pathname) && url.searchParams.get("searchCriteria.status") === "1") return json(PULL_REQUESTS);
+  if (/\/pullRequests\/\d+\/iterations$/.test(pathname)) return json([ITERATION]);
+  if (/\/pullRequests\/\d+\/iterations\/\d+\/changes$/.test(pathname)) return json({ changeEntries: FILES.map((f) => f.change) });
+  // POST .../blobs is the zip of the blobs named in the body (data/blobs.ts getBlobsZip), GET .../blobs/{id} one blob's bytes.
+  if (method === "POST" && /\/blobs\/?$/i.test(pathname)) return { type: "application/zip", body: BLOBS_ZIP };
+  const blob = /\/blobs\/([^/]+)$/i.exec(pathname);
+  if (blob) return { type: "application/octet-stream", body: BLOB_TEXT[blob[1]] ?? "" };
+  return json([]);
 }
 
 /** A throwaway self-signed certificate (browsers speak HTTP/2 only over TLS), or null without openssl. */
@@ -269,17 +286,81 @@ const PULL_REQUESTS = [
   { ...PULL_REQUEST, pullRequestId: 472, title: "Retry failed uploads: tests", creationDate: "2026-10-21T00:00:00Z", sourceRefName: "refs/heads/retry-uploads-tests", targetRefName: PULL_REQUEST.sourceRefName },
 ];
 
+/** The pull request's one update, as GET pullRequests/{id}/iterations returns it (with its commits). */
+const ITERATION = {
+  id: 1,
+  createdDate: "2026-10-01T00:00:00Z",
+  author: PULL_REQUEST.createdBy,
+  sourceRefCommit: { commitId: "abc" },
+  commonRefCommit: { commitId: "base" },
+  commits: [{ commitId: "abc" }],
+};
+
+/** The update's two changed files (one edited, one added), as GET .../iterations/1/changes lists them, with both sides' text. */
+const FILES = [
+  {
+    change: { changeTrackingId: 1, changeType: 2, item: { path: "/src/upload.ts", objectId: "b2", originalObjectId: "b1" } },
+    before: ["export async function upload(file: Blob): Promise<void> {", "  const response = await fetch(\"/upload\", { method: \"POST\", body: file });", "  if (!response.ok) throw new Error(`Upload failed: ${response.status}`);", "}", ""].join("\n"),
+    after: ["import { retry } from \"./retry\";", "", "export async function upload(file: Blob): Promise<void> {", "  await retry(async () => {", "    const response = await fetch(\"/upload\", { method: \"POST\", body: file });", "    if (response.status >= 500) throw new Error(`Upload failed: ${response.status}`);", "  });", "}", ""].join("\n"),
+  },
+  {
+    change: { changeTrackingId: 2, changeType: 1, item: { path: "/src/retry.ts", objectId: "c2" } },
+    after: ["/** Runs `fn` again after a failure, up to three times. */", "export async function retry(fn: () => Promise<void>, times = 3): Promise<void> {", "  for (let attempt = 1; ; attempt++) {", "    try {", "      return await fn();", "    } catch (e) {", "      if (attempt >= times) throw e;", "    }", "  }", "}", ""].join("\n"),
+  },
+];
+
+/** Each blob's text by id, and the zip the blobs call returns (every blob the update touches, named by id). */
+const BLOB_TEXT = Object.fromEntries(FILES.flatMap((f) => [[f.change.item.originalObjectId, f.before], [f.change.item.objectId, f.after]]).filter(([id]) => id));
+const BLOBS_ZIP = zip(Object.entries(BLOB_TEXT).map(([name, text]) => ({ name, text })));
+
+/** A zip as Azure DevOps' blobs endpoint writes one: each entry named by its blob id, deflated. */
+function zip(entries) {
+  const parts = [];
+  const directory = [];
+  let offset = 0;
+  for (const e of entries) {
+    const name = Buffer.from(e.name);
+    const raw = Buffer.from(e.text);
+    const data = deflateRawSync(raw);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(8, 10);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(offset, 42);
+    directory.push(Buffer.concat([central, name]));
+    parts.push(local, name, data);
+    offset += local.length + name.length + data.length;
+  }
+  const dir = Buffer.concat(directory);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(dir.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, dir, end]);
+}
+
 const SCENARIOS = [
   { name: "hosted hub", path: "/host", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
   // Organization settings take a REST round trip in Azure DevOps; a warm visit's cached rows shouldn't wait for it.
   { name: "hosted hub, slow extension data", path: "/host?data=400", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
-  { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  // On the Files tab, so the diff's wait counts too (prDiff).
+  { name: "hosted PR", path: "/host?pr=471&repo=users-sdk&tab=files", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
-  { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // The same 250 to 520 ms, but each call its own. The page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
-  { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // A long discussion, so the threads and commits answer well after the small calls.
-  { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
+  { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&tab=files&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
 ];
@@ -313,7 +394,8 @@ async function open(context, origin, path, hosted) {
 
 async function measure(context, origin, scenario) {
   const { page, frame, started, waitFor } = await open(context, origin, scenario.path, scenario.host.length > 0);
-  await waitFor(scenario.frame.at(-1));
+  // Every landmark, not just the last: the diff and the buttons can land in either order.
+  for (const mark of scenario.frame) await waitFor(mark);
   const frameMarks = await frame.evaluate(() => window.frameMarks ?? {});
   const hostMarks = scenario.host.length ? await page.evaluate(() => window.marks) : { start: started };
   const start = hostMarks.start ?? started;
