@@ -126,13 +126,14 @@ export class AdoHost implements AppHost {
 
   /**
    * The REST calls, and the host's token and API lookups ahead of them, run while the page's code loads (a link
-   * straight to a PR, src/index.ts) or while the pointer moves from the hub row to its click.
+   * straight to a PR, src/index.ts, which asks for the Files tab's reads too) or while the pointer moves from the
+   * hub row to its click (the overview only: a hovered row isn't always opened).
    */
-  prefetchPr(route: Extract<Route, { view: "pr" }>): void {
+  prefetchPr(route: Extract<Route, { view: "pr" }>, options?: { files?: boolean }): void {
     // Another project's PR opens in that project's hub (navigate), which loads it itself.
     if (this.inOtherProject(route) || this.freshPrefetch(route)) return;
     const source = new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
-    source.prefetch();
+    source.prefetch(options);
     this.prefetched = { repo: route.repo, pr: route.pr, source, at: Date.now() };
   }
 

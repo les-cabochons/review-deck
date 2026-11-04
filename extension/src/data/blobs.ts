@@ -19,6 +19,12 @@ export interface BlobCache {
   put(blobs: Map<string, string>): Promise<void>;
 }
 
+/** The text of every blob asked for, by id, with where they came from. */
+export interface BlobLoad {
+  blobs: Map<string, string>;
+  stats: BlobLoadStats;
+}
+
 /** Where a load's blobs came from, for the build's log line. */
 export interface BlobLoadStats {
   cached: number;
@@ -48,7 +54,7 @@ export class BlobLoader {
   ) {}
 
   /** The text of every blob, by id. Rejects if a blob can't be read at all, as one missing side fails the diff. */
-  async load(objectIds: string[], signal?: AbortSignal): Promise<{ blobs: Map<string, string>; stats: BlobLoadStats }> {
+  async load(objectIds: string[], signal?: AbortSignal): Promise<BlobLoad> {
     const ids = [...new Set(objectIds)];
     const stats: BlobLoadStats = { cached: 0, zipped: 0, single: 0, calls: 0 };
     const blobs = await this.fromCache(ids);

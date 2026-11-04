@@ -8,8 +8,9 @@ import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker
 import { createAdoActions, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
 import { OverviewLoad, type OverviewReads, toThreads } from "./adoOverview";
 import { openBlobCache } from "./blobCache";
-import { BlobLoader } from "./blobs";
-import { type ChangeType, type FileChange, type Identity, identityImageUrl, type PrOverview, type PrSource, type PrActions, type Thread } from "./model";
+import { type BlobLoad, BlobLoader } from "./blobs";
+import { FileReads } from "./fileReads";
+import { type ChangeType, type FileChange, type Identity, identityImageUrl, latestIteration, type PrOverview, type PrSource, type PrActions, type Thread } from "./model";
 
 // VersionControlChangeType flags
 const ADD = 1;
@@ -28,6 +29,10 @@ export class AdoPrSource implements PrSource {
   private prefetched: OverviewLoad | null = null;
   /** Both sides of the changed files, from kept blobs first, then one zip call per batch (data/blobs.ts). */
   private readonly blobs: BlobLoader;
+  /** The Files tab's reads, shared between prefetch() and the build so neither is made twice (data/fileReads.ts). */
+  private readonly files: FileReads;
+  /** prefetch() starts the Files tab's reads once. */
+  private filesPrimed = false;
 
   constructor(
     private readonly projectId: string,
@@ -50,6 +55,7 @@ export class AdoPrSource implements PrSource {
       // Per organization and user, not project, because a blob's id names its content wherever it is.
       openBlobCache(`${getHost().id}/${currentUser.id}`),
     );
+    this.files = new FileReads({ changes: (iteration, compareTo) => this.readChanges(iteration, compareTo), blobs: (ids, signal) => this.blobs.load(ids, signal) });
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
       notifications: getClient(NotificationRestClient),
       mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
@@ -73,9 +79,20 @@ export class AdoPrSource implements PrSource {
     });
   }
 
-  /** Starts the first load now (src/index.ts, while the page's code loads; the hub, on hover); the next load() returns it. */
-  prefetch(): void {
-    this.prefetched ??= new OverviewLoad(this.reads);
+  /**
+   * Starts the first load now (src/index.ts, while the page's code loads; the hub, on hover); the next load() returns
+   * it. With `files`, the Files tab's reads follow as soon as the PR's updates are in (the latest update's changes
+   * against the base, then its blobs), so they overlap the page's code loading and React mounting instead of
+   * following them; the build takes them over (data/fileReads.ts). For a link straight to the PR only: a hovered
+   * hub row isn't always opened, and a zip call per hover would be too much.
+   */
+  prefetch(options: { files?: boolean } = {}): void {
+    const load = (this.prefetched ??= new OverviewLoad(this.reads));
+    if (options.files && !this.filesPrimed) {
+      this.filesPrimed = true;
+      // A load that fails is reported by load(); the build then reads for itself.
+      load.partial.then((overview) => this.files.prime(latestIteration(overview)), () => {});
+    }
   }
 
   load(onPartial?: (overview: PrOverview) => void): Promise<PrOverview> {
@@ -86,7 +103,15 @@ export class AdoPrSource implements PrSource {
     return prefetched.result(onPartial).catch(() => new OverviewLoad(this.reads).result(onPartial));
   }
 
-  async getChanges(iteration: number, compareTo: number): Promise<FileChange[]> {
+  getChanges(iteration: number, compareTo: number): Promise<FileChange[]> {
+    return this.files.getChanges(iteration, compareTo);
+  }
+
+  getBlobs(objectIds: string[], signal?: AbortSignal): Promise<BlobLoad> {
+    return this.files.getBlobs(objectIds, signal);
+  }
+
+  private async readChanges(iteration: number, compareTo: number): Promise<FileChange[]> {
     const out: FileChange[] = [];
     for (let skip = 0; ; skip += 2000) {
       const page = await this.git.getPullRequestIterationChanges(
@@ -114,10 +139,6 @@ export class AdoPrSource implements PrSource {
       if (!page.nextSkip) break;
     }
     return out.sort((a, b) => a.path.localeCompare(b.path));
-  }
-
-  getBlobs(objectIds: string[], signal?: AbortSignal) {
-    return this.blobs.load(objectIds, signal);
   }
 
   async getThreads(iteration: number, compareTo: number): Promise<Thread[]> {

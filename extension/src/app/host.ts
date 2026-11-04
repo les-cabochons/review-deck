@@ -91,9 +91,11 @@ export interface AppHost {
   prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource>;
   /**
    * Starts loading a pull request its page is about to ask for (a link straight to it, a hub row under the
-   * pointer), so the next prSource() for it has its data on the way.
+   * pointer), so the next prSource() for it has its data on the way. With `files`, the Files tab's reads too (the
+   * latest update's changes, then its blobs; data/adoSource.ts prefetch): for a link straight to the PR, not for a
+   * hovered row, which isn't always opened, and a zip call per hover would be too much.
    */
-  prefetchPr(route: Extract<Route, { view: "pr" }>): void;
+  prefetchPr(route: Extract<Route, { view: "pr" }>, options?: { files?: boolean }): void;
   setTitle(title: string): void;
   /** The backend for embeddings and LLM titles, or null for structural grouping and heuristic titles. Never rejects. */
   backendService(): Promise<BackendService | null>;
