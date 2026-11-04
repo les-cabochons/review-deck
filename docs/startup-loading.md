@@ -129,6 +129,7 @@ npm run ext:build
 npm run ext:timing                                   # all scenarios, 5 runs each
 npm run ext:timing -- --only "hosted hub" --runs 10 --latency 40
 npm run ext:timing -- --shots .cache/shots           # screenshots of the skeletons and loaded pages
+npm run ext:timing -- --check                        # a PR whose threads fail isn't kept in the browser
 npm run ext:timing -- --root .cache/baseline         # another build, e.g. main's dist copied there
 ```
 
