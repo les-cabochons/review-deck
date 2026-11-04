@@ -1,5 +1,7 @@
 import * as React from "react";
-import { type DetailScope, type PrListSource, type PrSummary, withDetails } from "../../data/list";
+import type { HubSnapshot } from "../../data/hubCache";
+import { type DetailScope, detailScope, type PrListSource, type PrSummary, withDetails } from "../../data/list";
+import { type DetailRecord, detailsDue, keptRecords, rowKey } from "./detailsDue";
 
 /** Concurrent per-PR detail requests (up to three API calls each). */
 const DETAIL_WORKERS = 6;
@@ -12,10 +14,13 @@ export interface RowDetails {
   loading: boolean;
   /** Same as `loading`, but current inside effects that run in the commit that queued the requests. */
   busy(): boolean;
-  /** Facts known from elsewhere (the PR page), applied at once. */
-  merge(id: number, extra: Partial<PrSummary>): void;
-  /** A new list arrived: everything is due again, and PRs no longer listed are forgotten. */
-  listLoaded(ids: ReadonlySet<number>): void;
+  /** Facts the PR page just loaded for a row, applied at once and counted as fetched now; `row` is the row as patched. */
+  merge(id: number, extra: Partial<PrSummary>, row: Partial<Pick<PrSummary, "reviewers" | "targetBranch">>): void;
+  /**
+   * A new list arrived: PRs no longer listed are forgotten. Details fetched less than DETAILS_FRESH_MS ago for rows
+   * that didn't change stand (`detailsDue`); with `everything` (the Refresh button) every row is due again.
+   */
+  listLoaded(rows: PrSummary[], everything: boolean): void;
   /**
    * Called each render with what's on the page: your open, non-draft PRs, and the rows in open sections in display
    * order. (Those depend on `details`, so they can't be options.)
@@ -27,20 +32,22 @@ export interface RowDetails {
  * Fetches the per-PR facts the list leaves out (checks, comment counts) where the host needs extra calls for them.
  * Your open PRs come first: their review policies decide between Approved and Waiting for review, which takes only
  * the policy call while they're off screen. Then rows near the viewport, top first, so the rest load as you scroll.
- * Rows carry `data-pr`. Details already shown stay until their refetch lands.
+ * Rows carry `data-pr`. Details already shown stay until their refetch lands, and they're only fetched again once
+ * they're DETAILS_FRESH_MS old (or the row changed), not on every list refresh.
  */
 export function useRowDetails(options: {
   source: PrListSource | null;
   active: boolean;
   container: React.RefObject<HTMLElement>;
-  initial: Map<number, Partial<PrSummary>> | undefined;
+  /** The hub's last visit: its details show at once, and count as fetched when its list was. */
+  initial: Pick<HubSnapshot, "prs" | "details" | "listedAt"> | null;
 }): RowDetails {
   const { source, active, container } = options;
   const page = React.useRef<{ own: PrSummary[]; rows: PrSummary[] }>({ own: [], rows: [] });
-  const [details, setDetails] = React.useState(() => options.initial ?? new Map<number, Partial<PrSummary>>());
-  // Fetched since the current list arrived (generation), by scope; in flight, by the generation that asked.
-  const generation = React.useRef(0);
-  const fetchedScope = React.useRef(new Map<number, DetailScope>());
+  const [details, setDetails] = React.useState(() => options.initial?.details ?? new Map<number, Partial<PrSummary>>());
+  // What each row's details were last fetched with; in flight, by the Refresh (count) that was current when asked.
+  const [fetched] = React.useState(() => (options.initial ? keptRecords(options.initial) : new Map<number, DetailRecord>()));
+  const refreshes = React.useRef(0);
   const inFlight = React.useRef(new Map<number, number>());
   const [loading, setLoading] = React.useState(false);
 
@@ -88,17 +95,20 @@ export function useRowDetails(options: {
       ...own.map((pr) => ({ pr, scope: shown.has(pr.id) && near(pr.id) ? ("full" as const) : ("review" as const) })),
       ...rows.filter((p) => near(p.id)).map((pr) => ({ pr, scope: "full" as const })),
     ];
-    const covered = (id: number, want: DetailScope) => fetchedScope.current.get(id) === "full" || fetchedScope.current.get(id) === want;
+    const now = Date.now();
     for (const { pr, scope } of wanted) {
       if (inFlight.current.size >= DETAIL_WORKERS) break;
-      if (inFlight.current.has(pr.id) || covered(pr.id, scope)) continue;
-      const asked = generation.current;
+      if (inFlight.current.has(pr.id) || !detailsDue(fetched.get(pr.id), pr, scope, now)) continue;
+      const asked = refreshes.current;
       inFlight.current.set(pr.id, asked);
       const done = (extra: Partial<PrSummary> | null) => {
         inFlight.current.delete(pr.id);
-        // A request from before the latest list still shows newer facts than the cache, but doesn't count as fetched
-        // for the new list. A failure counts as fetched, so it isn't retried in a loop; the next refresh tries again.
-        if (asked === generation.current && !covered(pr.id, scope)) fetchedScope.current.set(pr.id, extra ? scope : "full");
+        // A request from before a Refresh still shows newer facts, but the reader asked for everything anew, so it
+        // doesn't count as fetched. Nor does it replace a record that already covers this scope (the PR page's).
+        // A failure counts as a full fetch, so it isn't retried in a loop: the next Refresh, or DETAILS_FRESH_MS, tries again.
+        if (asked === refreshes.current && detailsDue(fetched.get(pr.id), pr, scope, Date.now())) {
+          fetched.set(pr.id, { scope: extra ? scope : "full", at: Date.now(), row: rowKey(pr) });
+        }
         if (extra) setDetails((m) => withDetails(m, pr.id, extra));
         fetchWantedRef.current();
       };
@@ -114,12 +124,25 @@ export function useRowDetails(options: {
     details,
     loading,
     busy: () => inFlight.current.size > 0,
-    merge: React.useCallback((id, extra) => setDetails((m) => withDetails(m, id, extra)), []),
-    listLoaded: React.useCallback((ids) => {
-      generation.current++;
-      fetchedScope.current.clear();
-      setDetails((m) => new Map([...m].filter(([id]) => ids.has(id))));
-    }, []),
+    merge: React.useCallback(
+      (id, extra, row) => {
+        fetched.set(id, { scope: detailScope(extra), at: Date.now(), row: rowKey(row) });
+        setDetails((m) => withDetails(m, id, extra));
+      },
+      [fetched],
+    ),
+    listLoaded: React.useCallback(
+      (rows, everything) => {
+        if (everything) {
+          refreshes.current++;
+          fetched.clear();
+        }
+        const ids = new Set(rows.map((p) => p.id));
+        for (const id of [...fetched.keys()]) if (!ids.has(id)) fetched.delete(id);
+        setDetails((m) => new Map([...m].filter(([id]) => ids.has(id))));
+      },
+      [fetched],
+    ),
     want: (own, rows) => {
       page.current = { own, rows };
     },
