@@ -50,7 +50,7 @@ export class OverviewLoad {
 
   constructor(reads: OverviewReads) {
     const first = Promise.all([reads.pullRequest(), reads.iterations()]);
-    // Policies can't always be read (permissions): the page shows none rather than failing.
+    // Policies can't always be read (permissions). The page shows none rather than failing.
     const details = Promise.all([reads.threads(), reads.commits(), reads.labels(), reads.workItems(), reads.policies().catch(() => [])]);
     this.partial = first.then(([pr, iterations]) => toOverview(pr, iterations, null));
     this.full = Promise.all([first, details]).then(([[pr, iterations], [threads, commits, labels, workItems, policies]]) =>

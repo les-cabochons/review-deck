@@ -95,10 +95,10 @@ const FRAME_MARKS = `(() => {
     hubReact: ".hub-toolbar input[type=search]",
     hubRows: ".pr-row",
     prSkeleton: ".review-page",
-    // The PR's page with its data: from the copy kept in this browser (data/prCache.ts), or the PR and its updates
-    // ahead of the rest (data/adoOverview.ts), or loaded.
+    // The PR's page with its data, from the copy kept in this browser (data/prCache.ts), the PR and its updates
+    // ahead of the rest (data/adoOverview.ts), or the whole load.
     prReact: ".pr-actions button",
-    // Loaded: its buttons work (they wait while the kept copy or the partial shows).
+    // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
     prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
     settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
   };
@@ -154,7 +154,7 @@ async function serve() {
 /** The REST stub's timing and failing call, from the last /host visit (see serve). */
 let apiTiming = { delay: 0, jitter: 0, heavy: 0, fail: null };
 
-/** How long the stub takes to answer a REST call: `heavy` for the threads and commits when set, else `delay`, plus up to `jitter` at random. */
+/** How long the stub takes to answer a REST call. `heavy` for the threads and commits when set, else `delay`, plus up to `jitter` at random. */
 function apiWait(pathname) {
   const base = apiTiming.heavy && /\/(threads|commits)$/.test(pathname) ? apiTiming.heavy : apiTiming.delay;
   return base + Math.random() * apiTiming.jitter;
@@ -230,9 +230,9 @@ const SCENARIOS = [
   { name: "hosted PR", path: "/host?pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
   // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
   { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
-  // The same 250 to 520 ms, but each call its own: the page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
+  // The same 250 to 520 ms, but each call its own. The page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
   { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
-  // A long discussion: the threads and commits answer well after the small calls.
+  // A long discussion, so the threads and commits answer well after the small calls.
   { name: "hosted PR, slow threads", path: "/host?pr=471&repo=users-sdk&api=300&heavy=900", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive"], host: ["handshake", "loaded"] },
   { name: "local hub", path: "/dist/review.html?local=1", frame: ["dom", "skeleton", "hubReact", "hubRows"], host: [] },
   { name: "local PR", path: "/dist/review.html?local=1&pr=471&repo=users-sdk", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: [] },
@@ -330,7 +330,7 @@ async function checkPartialNotKept(browser, origin) {
     const keptKeys = (f) => f.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("review-deck.pr.")));
     const kept = await keptKeys(frame);
     if (kept.length) throw new Error(`The partial PR was kept in this browser, in ${kept.join(", ")}`);
-    // And the whole PR is, once it loads: else the check above proves nothing.
+    // And the whole PR is, once it loads. Else the check above proves nothing.
     const whole = await open(context, origin, "/host?pr=471&repo=users-sdk", true);
     await whole.waitFor("prLive");
     if (!(await keptKeys(whole.frame)).length) throw new Error("The whole PR wasn't kept either, so this check proves nothing");
@@ -360,7 +360,7 @@ async function screenshots(browser, origin, dir) {
   await pr.page.screenshot({ path: join(dir, "2-pr-skeleton-after-handshake.png") });
   await pr.page.close();
 
-  // The PR and its updates in, the threads and commits still on their way: the page's partial state.
+  // The page's partial state, with the PR and its updates in and the threads and commits still on their way.
   const partial = await open(context, origin, "/host?pr=471&repo=users-sdk&api=300&heavy=8000", true);
   await partial.waitFor("prReact");
   await partial.page.waitForTimeout(500);

@@ -30,7 +30,7 @@ type Filter = "inbox" | SectionId;
 
 /** How long the pointer rests on a row before its PR starts loading: passing over rows on the way elsewhere doesn't. */
 const PREFETCH_DWELL_MS = 80;
-/** A kept list older than this is a starting point, not a state the reader remembers: rows that moved since don't flash. */
+/** A kept list older than this is a starting point, not a state the reader remembers, so rows that moved since don't flash. */
 const REMEMBERED_MS = 12 * 3_600_000;
 
 /** The saved set of closed sections, or the default when missing or malformed. */

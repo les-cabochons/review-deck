@@ -88,12 +88,12 @@ The harness doesn't measure the hub's hover prefetch, because its stub lists no 
 
 ## The page draws after two calls, not seven (November 3, 2026)
 
-The PR page used to leave its skeleton once all seven REST calls had answered (the PR, its updates, threads, commits, tags, work items and policies), so the slowest call set the pace. The calls are uneven: on cabochons each takes 250 to 520 ms, and the threads of a long discussion or a long list of commits take more, because the answer is big. The seven still start together, but the page now draws in two stages (`data/adoOverview.ts`):
+The PR page used to leave its skeleton once all seven REST calls had answered (the PR, its updates, threads, commits, tags, work items and policies), so the slowest call set the pace. The calls are uneven. On cabochons each takes 250 to 520 ms, and the threads of a long discussion or a long list of commits take more, because the answer is big. The seven still start together, but the page now draws in two stages (`data/adoOverview.ts`):
 
 1. Once the PR and its updates are in, the page shows the title, description, status, author, branches, reviewers and the updates in the timeline. Checks, tags, work items, the comments and votes in the timeline, and the Commits tab say they're loading. The overview is marked `partial`; it's never kept in the browser, and the buttons wait, as they do while the kept copy shows (`stale`), with the progress bar under the header. The Files tab's build starts here, from the latest update, so it no longer waits for the heavy calls either.
 2. Once the rest is in, the whole overview replaces it and the buttons work. If the rest fails, the partial page stays with a "Could not finish loading" box and a "Try again" link, as the kept copy does.
 
-Opened from the kept copy, the page skips the partial: the kept copy is complete, and the partial would take its comments away for a moment. The local mock answers at once, so it loads in one stage.
+Opened from the kept copy, the page skips the partial. The kept copy is complete, and the partial would take its comments away for a moment. The local mock answers at once, so it loads in one stage.
 
 The harness got two more PR scenarios. "Uneven REST" answers each call after 250 ms plus up to 270 ms at random (`?jitter=`), as the measured calls vary; "slow threads" answers the threads and commits after 900 ms and the rest after 300 ms (`?heavy=`), as a long discussion does. Medians of 9 cold runs (a first visit, nothing kept), in ms from navigation start; the skeleton shows at about 175 ms in all of them. `prReact` is when the page shows with its data, partial or whole, and `prLive` when the buttons work.
 
@@ -104,21 +104,21 @@ The harness got two more PR scenarios. "Uneven REST" answers each call after 250
 | PR link, uneven REST (250 to 520 ms) | 736 / 736 | 641 / 728 |
 | PR link, slow threads (300 ms; threads and commits 900 ms) | 1152 / 1152 | 562 / 1127 |
 
-With every call answering alike there's nothing to gain, and `prLive` stays where it was in every scenario: the whole still takes the slowest call. What changes is how long the skeleton stays: about 90 ms less when the calls are merely uneven, and 590 ms less when the threads are slow. The "uneven" numbers are one draw of random delays per run, so a rerun moves them by tens of milliseconds. What the real Azure DevOps calls look like on a PR with a long discussion hasn't been measured; the slow-threads scenario is the assumption this change rests on, and the partial costs nothing when it doesn't hold.
+With every call answering alike there's nothing to gain, and `prLive` stays where it was in every scenario, because the whole still takes the slowest call. What changes is how long the skeleton stays, about 90 ms less when the calls are merely uneven, and 590 ms less when the threads are slow. The "uneven" numbers are one draw of random delays per run, so a rerun moves them by tens of milliseconds. What the real Azure DevOps calls look like on a PR with a long discussion hasn't been measured; the slow-threads scenario is the assumption this change rests on, and the partial costs nothing when it doesn't hold.
 
 `npm run ext:timing -- --shots .cache/shots` now also takes `3-pr-partial.png`, the page between the two stages.
 
 ## Blobs in one call, and kept in the browser (November 3, 2026)
 
-After the overview, the Files tab's wait was the blobs: two REST calls per changed file (both sides), sixteen at a time, each 250 to 500 ms on Azure DevOps, so a 40-file PR's diff waited about two seconds and a 300-file one most of a minute. Now (`data/blobs.ts`):
+After the overview, the Files tab's wait was the blobs, with two REST calls per changed file (both sides), sixteen at a time, each 250 to 500 ms on Azure DevOps, so a 40-file PR's diff waited about two seconds and a 300-file one most of a minute. Now (`data/blobs.ts`):
 
 1. Blobs this browser read before come from IndexedDB (`data/blobCache.ts`). A blob's id is its content's hash, so a kept blob is never stale; they age out after 30 days, and a blob over 1M characters isn't kept. The cache is per organization and user, like the other caches. A PR opened again, its next update (most files unchanged) or another PR on the same base skips the reads for what it has.
 2. The rest come in one zip call per 200 blobs (`getBlobsZip`, up to four calls at once), read with the browser's `DecompressionStream`. A 40-file PR is one call.
 3. A blob the zip didn't carry is read on its own, as before. If a zip ever comes back with entries not named by blob id, zipping stops for the page and every blob is read on its own, so the worst case is one wasted call. The build's `review built` log line says how many blobs came from each source.
 
-Neither the hub cache nor the kept PR copies are involved: the cache holds file contents only. Not measured against Azure DevOps from here (no organization reachable); the expected effect follows from the call count, one round instead of files ÷ 8, and the harness's REST stub has no files to time it with.
+Neither the hub cache nor the kept PR copies are involved. The cache holds file contents only. Not measured against Azure DevOps from here (no organization reachable); the expected effect follows from the call count, one round instead of files ÷ 8, and the harness's REST stub has no files to time it with.
 
-Kept hub rows and PR copies also live a month now instead of 12 hours: nothing acts on them (buttons wait for the load, the list refreshes at once), so the limit only guards a refresh that fails, and that case now says how old what's on screen is.
+Kept hub rows and PR copies also live a month now instead of 12 hours. Nothing acts on them (buttons wait for the load, the list refreshes at once), so the limit only guards a refresh that fails, and that case now says how old what's on screen is.
 
 ## Measure startup
 

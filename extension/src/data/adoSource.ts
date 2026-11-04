@@ -26,7 +26,7 @@ export class AdoPrSource implements PrSource {
   private readonly reads: OverviewReads;
   /** The load prefetch() started, for the next load(). */
   private prefetched: OverviewLoad | null = null;
-  /** Both sides of the changed files: kept blobs first, then one zip call per batch (data/blobs.ts). */
+  /** Both sides of the changed files, from kept blobs first, then one zip call per batch (data/blobs.ts). */
   private readonly blobs: BlobLoader;
 
   constructor(
@@ -47,7 +47,7 @@ export class AdoPrSource implements PrSource {
     };
     this.blobs = new BlobLoader(
       { zip: (ids) => git.getBlobsZip(ids, repositoryId, projectId), one: (id) => git.getBlobContent(repositoryId, id, projectId) },
-      // Per organization and user, not project: a blob's id names its content wherever it is.
+      // Per organization and user, not project, because a blob's id names its content wherever it is.
       openBlobCache(`${getHost().id}/${currentUser.id}`),
     );
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
