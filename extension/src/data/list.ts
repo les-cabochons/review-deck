@@ -6,6 +6,11 @@ import type { CatalogProject, CatalogRepo, ListScope, RepoCatalog } from "./repo
 export interface PrSummary {
   id: number;
   title: string;
+  /**
+   * So the PR page can draw at once from its row (hubCache.ts). Azure DevOps' list cuts it to about 400
+   * characters. It is missing from the mock list and from hubs cached before it was listed.
+   */
+  description?: string;
   repository: { id: string; name: string; projectId: string; projectName: string };
   createdBy: Identity;
   creationDate: Date;
