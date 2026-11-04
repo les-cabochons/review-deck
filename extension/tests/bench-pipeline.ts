@@ -17,8 +17,9 @@ const data = await source.load();
 const changes = await source.getChanges(data.iterations.at(-1)!.id, 0);
 const contents = new Map<string, FileContents>();
 for (const c of changes) {
-  const old = c.oldObjectId ? await source.getBlob(c.oldObjectId) : null;
-  const nu = c.newObjectId ? await source.getBlob(c.newObjectId) : null;
+  const { blobs } = await source.getBlobs([c.oldObjectId, c.newObjectId].filter((id): id is string => !!id));
+  const old = c.oldObjectId ? (blobs.get(c.oldObjectId) ?? null) : null;
+  const nu = c.newObjectId ? (blobs.get(c.newObjectId) ?? null) : null;
   contents.set(c.path, { old, new: nu, binary: false, tooLarge: false });
 }
 const texts = new Map<string, string | null>();

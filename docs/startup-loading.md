@@ -108,6 +108,18 @@ With every call answering alike there's nothing to gain, and `prLive` stays wher
 
 `npm run ext:timing -- --shots .cache/shots` now also takes `3-pr-partial.png`, the page between the two stages.
 
+## Blobs in one call, and kept in the browser (November 3, 2026)
+
+After the overview, the Files tab's wait was the blobs: two REST calls per changed file (both sides), sixteen at a time, each 250 to 500 ms on Azure DevOps, so a 40-file PR's diff waited about two seconds and a 300-file one most of a minute. Now (`data/blobs.ts`):
+
+1. Blobs this browser read before come from IndexedDB (`data/blobCache.ts`). A blob's id is its content's hash, so a kept blob is never stale; they age out after 30 days, and a blob over 1M characters isn't kept. The cache is per organization and user, like the other caches. A PR opened again, its next update (most files unchanged) or another PR on the same base skips the reads for what it has.
+2. The rest come in one zip call per 200 blobs (`getBlobsZip`, up to four calls at once), read with the browser's `DecompressionStream`. A 40-file PR is one call.
+3. A blob the zip didn't carry is read on its own, as before. If a zip ever comes back with entries not named by blob id, zipping stops for the page and every blob is read on its own, so the worst case is one wasted call. The build's `review built` log line says how many blobs came from each source.
+
+Neither the hub cache nor the kept PR copies are involved: the cache holds file contents only. Not measured against Azure DevOps from here (no organization reachable); the expected effect follows from the call count, one round instead of files ÷ 8, and the harness's REST stub has no files to time it with.
+
+Kept hub rows and PR copies also live a month now instead of 12 hours: nothing acts on them (buttons wait for the load, the list refreshes at once), so the limit only guards a refresh that fails, and that case now says how old what's on screen is.
+
 ## Measure startup
 
 Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files; on a Mac, `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.

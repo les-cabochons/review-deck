@@ -236,9 +236,9 @@ diff text ──parse──▶ files/hunks ──analyze (tree-sitter)──▶ 
    ──order (topological)──▶ groups ──titler──▶ ReviewResult
 ```
 
-Azure DevOps doesn't return unified diffs, so the extension fetches both versions of each changed file and
-diffs them in a Web Worker, then runs the pipeline there. The A–Z diff shows first, and the grouping
-replaces it when it's ready.
+Azure DevOps doesn't return unified diffs, so the extension fetches both versions of each changed file (in one
+zip call per 200 blobs, and from a cache in the browser for blobs it read before) and diffs them in a Web Worker,
+then runs the pipeline there. The A–Z diff shows first, and the grouping replaces it when it's ready.
 
 | Module | What it does |
 |---|---|

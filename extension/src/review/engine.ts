@@ -19,8 +19,6 @@ export interface ReviewModel {
 /** Git treats text containing a NUL character as binary. */
 const NUL = String.fromCharCode(0);
 const MAX_DIFF_LINES = 20_000;
-/** Parallel blob requests; Azure DevOps throttles bursts, and a huge PR can have thousands of blobs. */
-const FETCH_CONCURRENCY = 16;
 
 export interface BuildOptions {
   /** Called once the diff is ready, before the semantic analysis (slow on huge PRs) finishes; not when a saved view fits. */
@@ -56,21 +54,17 @@ export async function buildReview(
   // Read while the files download; restoreReview (in the worker) checks it still fits.
   const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
   const changes = await source.getChanges(iteration, compareTo);
+  const ids = changes.flatMap((c) => [c.oldObjectId, c.newObjectId]).filter((id): id is string => !!id);
+  const { blobs, stats: blobStats } = await source.getBlobs(ids, options.signal);
+  options.signal?.throwIfAborted();
   const contents = new Map<string, FileContents>();
-  await forEachLimited(
-    changes,
-    FETCH_CONCURRENCY,
-    async (c) => {
-      const [oldText, newText] = await Promise.all([
-        c.oldObjectId ? source.getBlob(c.oldObjectId) : Promise.resolve(null),
-        c.newObjectId ? source.getBlob(c.newObjectId) : Promise.resolve(null),
-      ]);
-      const binary = [oldText, newText].some((t) => t !== null && t.includes(NUL));
-      const lines = Math.max(countLines(oldText), countLines(newText));
-      contents.set(c.path, { old: oldText, new: newText, binary, tooLarge: lines > MAX_DIFF_LINES });
-    },
-    options.signal,
-  );
+  for (const c of changes) {
+    const oldText = c.oldObjectId ? (blobs.get(c.oldObjectId) ?? null) : null;
+    const newText = c.newObjectId ? (blobs.get(c.newObjectId) ?? null) : null;
+    const binary = [oldText, newText].some((t) => t !== null && t.includes(NUL));
+    const lines = Math.max(countLines(oldText), countLines(newText));
+    contents.set(c.path, { old: oldText, new: newText, binary, tooLarge: lines > MAX_DIFF_LINES });
+  }
   const fetchMs = Math.round(performance.now() - started);
   const comparison = { iteration, compareTo };
 
@@ -81,7 +75,7 @@ export async function buildReview(
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
   for (const warning of result.warnings) console.warn("[review-deck]", warning);
-  console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
+  console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, blobs: blobStats, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
   if (options.saved) console.info(`[review-deck] guided view: ${restored ? "reused the saved one" : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}`}`);
   if (!restored && options.saved) void options.saved.store.save(options.saved.key, packReview(result, reviewMode(backend, aiTitles)));
   return { result, changes, contents, comparison, analyzed: true };
@@ -151,17 +145,6 @@ function runAnalysis(
     };
     worker.postMessage(job);
   });
-}
-
-async function forEachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>, signal?: AbortSignal): Promise<void> {
-  let next = 0;
-  const run = async () => {
-    while (next < items.length) {
-      signal?.throwIfAborted();
-      await fn(items[next++]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
 }
 
 function countLines(text: string | null): number {
