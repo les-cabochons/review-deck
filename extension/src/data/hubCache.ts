@@ -5,7 +5,7 @@ import type { PrSkeletonHint } from "../skeletons";
 /**
  * What the hub last showed, so coming back to it, reloading, or opening it in a new tab paints at once while it
  * refreshes. Kept in memory and in localStorage, per host scope (organization, project and user), and ignored
- * once it is many hours old.
+ * once it is a month old.
  */
 export interface HubSnapshot {
   prs: PrSummary[];
@@ -29,8 +29,12 @@ export interface HubPatch {
 type SnapshotStorage = Pick<Storage, "getItem" | "setItem">;
 
 const KEY = "review-deck.hub.v1";
-/** Opened the next morning, the hub shows a skeleton rather than yesterday's inbox (and the PR page, prCache.ts, too). */
-export const MAX_AGE_MS = 12 * 3_600_000;
+/**
+ * How old a kept list (and a kept PR, prCache.ts) may be and still paint first. The refresh that follows replaces
+ * it whatever its age, and nothing acts on it meanwhile, so the limit only keeps a refresh that fails from leaving
+ * months-old rows on screen, and a project not opened in a month from starting on its last state.
+ */
+export const MAX_AGE_MS = 30 * 86_400_000;
 const browserStore = () => window.localStorage;
 
 const memory = new Map<string, HubSnapshot>();

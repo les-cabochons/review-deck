@@ -23,7 +23,7 @@ import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
 import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
 import { EMPTY_REVIEW_FORM, ReviewButton, type ReviewForm, VoteButton } from "./review/ReviewControls";
-import { Avatar, cx, IdentityNames, plural, Time } from "./util";
+import { ago, Avatar, cx, IdentityNames, plural, Time } from "./util";
 
 type TabId = "overview" | "files" | "commits";
 /** Announce finished grouping only if the A–Z preview was up this long; small PRs group almost instantly. */
@@ -51,7 +51,9 @@ export const HostLinks = React.createContext<{
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
 export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }>; source: PrSource }> = ({ host, route, source }) => {
   /** What this browser kept from opening the PR before: shown at once, while `source` loads the real thing. */
-  const [kept] = React.useState(() => readPrSnapshot(host.cacheScope, route.pr));
+  const [keptPr] = React.useState(() => readPrSnapshot(host.cacheScope, route.pr));
+  const kept = keptPr?.overview ?? null;
+  const keptAt = keptPr?.at ?? null;
   const [data, setData] = React.useState<PrOverview | null>(kept);
   /** `data` is the kept copy: changes wait for the first load, so none is made from what may be out of date. */
   const [stale, setStale] = React.useState(!!kept);
@@ -266,7 +268,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
                 {refreshError && (
                   <div className="error-box" role="alert">
-                    {data.partial ? "Could not finish loading the pull request" : "Could not refresh the pull request, so this may be out of date"}: {refreshError}{" "}
+                    {data.partial ? "Could not finish loading the pull request" : `Could not refresh the pull request, so this is as it was ${keptAt ? ago(keptAt) : "last time"}`}: {refreshError}{" "}
                     <button className="link-button" onClick={load}>
                       Try again
                     </button>

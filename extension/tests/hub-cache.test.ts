@@ -55,10 +55,10 @@ test("Given a saved hub, then a reload reads it back with dates and details inta
   assert.equal(readHubSnapshot("other", storage), null);
 });
 
-test("Given a snapshot from many hours ago, then the hub starts from a skeleton instead", () => {
+test("Given a snapshot from over a month ago, then the hub starts from a skeleton instead", () => {
   const storage = memoryStorage();
   writeHubSnapshot("s", { prs: [row(1)], details: new Map(), groups: [], listedAt: 0, selection: "{}" }, storage);
-  assert.equal(readHubSnapshot("s", storage, 13 * 3_600_000), null);
+  assert.equal(readHubSnapshot("s", storage, 31 * 86_400_000), null);
 });
 
 test("Given a cached hub row, then the PR page's skeleton shows its title, author and branches; an unknown PR only its number", () => {
