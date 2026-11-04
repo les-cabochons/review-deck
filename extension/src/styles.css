@@ -1055,6 +1055,64 @@ kbd {
   position: relative;
   padding: 8px var(--page-x) 10px;
 }
+/* The compact header (GitHub's sticky one): fixed to the top once .pr-header scrolls behind it. What else sticks on
+   the page (tab bar, files toolbar, navigator) sits under it, --pr-bar-h lower. */
+.review-page {
+  --pr-bar-h: 48px;
+}
+.pr-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--pr-bar-h);
+  box-sizing: border-box;
+  padding: 0 var(--page-x);
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s, visibility 0s 0.12s;
+}
+/* Stays up while its review panel or completion dialog is open, even back at the top of the page. */
+.pr-bar.pinned,
+.pr-bar:has(.review-panel, .modal-backdrop) {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 0.12s;
+}
+.pr-bar-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+/* Branch names give way first: they shrink faster than the title. */
+.pr-bar-branches {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.pr-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
 .pr-title-row {
   display: flex;
   align-items: flex-start;
@@ -1849,7 +1907,7 @@ kbd {
   flex-wrap: wrap;
   padding: 0 0 12px;
   position: sticky;
-  top: 0;
+  top: var(--pr-bar-h, 0px);
   background: var(--canvas);
   z-index: 3;
 }
@@ -2072,9 +2130,9 @@ kbd {
 }
 .navigator {
   position: sticky;
-  top: 48px;
+  top: calc(48px + var(--pr-bar-h, 0px));
   align-self: start;
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - 64px - var(--pr-bar-h, 0px));
   overflow: auto;
   font-size: 13px;
   background: var(--surface);
@@ -2247,9 +2305,9 @@ kbd {
 /* The slim rail that replaces the hidden file tree. It is as tall as the visible window and shows the tree again. */
 .nav-rail {
   position: sticky;
-  top: 48px;
+  top: calc(48px + var(--pr-bar-h, 0px));
   align-self: start;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 64px - var(--pr-bar-h, 0px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2333,7 +2391,7 @@ kbd {
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
   margin-bottom: 16px;
-  scroll-margin-top: 52px;
+  scroll-margin-top: calc(52px + var(--pr-bar-h, 0px));
   box-shadow: var(--shadow-card);
 }
 .group-header {
@@ -2461,7 +2519,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  scroll-margin-top: 52px;
+  scroll-margin-top: calc(52px + var(--pr-bar-h, 0px));
   background: var(--surface);
 }
 .file-card {
@@ -2618,6 +2676,9 @@ kbd {
   .overview {
     grid-template-columns: minmax(0, 1fr);
   }
+  .pr-bar-branches {
+    display: none;
+  }
   .pr-row {
     grid-template-columns: 20px 24px minmax(0, 1fr) 110px 24px 40px;
   }
@@ -2666,6 +2727,10 @@ kbd {
     flex: 1 1 100%;
     min-width: 0;
     flex-wrap: wrap;
+  }
+  /* One row: only Review stays beside the title. */
+  .pr-bar-actions > :not(.review-button) {
+    display: none;
   }
   .breadcrumb {
     flex-wrap: wrap;
@@ -3119,7 +3184,7 @@ kbd {
   .group-section,
   .hunk-card,
   .file-card {
-    scroll-margin-top: 12px;
+    scroll-margin-top: calc(12px + var(--pr-bar-h, 0px));
   }
 }
 .modal.navigator-sheet {
@@ -3681,10 +3746,14 @@ kbd {
 .group-section .hunk-card {
   background: var(--surface);
 }
-/* azure-devops-ui's sticky tab bar paints --background-color; keep it the page colour (still opaque while sticky). */
+/* azure-devops-ui's sticky tab bar paints --background-color; keep it the page colour (still opaque while sticky).
+   It sticks under the compact header. */
 .pr-tabs.bolt-tabbar,
 .pr-tabs.bolt-tabbar.sticky {
   background: var(--canvas);
+}
+.pr-tabs.bolt-tabbar.sticky {
+  top: var(--pr-bar-h, 0px);
 }
 
 /* ---------- Tags (GitHub-style labels) ---------- */
