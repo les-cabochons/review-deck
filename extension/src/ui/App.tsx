@@ -392,50 +392,94 @@ const PrHeader: React.FC<{
   const status = STATUS[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const stats = review ? diffStats(review) : null;
   const groups = review?.analyzed ? review.result.groups.filter((g) => g.kind === "semantic").length : undefined;
+  const header = React.useRef<HTMLElement>(null);
+  const bar = React.useRef<HTMLDivElement>(null);
+  const pinned = useScrolledBehind(header, bar);
+  const statusPill = (
+    <span className={cx("status-pill", status.className)}>
+      <Icon iconName={status.icon} /> {status.label}
+    </span>
+  );
   return (
-    <header className="pr-header">
-      <div className="pr-title-row">
-        <h1>
+    <>
+      <header className="pr-header" ref={header}>
+        <div className="pr-title-row">
+          <h1>
+            {pr.title} <span className="pr-id">!{pr.id}</span>
+          </h1>
+          <div className="pr-actions">
+            <ReviewButton vote={vote} />
+            <VoteButton vote={vote} />
+            <CompletionButton data={data} />
+            <PrMenu pr={pr} links={links} onToast={onToast} />
+          </div>
+        </div>
+        <div className="pr-meta">
+          {statusPill}
+          <Avatar who={pr.createdBy} size={20} />
+          <strong>{pr.createdBy.displayName}</strong>
+          <span className="muted">wants to merge</span>
+          <span className="branch">{pr.sourceBranch}</span>
+          <span className="muted">into</span>
+          <span className="branch">{pr.targetBranch}</span>
+          <span className="muted">
+            · opened <Time date={pr.creationDate} />
+          </span>
+          {stats && (
+            <span className="meta-stats">
+              {plural(stats.files, "file")} · <span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
+              {groups !== undefined && <> · {plural(groups, "concern")}</>}
+              {progress && (
+                <>
+                  {" · "}
+                  <GroupingStatus progress={progress} />
+                </>
+              )}
+            </span>
+          )}
+        </div>
+        <CompletionNotice pr={pr} />
+        {refreshing && <div className="refresh-progress" role="progressbar" aria-label="Updating pull request" />}
+      </header>
+      {/* GitHub's compact header: once the full one scrolls away, the state and the review controls stay in sight.
+          Always mounted, so a review summary being written survives scrolling back up. No ⋯ menu: it loads the
+          follow and favorite state, and the header's copy already does. */}
+      <div className={cx("pr-bar", pinned && "pinned")} ref={bar}>
+        {statusPill}
+        <span className="pr-bar-title" title={pr.title}>
           {pr.title} <span className="pr-id">!{pr.id}</span>
-        </h1>
-        <div className="pr-actions">
+        </span>
+        <span className="pr-bar-branches muted" title={`${pr.sourceBranch} into ${pr.targetBranch}`}>
+          {pr.sourceBranch} → {pr.targetBranch}
+        </span>
+        <div className="pr-bar-actions">
           <ReviewButton vote={vote} />
           <VoteButton vote={vote} />
           <CompletionButton data={data} />
-          <PrMenu pr={pr} links={links} onToast={onToast} />
         </div>
+        {refreshing && <div className="refresh-progress" role="progressbar" aria-label="Updating pull request" />}
       </div>
-      <div className="pr-meta">
-        <span className={cx("status-pill", status.className)}>
-          <Icon iconName={status.icon} /> {status.label}
-        </span>
-        <Avatar who={pr.createdBy} size={20} />
-        <strong>{pr.createdBy.displayName}</strong>
-        <span className="muted">wants to merge</span>
-        <span className="branch">{pr.sourceBranch}</span>
-        <span className="muted">into</span>
-        <span className="branch">{pr.targetBranch}</span>
-        <span className="muted">
-          · opened <Time date={pr.creationDate} />
-        </span>
-        {stats && (
-          <span className="meta-stats">
-            {plural(stats.files, "file")} · <span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
-            {groups !== undefined && <> · {plural(groups, "concern")}</>}
-            {progress && (
-              <>
-                {" · "}
-                <GroupingStatus progress={progress} />
-              </>
-            )}
-          </span>
-        )}
-      </div>
-      <CompletionNotice pr={pr} />
-      {refreshing && <div className="refresh-progress" role="progressbar" aria-label="Updating pull request" />}
-    </header>
+    </>
   );
 };
+
+/**
+ * True once `target` has scrolled up behind `bar`, the compact header fixed to the top of the page. The root is the
+ * page's own document: from a cross-origin iframe, as in Azure DevOps, the default root ignores `rootMargin`.
+ */
+function useScrolledBehind(target: React.RefObject<HTMLElement>, bar: React.RefObject<HTMLElement>): boolean {
+  const [behind, setBehind] = React.useState(false);
+  React.useEffect(() => {
+    if (!target.current || !bar.current) return;
+    const observer = new IntersectionObserver((entries) => setBehind(!entries[entries.length - 1].isIntersecting), {
+      root: document,
+      rootMargin: `-${bar.current.offsetHeight}px 0px 0px 0px`,
+    });
+    observer.observe(target.current);
+    return () => observer.disconnect();
+  }, [target, bar]);
+  return behind;
+}
 
 function diffStats(review: ReviewModel) {
   let adds = 0;

@@ -308,8 +308,8 @@ function scrollToId(id: string) {
 }
 
 /**
- * Space kept under the navigator and its rail. It matches the stylesheet's `calc(100vh - 64px)`, which is the 48px
- * sticky top plus this gap.
+ * Space kept under the navigator and its rail. It matches the stylesheet's `calc(100vh - 64px - var(--pr-bar-h))`:
+ * the 48px sticky top under the compact PR header, plus this gap.
  */
 const NAV_BOTTOM_GAP = 16;
 
