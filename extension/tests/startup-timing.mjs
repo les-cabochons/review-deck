@@ -5,6 +5,7 @@
 //   node extension/tests/startup-timing.mjs --root .cache/baseline --runs 5 --latency 40
 //   node extension/tests/startup-timing.mjs --only "local hub" --runs 10
 //   node extension/tests/startup-timing.mjs --shots .cache/shots   # screenshots of the skeletons and pages
+//   node extension/tests/startup-timing.mjs --check                # a PR that loads only in part isn't kept in the browser
 //
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
 // the scenario), the location service (REST calls go to a second server, over HTTP/2 and cross-origin with CORS
@@ -30,6 +31,7 @@ const root = resolve(args.get("root") ?? "extension");
 const runs = Number(args.get("runs") ?? 5);
 const latency = Number(args.get("latency") ?? 30);
 const shots = args.get("shots");
+const check = args.has("check");
 const only = args.get("only");
 const chrome = args.get("chrome") ?? ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"].find(existsSync);
 
@@ -112,8 +114,9 @@ const FRAME_MARKS = `(() => {
 /**
  * One origin for everything but the REST API, so the browser's storage (theme, hub cache) carries between pages.
  * /host?pr=&repo= is the fake host; ?handshake=<ms> delays its handshake and ?api=<ms> every later REST answer,
- * ?jitter=<ms> adds up to that much to each at random (Azure DevOps' answers are uneven), and ?heavy=<ms> is the
- * delay of the threads and commits calls instead (the big answers of a long discussion).
+ * ?jitter=<ms> adds up to that much to each at random (Azure DevOps' answers are uneven), ?heavy=<ms> is the
+ * delay of the threads and commits calls instead (the big answers of a long discussion), and ?fail=threads answers
+ * the threads call with a 500.
  */
 async function serve() {
   // HTTP/1.1 would queue the page's REST calls six at a time, which dev.azure.com's HTTP/2 doesn't.
@@ -125,7 +128,7 @@ async function serve() {
     const url = new URL(req.url, "http://x");
     if (url.pathname === "/host") {
       const number = (name) => Number(url.searchParams.get(name) ?? 0);
-      apiTiming = { delay: number("api"), jitter: number("jitter"), heavy: number("heavy") };
+      apiTiming = { delay: number("api"), jitter: number("jitter"), heavy: number("heavy"), fail: url.searchParams.get("fail") };
     }
     if (url.pathname.startsWith("/api/")) return answerApi(req, res);
     setTimeout(() => {
@@ -148,8 +151,8 @@ async function serve() {
   return { origin: `http://127.0.0.1:${server.address().port}`, close: () => (server.close(), api?.close()) };
 }
 
-/** The REST stub's timing, from the last /host visit (see serve). */
-let apiTiming = { delay: 0, jitter: 0, heavy: 0 };
+/** The REST stub's timing and failing call, from the last /host visit (see serve). */
+let apiTiming = { delay: 0, jitter: 0, heavy: 0, fail: null };
 
 /** How long the stub takes to answer a REST call: `heavy` for the threads and commits when set, else `delay`, plus up to `jitter` at random. */
 function apiWait(pathname) {
@@ -171,6 +174,10 @@ function answerApi(req, res) {
     if (req.method === "OPTIONS") {
       res.writeHead(204, cors);
       return res.end();
+    }
+    if (apiTiming.fail && pathname.endsWith(`/${apiTiming.fail}`)) {
+      res.writeHead(500, { ...cors, "content-type": "application/json" });
+      return res.end(JSON.stringify({ message: "Failed by the harness" }));
     }
     res.writeHead(200, { ...cors, "content-type": "application/json" });
     res.end(JSON.stringify(/\/pullRequests\/\d+$/.test(pathname) ? PULL_REQUEST : []));
@@ -285,6 +292,10 @@ async function main() {
       await screenshots(browser, origin, shots);
       return;
     }
+    if (check) {
+      await checkPartialNotKept(browser, origin);
+      return;
+    }
     console.log(`root ${root}\n${runs} runs per scenario, ${latency} ms added to every response (REST: 0 ms unless the scenario says). Medians, ms from navigation start.\n`);
     for (const scenario of SCENARIOS) {
       if (only && !scenario.name.includes(only)) continue;
@@ -303,6 +314,29 @@ async function main() {
   } finally {
     await browser.close();
     close();
+  }
+}
+
+/**
+ * A PR whose threads can't be read. The page shows the PR and its updates with an error, and keeps none of it in
+ * this browser (data/prCache.ts), so the next open doesn't show the partial copy as the whole PR.
+ */
+async function checkPartialNotKept(browser, origin) {
+  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  try {
+    // The threads fail after the PR and its updates land, so the partial shows first.
+    const { frame } = await open(context, origin, "/host?pr=471&repo=users-sdk&api=100&heavy=600&fail=threads", true);
+    await frame.getByText("Could not finish loading the pull request").waitFor({ timeout: 20_000 });
+    const keptKeys = (f) => f.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("review-deck.pr.")));
+    const kept = await keptKeys(frame);
+    if (kept.length) throw new Error(`The partial PR was kept in this browser, in ${kept.join(", ")}`);
+    // And the whole PR is, once it loads: else the check above proves nothing.
+    const whole = await open(context, origin, "/host?pr=471&repo=users-sdk", true);
+    await whole.waitFor("prLive");
+    if (!(await keptKeys(whole.frame)).length) throw new Error("The whole PR wasn't kept either, so this check proves nothing");
+    console.log("A partial PR is not kept in the browser, the whole PR is.");
+  } finally {
+    await context.close();
   }
 }
 

@@ -96,10 +96,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setStale(false);
     setRefreshError(null);
   };
-  /** The PR and its updates, in ahead of the rest (PrOverview.partial): shown like the kept copy, with changes waiting. */
+  /**
+   * The PR and its updates, in ahead of the rest (PrOverview.partial). Shown like the kept copy, with changes waiting.
+   * Stale goes first: React 16 renders each update of a promise callback on its own, and a render with the partial
+   * and stale still false would enable the buttons and keep the partial in this browser.
+   */
   const partial = (p: PrOverview) => {
-    setData(p);
     setStale(true);
+    setData(p);
     setSelection((s) => (s.iteration === 0 ? latestComparison(p) : s));
   };
   const load = () => {
@@ -123,9 +127,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   React.useEffect(load, [source]);
 
   // After opening the PR and after every change made here (votes, reviewers, tags), so the hub shows it in its new
-  // section straight away when you go back, and the next open of this PR paints it at once.
+  // section straight away when you go back, and the next open of this PR paints it at once. Never a partial, which
+  // would show as the whole PR next time.
   React.useEffect(() => {
-    if (!data || stale) return;
+    if (!data || stale || data.partial) return;
     rememberPr(host.cacheScope, hubPatch(data));
     writePrSnapshot(host.cacheScope, data);
   }, [host, data, stale]);
