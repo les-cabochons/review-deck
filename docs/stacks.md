@@ -30,7 +30,10 @@ The default is `main` and `master`. Matching is case-insensitive, like Azure Dev
 - **Hub:** a `2/4` chip on stacked PRs, orange when the last auto-restack failed.
 - A layer whose target branch has no open PR (its parent merged or was abandoned) is flagged.
 
-Stacks are computed from the project's open PRs (`src/stack/stacks.ts`), so they need no setup.
+Stacks are computed from the repository's open PRs (`src/stack/stacks.ts`), so they need no setup. The PR page
+takes them from the hub's kept list when it was listed within the last five minutes and covers the PR's
+repository (the case when the PR was opened from a hub row), and lists the project itself otherwise
+(`extension/src/data/hubCache.ts`, `listAroundPr`).
 
 ## Auto-restack
 

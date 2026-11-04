@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { hubPatch, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
+import { hubPatch, listAroundPr, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, STACK_FROM_LIST_MS, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
 import { policyFacts, type PrSummary, sectionOf } from "../src/data/list";
 import type { Identity, PrOverview } from "../src/data/model";
 
@@ -97,6 +97,26 @@ test("Given a PR completed from its page, then it moves to Recently completed wi
   const [done] = withRecentPatches("s", [pr], 0);
   assert.equal(sectionOf(done, me), "completed");
   assert.equal(done.closedDate?.getTime(), 1000);
+});
+
+test("Given a list of the PR's project kept minutes ago, then the PR page finds its stack in it; a list of another repository, of favorites, or without the PR sends it to the API", () => {
+  const inRepo = (id: number) => row(id, { repository: { id: "r", name: "repo", projectId: "p", projectName: "p" } });
+  const snap = (selection: object, prs = [inRepo(7), inRepo(8)], listedAt = 10_000) => ({ prs, details: new Map(), groups: [], listedAt, selection: JSON.stringify(selection) });
+  const now = 10_000 + 60_000;
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["p"], repos: [] }), 7, now)?.prs.length, 2);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: [], repos: ["r"] }), 7, now)?.prs.length, 2);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: [], repos: [] }), 7, now)?.prs.length, 2); // every project
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["other"], repos: ["other-repo"] }), 7, now), null);
+  assert.equal(listAroundPr(snap({ favorites: true, projects: [], repos: [] }), 7, now), null);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["p"], repos: [] }), 9, now), null);
+  assert.equal(listAroundPr({ ...snap({}), selection: "{not json" }, 7, now), null);
+  assert.equal(listAroundPr(null, 7, now), null);
+});
+
+test("Given a kept list older than STACK_FROM_LIST_MS, then the PR page asks the API for its stack", () => {
+  const snap = { prs: [row(7)], details: new Map(), groups: [], listedAt: 10_000, selection: JSON.stringify({ favorites: false, projects: [], repos: [] }) };
+  assert.ok(listAroundPr(snap, 7, 10_000 + STACK_FROM_LIST_MS - 1));
+  assert.equal(listAroundPr(snap, 7, 10_000 + STACK_FROM_LIST_MS), null);
 });
 
 test("Given policy evaluations, then builds give checks and blocking reviewer policies give the review policy", () => {
