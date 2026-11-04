@@ -47,7 +47,7 @@ const COMMITS = [{ commitId: "abc", comment: "Retry on 5xx", author: { name: "An
 
 const POLICIES = [{ evaluationId: "e1", status: 2, configuration: { isBlocking: true, type: { displayName: "Build" }, settings: {} } }] as unknown as PolicyEvaluationRecord[];
 
-/** The seven reads, answered by the test: `first` are the PR and its updates, `rest` everything else. */
+/** The seven reads, answered by the test. `first` are the PR and its updates, `rest` everything else. */
 function stub() {
   const pending = {
     pullRequest: deferred<GitPullRequest>(),

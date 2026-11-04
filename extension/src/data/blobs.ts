@@ -28,7 +28,7 @@ export interface BlobLoadStats {
   calls: number;
 }
 
-/** Blob ids per zip call: a batch of source files stays a few MB, and a huge PR makes several calls at once. */
+/** Blob ids per zip call. A batch of source files stays a few MB, and a huge PR makes several calls at once. */
 const ZIP_BATCH = 200;
 const ZIP_CONCURRENCY = 4;
 /** Single reads in flight at once; Azure DevOps throttles bursts. */
@@ -36,7 +36,7 @@ const SINGLE_CONCURRENCY = 16;
 
 /**
  * Whether the zip's entries could be matched to blob ids. If a zip ever comes back with entries named some other
- * way, zipping stops for the rest of the page: every blob would fall back to its own call, and the zip call would
+ * way, zipping stops for the rest of the page. Every blob would fall back to its own call, and the zip call would
  * only add to the wait.
  */
 let zipUsable = true;
@@ -121,7 +121,7 @@ export function resetZipUsable(): void {
   zipUsable = true;
 }
 
-/** A zip entry's name as a blob id: without folders or an extension, in lower case, as ids are. */
+/** A zip entry's name as a blob id, without folders or an extension and in lower case, as ids are. */
 function entryKey(name: string): string {
   return name.split("/").pop()!.replace(/\.[^.]*$/, "").toLowerCase();
 }

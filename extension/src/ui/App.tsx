@@ -98,7 +98,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   };
   /**
    * The PR and its updates, in ahead of the rest (PrOverview.partial). Shown like the kept copy, with changes waiting.
-   * Stale goes first: React 16 renders each update of a promise callback on its own, and a render with the partial
+   * Stale goes first. React 16 renders each update of a promise callback on its own, and a render with the partial
    * and stale still false would enable the buttons and keep the partial in this browser.
    */
   const partial = (p: PrOverview) => {
@@ -117,8 +117,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         setSelection((s) => (sameComparison(s, latestComparison(kept)) && !sameComparison(s, latest) ? latest : s));
       },
       (e: Error) => {
-        // Nothing on screen to keep: the page's error. The kept copy or the partial stays, marked, unless a load since
-        // (a poll while completing) made the page current.
+        // With nothing on screen to keep, the page shows the error. The kept copy or the partial stays, marked, unless
+        // a load since (a poll while completing) made the page current.
         if (!dataNow.current) setError(e.message);
         else if (staleNow.current) setRefreshError(e.message);
       },

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { deflateRawSync } from "node:zlib";
 import { type BlobCache, BlobLoader, type BlobReads, resetZipUsable, unzip } from "../src/data/blobs";
 
-/** A zip as Azure DevOps' blobs endpoint writes one: each entry named by its blob id, stored or deflated. */
+/** A zip as Azure DevOps' blobs endpoint writes one, each entry named by its blob id, stored or deflated. */
 function zip(entries: { name: string; text: string; stored?: boolean }[]): ArrayBuffer {
   const parts: Buffer[] = [];
   const directory: Buffer[] = [];

@@ -14,7 +14,7 @@ const VERSION = 1;
  * once a month.
  */
 const MAX_AGE_MS = 30 * 86_400_000;
-/** A blob longer than this (a bundle, a lockfile) isn't kept: one would take the room of hundreds of sources. */
+/** A blob longer than this (a bundle, a lockfile) isn't kept. One would take the room of hundreds of sources. */
 const MAX_CHARS = 1_000_000;
 
 interface Record {
@@ -57,7 +57,7 @@ class IndexedDbBlobCache implements BlobCache {
     const store = transaction.objectStore(STORE);
     const at = Date.now();
     for (const [id, text] of blobs) if (text.length <= MAX_CHARS) store.put({ key: this.key(id), text, at } satisfies Record);
-    // Once per page: drop what aged out, whoever kept it.
+    // Once per page, drop what aged out, whoever kept it.
     if (!this.pruned) {
       this.pruned = true;
       const old = store.index("at").openCursor(IDBKeyRange.upperBound(at - MAX_AGE_MS));
@@ -84,7 +84,7 @@ class IndexedDbBlobCache implements BlobCache {
       };
       opening.onsuccess = () => {
         const db = opening.result;
-        // Another tab upgrading, or the browser clearing storage: the next use opens again.
+        // Another tab upgrading, or the browser clearing storage. The next use opens again.
         db.onversionchange = () => {
           db.close();
           this.db = null;
