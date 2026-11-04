@@ -19,35 +19,52 @@ interface Shared<T> {
 /**
  * The Files tab's reads (the update's changes, then both sides of every changed file), shared between the prefetch
  * a link straight to a PR starts (`prime`, from adoSource.ts as soon as the PR's updates are in) and the build
- * (review/engine.ts buildReview, once React has mounted the page): whichever asks first starts the read, and the
- * other takes it over instead of reading again. The prefetch's reads stay until the build takes them; a build's own
- * read is forgotten once it settles. A read that failed is forgotten too, so the next ask tries again, and a build
- * cancelled while holding a read stops what's left of it, as nobody else will take it.
+ * (review/engine.ts buildReview, once React has mounted the page). The prefetch's reads stay until the build takes
+ * them over instead of reading again. The build's own reads are forgotten once they settle, and the prefetch starts
+ * nothing the build has asked for already: opened from a kept copy, the build is ahead of the prefetch, and its reads
+ * may be done by the time the PR's updates land. A read that failed is forgotten too, so the next ask tries again.
+ * A build cancelled while holding a read stops what's left of it, as nobody else will take it; cancelled between
+ * its two reads, it stops the blobs read primed for it too.
  */
 export class FileReads {
   private readonly changes = new Map<string, Shared<FileChange[]>>();
   private readonly blobs = new Map<string, Shared<BlobLoad>>();
+  /** What a build has asked for so far: it holds the read or has it, so the prefetch adds nothing to it. */
+  private readonly asked = new Set<string>();
 
   constructor(private readonly source: FileReadsSource) {}
 
   /** Starts the reads for update `iteration` against the PR's base, for the build that will ask for them. A failure is left for it to report. */
   prime(iteration: number): void {
-    this.share(this.changes, changesKey(iteration, 0), () => this.source.changes(iteration, 0), true)
+    const key = changesKey(iteration, 0);
+    if (this.asked.has(key)) return;
+    this.share(this.changes, key, () => this.source.changes(iteration, 0), true)
       .then((changes) => {
         const ids = blobIds(changes);
-        return this.share(this.blobs, blobsKey(ids), (signal) => this.source.blobs(ids, signal), true);
+        const blobs = blobsKey(ids);
+        if (this.asked.has(blobs)) return;
+        return this.share(this.blobs, blobs, (signal) => this.source.blobs(ids, signal), true);
       })
       .catch(() => {});
   }
 
   getChanges(iteration: number, compareTo: number): Promise<FileChange[]> {
-    return this.share(this.changes, changesKey(iteration, compareTo), () => this.source.changes(iteration, compareTo), false);
+    const key = changesKey(iteration, compareTo);
+    this.asked.add(key);
+    return this.share(this.changes, key, () => this.source.changes(iteration, compareTo), false);
   }
 
   async getBlobs(objectIds: string[], signal?: AbortSignal): Promise<BlobLoad> {
-    // A build cancelled between its two reads: nothing to start, and a prefetched read stays for the next build.
-    signal?.throwIfAborted();
-    return this.share(this.blobs, blobsKey(objectIds), (s) => this.source.blobs(objectIds, s), false, signal);
+    const key = blobsKey(objectIds);
+    this.asked.add(key);
+    if (signal?.aborted) {
+      // A build cancelled between its two reads (the page left while the changes were on their way) starts nothing,
+      // and the blobs read primed for it stops: nobody else will take it.
+      const primed = this.blobs.get(key);
+      if (primed) stop(this.blobs, key, primed);
+      throw signal.reason;
+    }
+    return this.share(this.blobs, key, (s) => this.source.blobs(objectIds, s), false, signal);
   }
 
   /**
@@ -68,18 +85,16 @@ export class FileReads {
     }
     if (signal) {
       const held = entry;
-      // Nobody else will take it once the build that holds it is cancelled: it leaves the shared reads and stops.
-      signal.addEventListener(
-        "abort",
-        () => {
-          if (shared.get(key) === held) shared.delete(key);
-          held.controller.abort();
-        },
-        { once: true },
-      );
+      signal.addEventListener("abort", () => stop(shared, key, held), { once: true });
     }
     return entry.promise;
   }
+}
+
+/** `entry` leaves the shared reads and stops: the build it was for is cancelled, and nobody else will take it. */
+function stop<T>(shared: Map<string, Shared<T>>, key: string, entry: Shared<T>): void {
+  if (shared.get(key) === entry) shared.delete(key);
+  entry.controller.abort();
 }
 
 /** Both sides of every changed file, as the build reads them (review/engine.ts). */

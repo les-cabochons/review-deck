@@ -123,7 +123,7 @@ test("Given a build cancelled while holding a read, then what's left of the read
   void s.reads.getBlobs(IDS);
   assert.equal(s.blobs.length, 2);
 
-  // A build's own read, cancelled before anyone took it, isn't handed to the prefetch either.
+  // A build's own read, cancelled before anyone took it, isn't handed to the prefetch, which starts no other.
   const t = stub();
   const first = new AbortController();
   const own = t.reads.getBlobs(IDS, first.signal);
@@ -132,22 +132,32 @@ test("Given a build cancelled while holding a read, then what's left of the read
   t.reads.prime(2);
   t.changes[0].answer.resolve(CHANGES);
   await settle();
-  assert.equal(t.blobs.length, 2);
-  assert.equal(t.blobs[1].signal.aborted, false);
+  assert.equal(t.blobs.length, 1);
 });
 
-test("Given a build already cancelled between its two reads, then nothing starts and the prefetched blobs stay for the next build", async () => {
+test("Given the page left while the build waited for the prefetched changes, then the blobs read primed for it stops and nothing else starts", async () => {
   const s = stub();
   s.reads.prime(2);
+  const build = new AbortController();
+  // As buildReview does: the blobs right after the changes, with the build's signal.
+  const building = s.reads.getChanges(2, 0).then((changes) => s.reads.getBlobs(blobIds(changes), build.signal));
+  build.abort();
   s.changes[0].answer.resolve(CHANGES);
-  await settle();
-  const cancelled = new AbortController();
-  cancelled.abort();
-  await assert.rejects(s.reads.getBlobs(IDS, cancelled.signal), { name: "AbortError" });
+  await assert.rejects(building, { name: "AbortError" });
   assert.equal(s.blobs.length, 1);
-  assert.equal(s.blobs[0].signal.aborted, false);
+  assert.equal(s.blobs[0].signal.aborted, true);
+});
+
+test("Given a build from the kept copy whose reads are done before the PR's updates land, then the prefetch reads nothing again", async () => {
+  const s = stub();
+  const changes = s.reads.getChanges(2, 0);
+  s.changes[0].answer.resolve(CHANGES);
+  const blobs = s.reads.getBlobs(blobIds(await changes), new AbortController().signal);
   s.blobs[0].answer.resolve(LOADED);
-  assert.equal(await s.reads.getBlobs(IDS), LOADED);
+  assert.equal(await blobs, LOADED);
+  s.reads.prime(2);
+  await settle();
+  assert.equal(s.changes.length, 1);
   assert.equal(s.blobs.length, 1);
 });
 
