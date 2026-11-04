@@ -1,6 +1,6 @@
 // Normalized view model for the review page. Both the Azure DevOps REST source and the
 // offline snapshot source produce these shapes, so views never see raw REST types.
-import type { BlobLoadStats } from "./blobs";
+import type { BlobLoad } from "./blobs";
 
 export interface Identity {
   id: string;
@@ -167,6 +167,11 @@ export interface PrOverview {
   partial?: true;
 }
 
+/** The update the Files tab opens on, against the PR's base: the latest one. */
+export function latestIteration(overview: PrOverview): number {
+  return overview.iterations.at(-1)?.id ?? 1;
+}
+
 export interface NewThread {
   content: string;
   file?: ThreadFile;
@@ -223,7 +228,7 @@ export interface PrSource {
   /** Changes between iteration `compareTo` (0 = PR base) and iteration `iteration`. */
   getChanges(iteration: number, compareTo: number): Promise<FileChange[]>;
   /** The text of every blob, by id, with where they came from (data/blobs.ts). Rejects if one can't be read. */
-  getBlobs(objectIds: string[], signal?: AbortSignal): Promise<{ blobs: Map<string, string>; stats: BlobLoadStats }>;
+  getBlobs(objectIds: string[], signal?: AbortSignal): Promise<BlobLoad>;
   getThreads(iteration: number, compareTo: number): Promise<Thread[]>;
 }
 

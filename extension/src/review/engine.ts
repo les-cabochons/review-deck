@@ -1,5 +1,6 @@
 import type { ReviewResult } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
+import { blobIds } from "../data/fileReads";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 import type { BackendService } from "./backend";
@@ -53,9 +54,9 @@ export async function buildReview(
   const backend = options.backend ?? null;
   // Read while the files download; restoreReview (in the worker) checks it still fits.
   const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
+  // On a link straight to the PR, both reads may already be under way (data/fileReads.ts): these then take them over.
   const changes = await source.getChanges(iteration, compareTo);
-  const ids = changes.flatMap((c) => [c.oldObjectId, c.newObjectId]).filter((id): id is string => !!id);
-  const { blobs, stats: blobStats } = await source.getBlobs(ids, options.signal);
+  const { blobs, stats: blobStats } = await source.getBlobs(blobIds(changes), options.signal);
   options.signal?.throwIfAborted();
   const contents = new Map<string, FileContents>();
   for (const c of changes) {

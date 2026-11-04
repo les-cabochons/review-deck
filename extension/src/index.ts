@@ -46,11 +46,11 @@ async function renderHosted() {
   // Started now, so the hub's on/off check (page.tsx, which doesn't hold up the first render) answers sooner.
   void host.organizationSettings();
   // The route is known now: a link straight to a pull request gets that page's skeleton, and its data starts
-  // loading, while the UI loads.
+  // loading, the Files tab's reads included, while the UI loads.
   const route = host.route();
   if (route.view === "pr" && isReview) {
     root.innerHTML = prSkeleton({ id: route.pr });
-    host.prefetchPr(route);
+    host.prefetchPr(route, { files: true });
   }
   const [{ renderHost }, { connectPreferences }] = await withTimeout(
     Promise.all([page, preferences]),

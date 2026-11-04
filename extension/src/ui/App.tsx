@@ -5,7 +5,7 @@ import * as React from "react";
 import type { AppHost, Route } from "../app/host";
 import { hubPatch, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
-import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
+import { type Identity, latestIteration, type PrOverview, type PrSource, type Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
 import { Breadcrumb } from "./Breadcrumb";
 import { CommitsTab } from "./CommitsTab";
@@ -354,7 +354,7 @@ type Comparison = ReviewModel["comparison"];
 
 /** The latest update against the PR's base, which the Files tab opens on; iteration 0 until the PR is known. */
 function latestComparison(data: PrOverview | null): Comparison {
-  return { iteration: data ? (data.iterations.at(-1)?.id ?? 1) : 0, compareTo: 0 };
+  return { iteration: data ? latestIteration(data) : 0, compareTo: 0 };
 }
 
 const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;
