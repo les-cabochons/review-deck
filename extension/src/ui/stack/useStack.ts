@@ -18,8 +18,8 @@ export interface StackView {
  * The stack the PR belongs to, from the project's open PRs and its trunk branch settings; null while
  * loading, when the PR isn't stacked, or if the PR list can't be read (the page works without it).
  * The open PRs come from the hub's kept list when it's fresh and covers the PR's repository (`listAroundPr`),
- * which is the case for a PR opened from a hub row, and so do the layers' details where the hub fetched them;
- * otherwise, and on `reload`, from the API.
+ * which is the case for a PR opened from a hub row; otherwise, and on `reload`, from the API. The layers' details
+ * the hub kept show first, and each layer's are fetched anyway, since nothing says how old the kept ones are.
  */
 export function useStack(host: AppHost, prId: number): StackView | null {
   const [view, setView] = React.useState<StackView | null>(null);
@@ -39,7 +39,9 @@ export function useStack(host: AppHost, prId: number): StackView | null {
       if (cancelled) return;
       if (!position) return setView(null);
       const layers = [...position.layers, ...position.children.filter((c) => !position.layers.includes(c))];
-      // The hub's details for a layer it showed are the same facts; its policy-only ones (a collapsed section) aren't enough.
+      // The layers' details the hub fetched in full show at once (its policy-only ones, for a collapsed section, aren't
+      // enough). Nothing says how old they are, since a row far down the hub's list isn't fetched again for days, so
+      // each layer's details are fetched anyway and replace them.
       const details = new Map<number, Partial<PrSummary>>();
       for (const layer of layers) {
         const known = kept?.details.get(layer.id);
@@ -49,12 +51,14 @@ export function useStack(host: AppHost, prId: number): StackView | null {
       setView(base);
       if (!source.details) return;
       await Promise.all(
-        layers
-          .filter((layer) => !details.has(layer.id))
-          .map(async (layer) => {
-            const extra = await source.details!(layer).catch(() => ({}));
+        layers.map(async (layer) => {
+          try {
+            const extra = await source.details!(layer);
             if (!cancelled) setView((v) => v && { ...v, details: new Map(v.details).set(layer.id, extra) });
-          }),
+          } catch {
+            // The kept facts, if any, stay on screen.
+          }
+        }),
       );
     })().catch((e: unknown) => console.warn("[review-deck] stack unavailable:", e));
     return () => {
