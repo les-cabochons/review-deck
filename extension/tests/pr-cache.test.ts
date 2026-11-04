@@ -61,22 +61,23 @@ const overview = (id: number, description = ""): PrOverview => ({
 
 test("Given a PR opened before in this browser, then opening it again reads it back as it was, dates included", () => {
   const storage = memoryStorage();
-  writePrSnapshot("s", overview(7), storage);
-  const kept = readPrSnapshot("s", 7, storage)!;
-  assert.deepEqual(kept, overview(7));
-  assert.ok(kept.threads[0].comments[0].published instanceof Date);
+  writePrSnapshot("s", overview(7), storage, 5000);
+  const kept = readPrSnapshot("s", 7, storage, 9000)!;
+  assert.deepEqual(kept.overview, overview(7));
+  assert.deepEqual(kept.at, new Date(5000));
+  assert.ok(kept.overview.threads[0].comments[0].published instanceof Date);
   // A comment that reads like a date stays text.
-  assert.equal(kept.threads[0].comments[0].content, "2026-10-02T01:00:00Z");
+  assert.equal(kept.overview.threads[0].comments[0].content, "2026-10-02T01:00:00Z");
   // Another PR, project or user: nothing kept.
   assert.equal(readPrSnapshot("s", 8, storage), null);
   assert.equal(readPrSnapshot("other", 7, storage), null);
 });
 
-test("Given a PR kept many hours ago, then it opens on the skeleton instead", () => {
+test("Given a PR kept weeks ago, then it still opens from the kept copy; a month on, it opens on the skeleton instead", () => {
   const storage = memoryStorage();
   writePrSnapshot("s", overview(7), storage, 0);
-  assert.notEqual(readPrSnapshot("s", 7, storage, 11 * 3_600_000), null);
-  assert.equal(readPrSnapshot("s", 7, storage, 13 * 3_600_000), null);
+  assert.notEqual(readPrSnapshot("s", 7, storage, 29 * 86_400_000), null);
+  assert.equal(readPrSnapshot("s", 7, storage, 31 * 86_400_000), null);
 });
 
 /** The PR items in storage, besides the index. */
@@ -102,11 +103,11 @@ test("Given large PRs, then the ones opened longest ago go once they'd pass the 
   assert.equal(items(storage).length, 3);
 });
 
-test("Given PRs kept many hours ago, then the next save deletes them from storage", () => {
+test("Given PRs kept over a month ago, then the next save deletes them from storage", () => {
   const storage = memoryStorage();
   writePrSnapshot("s", overview(1), storage, 0);
   writePrSnapshot("s", overview(2), storage, 1);
-  writePrSnapshot("s", overview(3), storage, 13 * 3_600_000);
+  writePrSnapshot("s", overview(3), storage, 31 * 86_400_000);
   assert.deepEqual(items(storage), ["review-deck.pr.v1:s:3"]);
 });
 

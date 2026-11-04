@@ -30,6 +30,8 @@ type Filter = "inbox" | SectionId;
 
 /** How long the pointer rests on a row before its PR starts loading: passing over rows on the way elsewhere doesn't. */
 const PREFETCH_DWELL_MS = 80;
+/** A kept list older than this is a starting point, not a state the reader remembers: rows that moved since don't flash. */
+const REMEMBERED_MS = 12 * 3_600_000;
 
 /** The saved set of closed sections, or the default when missing or malformed. */
 const parseCollapsed = (json: string): Set<SectionId> => {
@@ -254,8 +256,9 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const refreshing = listLoading || detailsLoading;
 
   // Rows that refreshed data moved to another section flash in place, so the change is easy to spot. Not while a
-  // first visit (nothing cached) is still filling in: those moves aren't changes the reader has seen before.
-  const [settled, setSettled] = React.useState(!!cached);
+  // first visit (nothing cached, or a list from before the reader's last look at it) is still filling in: those
+  // moves aren't changes the reader has seen before.
+  const [settled, setSettled] = React.useState(!!cached && Date.now() - cached.listedAt < REMEMBERED_MS);
   React.useEffect(() => {
     if (!settled && prs && !listLoading && !busy()) setSettled(true);
   });
@@ -412,7 +415,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
 
         {error && (
           <div className="error-box" role="alert">
-            {prs ? `Could not refresh pull requests, so these may be out of date: ${error}` : `Could not load pull requests: ${error}`}
+            {prs ? `Could not refresh pull requests, so these are as they were ${listed ? ago(new Date(listed.at)) : "last time"}: ${error}` : `Could not load pull requests: ${error}`}
           </div>
         )}
         {!prs && !error && <SkeletonSection label={scope === "organization" ? "Loading pull requests from every project…" : "Loading pull requests…"} />}

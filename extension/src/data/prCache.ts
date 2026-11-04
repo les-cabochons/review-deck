@@ -5,7 +5,7 @@ import type { PrOverview } from "./model";
  * The pull requests this browser opened last, so opening one again (from the hub, a link, or a reload) paints it at
  * once while it reloads, instead of a skeleton for the second Azure DevOps' REST calls take. One localStorage item per
  * PR and host scope (organization, project and user), and one index of them all, which keeps their total well within
- * what the browser allows: the hub's rows and pending review drafts share that storage. Ignored once many hours old,
+ * what the browser allows: the hub's rows and pending review drafts share that storage. Ignored once a month old,
  * like the hub's (hubCache.ts), and dropped at the next save.
  */
 type CacheStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -26,12 +26,18 @@ interface Entry {
   chars: number;
 }
 
-export function readPrSnapshot(scope: string, id: number, storage: () => CacheStorage = browserStore, now = Date.now()): PrOverview | null {
+/** A kept PR, with when it was kept (shown when the load that should replace it fails). */
+export interface KeptPr {
+  overview: PrOverview;
+  at: Date;
+}
+
+export function readPrSnapshot(scope: string, id: number, storage: () => CacheStorage = browserStore, now = Date.now()): KeptPr | null {
   try {
     const kept = readIndex(storage()).find((e) => e.key === entryKey(scope, id));
     if (!kept || now - kept.at >= MAX_AGE_MS) return null;
     const raw = storage().getItem(itemKey(kept.key));
-    return raw ? withDates(JSON.parse(raw) as PrOverview) : null;
+    return raw ? { overview: withDates(JSON.parse(raw) as PrOverview), at: new Date(kept.at) } : null;
   } catch {
     return null;
   }
