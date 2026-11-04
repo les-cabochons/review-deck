@@ -84,7 +84,7 @@ Medians of 9 runs, in ms from navigation start. "Cold" means a first visit; "war
 | PR link, REST at 400 ms, cold | 784 / 784 | 677 / 677 |
 | PR link, REST at 400 ms, warm | 549 / 549 | 125 / 560 |
 
-The harness doesn't measure the hub's hover prefetch, because its stub lists no pull requests. Its pull request also has no changed files, so the guided view built from the kept copy costs next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
+The harness didn't measure the hub's hover prefetch, because its stub listed no pull requests then (it lists 20 since November 4, 2026). Its pull request also has no changed files, so the guided view built from the kept copy costs next to nothing there. On a real PR, that build's REST calls (the update's changes, then file contents) start with the kept copy and run alongside the seven loads, so in Azure DevOps the warm `prLive` may land somewhat later than the table shows. Hovering rows while the wheel scrolls them under a still pointer can also start prefetches for PRs nobody opens. Each costs seven REST calls, and only after 80 ms on one row.
 
 ## The page draws after two calls, not seven (November 3, 2026)
 
@@ -120,6 +120,28 @@ Neither the hub cache nor the kept PR copies are involved. The cache holds file 
 
 Kept hub rows and PR copies also live a month now instead of 12 hours. Nothing acts on them (buttons wait for the load, the list refreshes at once), so the limit only guards a refresh that fails, and that case now says how old what's on screen is.
 
+## Fewer calls going back to the hub and opening a PR (November 4, 2026)
+
+Every REST call to Azure DevOps takes 250 to 520 ms, and the hub made a burst of them on every visit. Its rows' details (threads, policy evaluations and statuses: three calls a row, `ui/hub/rowDetails.ts`) were fetched again after every list refresh, and the hub refreshes its list each time a PR page gives way to it, so a hub of 20 rows cost 3 list calls plus 60 detail calls per return, in the way of the hover prefetch of the next PR and of that PR page's own calls, with the "Updating…" bar on for seconds. The PR page's stack bar (`ui/stack/useStack.ts`) also listed the project's active and recent PRs on every PR open, three calls, to find whether the PR sits in a stack, then fetched each layer's details, three more a layer. Now:
+
+1. A row's details are fetched again only when the last fetch is three minutes old (`DETAILS_FRESH_MS`, `ui/hub/detailsDue.ts`), when the row's reviewers, their votes or its target branch changed in the new list (its policy evaluations follow those, so a vote that just landed moves your PR to Approved at once), or when the Refresh button asked for everything. Details the PR page patched in (`rememberPr`) count as fetched then, and the hub's kept details count from when its list was fetched, so a reload within three minutes fetches none. Three minutes: a look at a PR and back costs no detail calls, a return after a review of some minutes fetches them again, and a build or a comment is at most that late on a hub in use, which Azure DevOps' own list doesn't show at all. The decision is a pure function with its own test (`tests/details-due.test.ts`).
+2. The stack bar takes the hub's kept list when it was listed within five minutes (`STACK_FROM_LIST_MS`, `data/hubCache.ts`), lists the PR, and its repository choice took in the PR's whole repository (a stack is PRs of one repository): the case for a PR opened from a hub row, where the list is as old as the stay on the hub. The layers' details the hub fetched are reused the same way. Otherwise, and on reload after a restack, the API answers as before. Five minutes rather than three because stacks change when a PR is created, retargeted or closed, far less often than what the details track. No refresh in the background when the kept list is used: the hub lists again as soon as it's shown, so the stack is at most one hub visit old, and the point is to keep those calls out of the way of the PR's own.
+
+The harness's REST stub now lists 20 pull requests for the hub (`PULL_REQUESTS`: 16 ask the user to review them, 4 are the user's own, one is stacked on the PR the PR scenarios open), returns each by id, and logs every call it answers. `npm run ext:timing -- --calls` plays the round the hub is for, hub → PR → hub → another PR → hub, in a window tall enough for all 20 rows, and counts each step's calls once it has been quiet for 600 ms. Medians of 3 rounds, the same in every round. "Warm" is a second round in the same profile, where the hub starts from its kept rows and the PRs from their kept copies.
+
+| Step | Before | After |
+| --- | --- | --- |
+| Hub, first visit (nothing kept) | 70 | 70 |
+| PR 471 (stacked) opened from its row | 19 | 10 |
+| Hub, back from the PR | 64 | 4 |
+| PR 454 (not stacked) opened from its row | 13 | 10 |
+| Hub, back from the PR | 64 | 4 |
+| Warm: hub reloaded with its kept rows | 94 | 6 |
+| Warm: PR 471 (stacked) opened from its row | 20 | 11 |
+| Warm: hub, back from the PR | 64 | 4 |
+
+The first visit's 70 are the list (3), the project picker's catalog (2), the user's teams (1) and the 20 rows' details (64: the 4 own rows are asked for their policies first, then in full). A return now costs the list and the teams; the 60 detail calls are gone, as are the stack bar's 9 on a stacked PR (3 to list, 6 for two layers' details) and 3 on one that isn't stacked. The PR page's own 10 stay: the PR, its updates, threads, commits, tags, work items and policies, its repository, the latest update's changes and the threads for the Files tab. A reload of the hub used to cost 94, the kept rows' details fetched before the list landed and the listed rows' again after. Not measured against Azure DevOps from here (no organization reachable); the counts are the same there, each call 250 to 520 ms. The hub's progress bar also used to stay on, unseen, when a details request landed while a PR page covered the hub; the round's quiet check found that, and it's fixed. The timing scenarios run against the same stub: the hosted PR ones land where the previous section measured them (medians of 5: `prReact` / `prLive` 255 / 258 ms at REST 0 ms, 564 / 1133 with slow threads), and the hosted hub, with rows to show at last, settles at 311 ms cold and 89 ms warm.
+
 ## Measure startup
 
 Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files; on a Mac, `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.
@@ -131,6 +153,7 @@ npm run ext:timing -- --only "hosted hub" --runs 10 --latency 40
 npm run ext:timing -- --shots .cache/shots           # screenshots of the skeletons and loaded pages
 npm run ext:timing -- --check                        # a PR whose threads fail isn't kept in the browser
 npm run ext:timing -- --root .cache/baseline         # another build, e.g. main's dist copied there
+npm run ext:timing -- --calls --runs 3               # REST calls per step of hub → PR → hub, not timings
 ```
 
 Measure a production build: `npm run ext:dev` rewrites `extension/dist` as an unminified development bundle, which parses markedly slower. When a landmark never appears, the harness fails with the page's text, its pending requests and console errors.
