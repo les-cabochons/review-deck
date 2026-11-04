@@ -26,8 +26,8 @@ export interface OverviewReads {
   policies(): Promise<PolicyEvaluationRecord[]>;
 }
 
-/** What the five later reads answered. */
-interface Rest {
+/** What the five later reads answered: the discussion, commits, tags, work items and checks. */
+interface OverviewDetails {
   threads: GitPullRequestCommentThread[];
   commits: GitCommitRef[];
   labels: WebApiTagDefinition[];
@@ -51,16 +51,16 @@ export class OverviewLoad {
   constructor(reads: OverviewReads) {
     const first = Promise.all([reads.pullRequest(), reads.iterations()]);
     // Policies can't always be read (permissions): the page shows none rather than failing.
-    const rest = Promise.all([reads.threads(), reads.commits(), reads.labels(), reads.workItems(), reads.policies().catch(() => [])]);
+    const details = Promise.all([reads.threads(), reads.commits(), reads.labels(), reads.workItems(), reads.policies().catch(() => [])]);
     this.partial = first.then(([pr, iterations]) => toOverview(pr, iterations, null));
-    this.full = Promise.all([first, rest]).then(([[pr, iterations], [threads, commits, labels, workItems, policies]]) =>
+    this.full = Promise.all([first, details]).then(([[pr, iterations], [threads, commits, labels, workItems, policies]]) =>
       toOverview(pr, iterations, { threads, commits, labels, workItems, policies }),
     );
     const settle = () => void (this.done = true);
     this.full.then(settle, settle);
     // A failure is reported through `full`, where it's awaited; these two share its causes.
     this.partial.catch(() => {});
-    rest.catch(() => {});
+    details.catch(() => {});
   }
 
   /** `full`, with `partial` handed to `onPartial` ahead of it, unless the load is already done (nothing to show first). */
@@ -70,8 +70,8 @@ export class OverviewLoad {
   }
 }
 
-/** The page's view of the REST answers; without `rest` (still loading) the overview is marked partial. */
-export function toOverview(pr: GitPullRequest, iterations: GitPullRequestIteration[], rest: Rest | null): PrOverview {
+/** The page's view of the REST answers; without `details` (still loading) the overview is marked partial. */
+export function toOverview(pr: GitPullRequest, iterations: GitPullRequestIteration[], details: OverviewDetails | null): PrOverview {
   const overview: PrOverview = {
     pr: {
       id: pr.pullRequestId,
@@ -90,7 +90,7 @@ export function toOverview(pr: GitPullRequest, iterations: GitPullRequestIterati
         projectName: pr.repository.project.name,
       },
       reviewers: (pr.reviewers ?? []).map((r) => ({ ...identity(r), vote: asVote(r.vote), isRequired: !!r.isRequired })),
-      labels: (rest?.labels ?? []).filter((l) => l.active !== false).map((l) => l.name),
+      labels: (details?.labels ?? []).filter((l) => l.active !== false).map((l) => l.name),
       headCommit: pr.lastMergeSourceCommit?.commitId ?? iterations.at(-1)?.sourceRefCommit.commitId ?? "",
       mergeStatus: mergeStatusFromNumber(pr.mergeStatus),
       autoCompleteSetBy: realIdentity(pr.autoCompleteSetBy),
@@ -108,18 +108,18 @@ export function toOverview(pr: GitPullRequest, iterations: GitPullRequestIterati
       baseCommit: it.commonRefCommit.commitId,
       commitIds: (it.commits ?? []).map((c) => c.commitId),
     })),
-    threads: toThreads(rest?.threads ?? []),
-    commits: (rest?.commits ?? []).map((c) => ({
+    threads: toThreads(details?.threads ?? []),
+    commits: (details?.commits ?? []).map((c) => ({
       id: c.commitId,
       message: c.comment,
       authorName: c.author?.name ?? "",
       authorEmail: c.author?.email ?? "",
       date: new Date(c.author?.date ?? Date.now()),
     })),
-    policies: (rest?.policies ?? []).map(policyStatus),
-    workItems: (rest?.workItems ?? []).map((w) => ({ id: w.id, url: w.url })),
+    policies: (details?.policies ?? []).map(policyStatus),
+    workItems: (details?.workItems ?? []).map((w) => ({ id: w.id, url: w.url })),
   };
-  if (!rest) overview.partial = true;
+  if (!details) overview.partial = true;
   return overview;
 }
 

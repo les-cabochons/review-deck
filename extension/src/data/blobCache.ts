@@ -9,7 +9,10 @@ import type { BlobCache } from "./blobs";
 const DB_NAME = "review-deck-blobs";
 const STORE = "blobs";
 const VERSION = 1;
-/** Kept this long after they were read; a blob read again is kept again. */
+/**
+ * Kept this long after it was saved. Finding a blob here doesn't renew it, so a blob read every day is read again
+ * once a month.
+ */
 const MAX_AGE_MS = 30 * 86_400_000;
 /** A blob longer than this (a bundle, a lockfile) isn't kept: one would take the room of hundreds of sources. */
 const MAX_CHARS = 1_000_000;
