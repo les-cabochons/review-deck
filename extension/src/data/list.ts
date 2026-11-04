@@ -72,6 +72,15 @@ export function detailScope(details: Partial<PrSummary>): DetailScope {
   return details.comments === undefined ? "review" : "full";
 }
 
+/** When and for what a row's details were last fetched. The hub keeps these with its details (`HubSnapshot.fetched`). */
+export interface DetailRecord {
+  scope: DetailScope;
+  /** When they landed. */
+  at: number;
+  /** `rowKey` (ui/hub/detailsDue.ts) of the row they were fetched for. */
+  row: string;
+}
+
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;

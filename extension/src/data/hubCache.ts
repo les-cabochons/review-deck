@@ -1,4 +1,4 @@
-import { activeComments, type MyGroup, policyFacts, type PrSummary, withDetails } from "./list";
+import { activeComments, type DetailRecord, type MyGroup, policyFacts, type PrSummary, withDetails } from "./list";
 import type { PrOverview } from "./model";
 import { isAll, parseSelection } from "./repoSelection";
 import type { PrSkeletonHint } from "../skeletons";
@@ -16,6 +16,8 @@ export interface HubSnapshot {
   listedAt: number;
   /** The hub's repository choice (JSON of a RepoSelection) the list was fetched for. */
   selection: string;
+  /** When each row's details were fetched (ui/hub/detailsDue.ts). Missing from snapshots saved before November 4, 2026. */
+  fetched?: Map<number, DetailRecord>;
 }
 
 /** The fields the PR page knows fresher than the hub: one row, and the facts `details` would fetch. */
@@ -83,7 +85,7 @@ export function listAroundPr(snap: HubSnapshot | null, prId: number, now = Date.
 export function writeHubSnapshot(scope: string, snap: HubSnapshot, storage: () => SnapshotStorage = browserStore): void {
   memory.set(scope, snap);
   try {
-    storage().setItem(`${KEY}:${scope}`, JSON.stringify({ ...snap, details: [...snap.details] }));
+    storage().setItem(`${KEY}:${scope}`, JSON.stringify({ ...snap, details: [...snap.details], fetched: [...(snap.fetched ?? [])] }));
   } catch {
     // Full or denied storage: the in-memory copy still covers navigation within the page.
   }
@@ -169,7 +171,7 @@ export function applyPatches(prs: PrSummary[], list: HubPatch[]): PrSummary[] {
 }
 
 function parse(raw: string): HubSnapshot | null {
-  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown; selection?: unknown };
+  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown; selection?: unknown; fetched?: unknown };
   if (!Array.isArray(json.prs) || !Array.isArray(json.details) || !Array.isArray(json.groups) || typeof json.listedAt !== "number" || typeof json.selection !== "string")
     return null;
   return {
@@ -183,6 +185,7 @@ function parse(raw: string): HubSnapshot | null {
     groups: json.groups as MyGroup[],
     listedAt: json.listedAt,
     selection: json.selection,
+    fetched: new Map(Array.isArray(json.fetched) ? (json.fetched as [number, DetailRecord][]) : []),
   };
 }
 

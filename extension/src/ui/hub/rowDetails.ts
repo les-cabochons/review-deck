@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { HubSnapshot } from "../../data/hubCache";
-import { type DetailScope, detailScope, type PrListSource, type PrSummary, withDetails } from "../../data/list";
-import { type DetailRecord, detailsDue, keptRecords, rowKey } from "./detailsDue";
+import { type DetailRecord, type DetailScope, detailScope, type PrListSource, type PrSummary, withDetails } from "../../data/list";
+import { detailsDue, keptRecords, rowKey } from "./detailsDue";
 
 /** Concurrent per-PR detail requests (up to three API calls each). */
 const DETAIL_WORKERS = 6;
@@ -10,6 +10,8 @@ const canObserve = typeof IntersectionObserver !== "undefined";
 
 export interface RowDetails {
   details: Map<number, Partial<PrSummary>>;
+  /** When each row's details were fetched, for the hub to save with them. */
+  records: ReadonlyMap<number, DetailRecord>;
   /** Some rows' details are being fetched. */
   loading: boolean;
   /** Same as `loading`, but current inside effects that run in the commit that queued the requests. */
@@ -39,8 +41,8 @@ export function useRowDetails(options: {
   source: PrListSource | null;
   active: boolean;
   container: React.RefObject<HTMLElement>;
-  /** The hub's last visit. Its details show at once, and count as fetched when its list was. */
-  initial: Pick<HubSnapshot, "prs" | "details" | "listedAt"> | null;
+  /** The hub's last visit. Its details show at once, and count as fetched when they were (`keptRecords`). */
+  initial: Pick<HubSnapshot, "details" | "fetched"> | null;
 }): RowDetails {
   const { source, active, container } = options;
   const page = React.useRef<{ own: PrSummary[]; rows: PrSummary[] }>({ own: [], rows: [] });
@@ -128,6 +130,7 @@ export function useRowDetails(options: {
 
   return {
     details,
+    records: fetched,
     loading,
     busy: () => inFlight.current.size > 0,
     merge: React.useCallback(

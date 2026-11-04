@@ -87,7 +87,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
   const main = React.useRef<HTMLElement>(null);
-  const { details, loading: detailsLoading, busy, merge, listLoaded, want } = useRowDetails({ source, active, container: main, initial: cached });
+  const { details, records, loading: detailsLoading, busy, merge, listLoaded, want } = useRowDetails({ source, active, container: main, initial: cached });
 
   const [groups, setGroups] = React.useState<MyGroup[]>(cached?.groups ?? []);
   const [trunks, setTrunks] = React.useState<string[] | null>(null);
@@ -216,9 +216,10 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   // Save what's shown for the next visit, once things settle.
   React.useEffect(() => {
     if (!prs || !listed) return;
-    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection }), 500);
+    // `records` changes along with `details`, and a copy, since the hook keeps changing its own.
+    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection, fetched: new Map(records) }), 500);
     return () => clearTimeout(timer);
-  }, [cacheScope, prs, details, groups, listed]);
+  }, [cacheScope, prs, details, groups, listed, records]);
 
   const pick = (next: RepoSelection) => {
     touched.current.add("hub.selection");

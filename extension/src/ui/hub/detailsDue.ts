@@ -1,5 +1,5 @@
 import type { HubSnapshot } from "../../data/hubCache";
-import { type DetailScope, detailScope, type PrSummary } from "../../data/list";
+import type { DetailRecord, DetailScope, PrSummary } from "../../data/list";
 
 /**
  * How long a row's fetched details (checks, comment count, review policy) stand. Every list refresh used to fetch
@@ -10,15 +10,6 @@ import { type DetailScope, detailScope, type PrSummary } from "../../data/list";
  * doesn't show at all. A vote doesn't wait that long (`rowKey`), and the Refresh button fetches everything anew.
  */
 export const DETAILS_FRESH_MS = 3 * 60_000;
-
-/** What a row's details were last fetched with. */
-export interface DetailRecord {
-  scope: DetailScope;
-  /** When they landed; the hub's kept details count from when its list was fetched. */
-  at: number;
-  /** `rowKey` of the row they were fetched for. */
-  row: string;
-}
 
 /**
  * The row facts the policy evaluations follow: the reviewers, their votes and whether they're required, and the
@@ -38,13 +29,11 @@ export function detailsDue(record: DetailRecord | undefined, pr: Pick<PrSummary,
   return now - record.at >= DETAILS_FRESH_MS;
 }
 
-/** Records for the details the hub kept from its last visit. They count as fetched when its list was, for the rows as they were then. */
-export function keptRecords(snap: Pick<HubSnapshot, "prs" | "details" | "listedAt">): Map<number, DetailRecord> {
-  const rows = new Map(snap.prs.map((p) => [p.id, p]));
-  const records = new Map<number, DetailRecord>();
-  for (const [id, details] of snap.details) {
-    const row = rows.get(id);
-    if (row) records.set(id, { scope: detailScope(details), at: snap.listedAt, row: rowKey(row) });
-  }
-  return records;
+/**
+ * Records for the details the hub kept from its last visit, as they were saved with them. A list refresh keeps the
+ * details of rows it doesn't fetch again, so the list's age says nothing about theirs. Details saved without a
+ * record (by an older version, or patched in while the hub wasn't open) have none, and are due.
+ */
+export function keptRecords(snap: Pick<HubSnapshot, "details" | "fetched">): Map<number, DetailRecord> {
+  return new Map([...(snap.fetched ?? [])].filter(([id]) => snap.details.has(id)));
 }

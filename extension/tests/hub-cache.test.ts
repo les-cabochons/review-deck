@@ -43,15 +43,17 @@ const overview = (pr: PrSummary, over: Partial<PrOverview["pr"]> = {}): PrOvervi
 
 beforeEach(() => resetHubCache());
 
-test("Given a saved hub, then a reload reads it back with dates and details intact", () => {
+test("Given a saved hub, then a reload reads it back with dates, details and when they were fetched intact", () => {
   const storage = memoryStorage();
   const restack = { state: "failed" as const, description: "conflict", date: new Date("2026-10-02T00:00:00Z") };
-  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}" }, storage);
+  const fetched = new Map([[1, { scope: "full" as const, at: 1234, row: "main" }]]);
+  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}", fetched }, storage);
   resetHubCache(); // a new page or tab: only the browser's storage survives
   const snap = readHubSnapshot("s", storage)!;
   assert.equal(snap.prs[0].creationDate.toISOString(), "2026-10-01T00:00:00.000Z");
   assert.equal(snap.details.get(1)?.restack?.date.getTime(), restack.date.getTime());
   assert.deepEqual(snap.groups, [{ id: "t", name: "Team" }]);
+  assert.deepEqual(snap.fetched, fetched);
   assert.equal(readHubSnapshot("other", storage), null);
 });
 
