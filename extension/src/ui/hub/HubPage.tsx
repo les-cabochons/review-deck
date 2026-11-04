@@ -183,7 +183,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
       .catch((e: Error) => load === latestLoad.current && setError(e.message))
       .finally(() => load === latestLoad.current && setListLoading(false));
   }, [source, scopeKey, selectionKey, cacheScope, listLoaded]);
-  /** The Refresh button: the tags, the list and every row's details anew. */
+  /** The Refresh button fetches the tags, the list and every row's details anew. */
   const load = () => {
     reloadTags();
     loadPrs(true);

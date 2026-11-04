@@ -17,7 +17,7 @@ export interface RowDetails {
   /** Facts the PR page just loaded for a row, applied at once and counted as fetched now; `row` is the row as patched. */
   merge(id: number, extra: Partial<PrSummary>, row: Partial<Pick<PrSummary, "reviewers" | "targetBranch">>): void;
   /**
-   * A new list arrived: PRs no longer listed are forgotten. Details fetched less than DETAILS_FRESH_MS ago for rows
+   * A new list arrived. PRs no longer listed are forgotten. Details fetched less than DETAILS_FRESH_MS ago for rows
    * that didn't change stand (`detailsDue`); with `everything` (the Refresh button) every row is due again.
    */
   listLoaded(rows: PrSummary[], everything: boolean): void;
@@ -39,7 +39,7 @@ export function useRowDetails(options: {
   source: PrListSource | null;
   active: boolean;
   container: React.RefObject<HTMLElement>;
-  /** The hub's last visit: its details show at once, and count as fetched when its list was. */
+  /** The hub's last visit. Its details show at once, and count as fetched when its list was. */
   initial: Pick<HubSnapshot, "prs" | "details" | "listedAt"> | null;
 }): RowDetails {
   const { source, active, container } = options;
@@ -119,7 +119,7 @@ export function useRowDetails(options: {
         source.details(pr, scope).then(done, () => done(null));
       }
     }
-    // Also while a PR page covers the hub: a request that lands meanwhile must still turn the "Updating…" bar off.
+    // Also while a PR page covers the hub, since a request that lands meanwhile must still turn the "Updating…" bar off.
     setLoading(inFlight.current.size > 0);
   };
   const fetchWantedRef = React.useRef(fetchWanted);

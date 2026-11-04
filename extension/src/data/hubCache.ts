@@ -58,17 +58,18 @@ export function readHubSnapshot(scope: string, storage: () => SnapshotStorage = 
 /**
  * How old the kept list may be and still stand in for the API on a PR page's stack bar. The hub lists again each
  * time it's shown, so a PR opened from one of its rows has a list as old as the reader's stay on the hub, mostly
- * seconds; five minutes covers a long stay, while a PR page reloaded or linked to later than that, where a layer
- * may well have merged since, asks the API as before. Stacks change when a PR is created, retargeted or closed,
+ * seconds. Five minutes covers a long stay. A PR page reloaded or linked to later than that asks the API as
+ * before, since a layer may well have merged by then. Stacks change when a PR is created, retargeted or closed,
  * far less often than what the rows' details track, so this is longer than DETAILS_FRESH_MS.
  */
 export const STACK_FROM_LIST_MS = 5 * 60_000;
 
 /**
- * The kept list, for a PR page to find `prId`'s stack in instead of listing the project again: when it was
- * listed within STACK_FROM_LIST_MS, lists the PR, and its repository choice took in the PR's whole repository
- * (a stack is PRs of one repository, src/stack/stacks.ts), so every layer is in it. Null otherwise, and the API
- * answers as before. Starred repositories aren't named in the choice, so a list of favorites doesn't vouch for one.
+ * The kept list, for a PR page to find `prId`'s stack in instead of listing the project again. It stands in when
+ * it was listed within STACK_FROM_LIST_MS, lists the PR, and its repository choice took in the PR's whole
+ * repository (a stack is PRs of one repository, src/stack/stacks.ts), so every layer is in it. Null otherwise, and
+ * the API answers as before. Starred repositories aren't named in the choice, so a list of favorites doesn't vouch
+ * for one.
  */
 export function listAroundPr(snap: HubSnapshot | null, prId: number, now = Date.now()): HubSnapshot | null {
   if (!snap || now - snap.listedAt >= STACK_FROM_LIST_MS) return null;

@@ -245,8 +245,8 @@ const PULL_REQUEST = {
 };
 
 /**
- * The hub's rows: 20 active pull requests in the project, all in sections open by default (16 ask Jordan to
- * review them, 4 are Jordan's own, waiting), among them PULL_REQUEST and one stacked on it (472), so its page
+ * The hub's rows, 20 active pull requests in the project, all in sections open by default (16 ask Jordan to
+ * review them, 4 are Jordan's own, waiting). Among them are PULL_REQUEST and one stacked on it (472), so its page
  * shows a stack and fetches its layers' details. The rows a round opens (471, 454) and 472 are the newest, so
  * they sit at the top of "Needs your review".
  */
@@ -393,13 +393,13 @@ async function checkPartialNotKept(browser, origin) {
 /**
  * The round the hub is for: the hub, a PR opened from one of its rows, the hub again, another PR (one that isn't
  * stacked), the hub again. Each step's REST calls, from the stub (preflights left out), once the step has been quiet
- * for a while: no call for 600 ms and no "Updating…" bar. `--runs` rounds, each in a fresh browser profile, so the
- * first hub visit is cold; a second round in the same profile follows, where the hub starts from its kept rows.
+ * for a while, meaning no call for 600 ms and no "Updating…" bar. `--runs` rounds, each in a fresh browser profile,
+ * so the first hub visit is cold. A second round in the same profile follows, where the hub starts from its kept rows.
  */
 async function countCalls(browser, origin) {
   const rounds = { cold: [], warm: [] };
   for (let i = 0; i < runs; i++) {
-    // Tall enough for all 20 rows: the hub fetches details for rows near the viewport, and a step that scrolled would start some.
+    // Tall enough for all 20 rows. The hub fetches details for rows near the viewport, and a step that scrolled would start some.
     const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 1400 } });
     rounds.cold.push(await hubRound(context, origin));
     rounds.warm.push(await hubRound(context, origin));
@@ -423,7 +423,7 @@ async function hubRound(context, origin) {
     const started = Date.now();
     apiLog.length = 0;
     await act();
-    // A step that lists isn't quiet before its list call: the hub shows its kept rows well before that goes out.
+    // A step that lists isn't quiet before its list call, since the hub shows its kept rows well before that goes out.
     const listed = () => !lists || apiLog.some((c) => /\/pullrequests$/i.test(c.path));
     for (;;) {
       const last = Math.max(started, apiLog.at(-1)?.at ?? 0);
@@ -448,7 +448,7 @@ async function hubRound(context, origin) {
     await frame.click(".breadcrumb button.crumb-link");
     await frame.waitForSelector(LANDMARKS.hubRows, { state: "visible" });
   };
-  // The page opens inside the step: a warm visit's cached page has its first calls out before open() returns.
+  // The page opens inside the step, since a warm visit's cached page has its first calls out before open() returns.
   await step(
     "hub, first visit",
     async () => {
@@ -465,7 +465,7 @@ async function hubRound(context, origin) {
   return steps;
 }
 
-/** "pullrequests 3, {id}/threads 20, …": the calls by what they ask for, in the order first seen. */
+/** The calls by what they ask for, in the order first seen, like "pullrequests 3, {id}/threads 20, …". */
 function breakdown(paths) {
   const counts = new Map();
   for (const p of paths) {

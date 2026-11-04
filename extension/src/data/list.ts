@@ -67,7 +67,7 @@ export function withDetails(details: ReadonlyMap<number, Partial<PrSummary>>, id
 /** "review": only what decides a PR's section (its policies). "full": also comment counts and restack status. */
 export type DetailScope = "review" | "full";
 
-/** The scope details in hand were fetched with: a full fetch (and the PR page) brings a comment count, a review one doesn't. */
+/** The scope details in hand were fetched with. A full fetch, like the PR page, brings a comment count, a review fetch doesn't. */
 export function detailScope(details: Partial<PrSummary>): DetailScope {
   return details.comments === undefined ? "review" : "full";
 }

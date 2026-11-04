@@ -3,11 +3,11 @@ import { type DetailScope, detailScope, type PrSummary } from "../../data/list";
 
 /**
  * How long a row's fetched details (checks, comment count, review policy) stand. Every list refresh used to fetch
- * them again for each row on screen, three REST calls a row, and the hub refreshes its list whenever a PR page
- * gives way to it: a hub of 20 rows cost 60 calls per return, in the way of the next PR's own calls. Three
- * minutes: a look at a PR and back costs no detail calls, a return after a review of some minutes fetches them
- * again, and a build or a comment is at most that late on a hub in use, which Azure DevOps' own list doesn't show
- * at all. A vote doesn't wait that long (`rowKey`), and the Refresh button fetches everything anew.
+ * them again for each row on screen, three REST calls a row. The hub refreshes its list whenever a PR page gives
+ * way to it, so a hub of 20 rows cost 60 calls per return, in the way of the next PR's own calls. With three
+ * minutes, a look at a PR and back costs no detail calls, and a return after a review of some minutes fetches
+ * them again. A build or a comment is at most three minutes late on a hub in use, which Azure DevOps' own list
+ * doesn't show at all. A vote doesn't wait that long (`rowKey`), and the Refresh button fetches everything anew.
  */
 export const DETAILS_FRESH_MS = 3 * 60_000;
 
@@ -38,7 +38,7 @@ export function detailsDue(record: DetailRecord | undefined, pr: Pick<PrSummary,
   return now - record.at >= DETAILS_FRESH_MS;
 }
 
-/** Records for the details the hub kept from its last visit: fetched when its list was, for the rows as they were then. */
+/** Records for the details the hub kept from its last visit. They count as fetched when its list was, for the rows as they were then. */
 export function keptRecords(snap: Pick<HubSnapshot, "prs" | "details" | "listedAt">): Map<number, DetailRecord> {
   const rows = new Map(snap.prs.map((p) => [p.id, p]));
   const records = new Map<number, DetailRecord>();
