@@ -1,5 +1,6 @@
-import { activeComments, type MyGroup, policyFacts, type PrSummary, withDetails } from "./list";
+import { activeComments, type DetailRecord, type MyGroup, policyFacts, type PrSummary, withDetails } from "./list";
 import type { PrOverview } from "./model";
+import { isAll, parseSelection } from "./repoSelection";
 import type { PrSkeletonHint } from "../skeletons";
 
 /**
@@ -15,6 +16,8 @@ export interface HubSnapshot {
   listedAt: number;
   /** The hub's repository choice (JSON of a RepoSelection) the list was fetched for. */
   selection: string;
+  /** When each row's details were fetched (ui/hub/detailsDue.ts). Missing from snapshots saved before November 4, 2026. */
+  fetched?: Map<number, DetailRecord>;
 }
 
 /** The fields the PR page knows fresher than the hub: one row, and the facts `details` would fetch. */
@@ -54,10 +57,35 @@ export function readHubSnapshot(scope: string, storage: () => SnapshotStorage = 
   return snap && now - snap.listedAt < MAX_AGE_MS ? snap : null;
 }
 
+/**
+ * How old the kept list may be and still stand in for the API on a PR page's stack bar. The hub lists again each
+ * time it's shown, so a PR opened from one of its rows has a list as old as the reader's stay on the hub, mostly
+ * seconds. Five minutes covers a long stay. A PR page reloaded or linked to later than that asks the API as
+ * before, since a layer may well have merged by then. Stacks change when a PR is created, retargeted or closed,
+ * far less often than what the rows' details track, so this is longer than DETAILS_FRESH_MS.
+ */
+export const STACK_FROM_LIST_MS = 5 * 60_000;
+
+/**
+ * The kept list, for a PR page to find `prId`'s stack in instead of listing the project again. It stands in when
+ * it was listed within STACK_FROM_LIST_MS, lists the PR, and its repository choice took in the PR's whole
+ * repository (a stack is PRs of one repository, src/stack/stacks.ts), so every layer is in it. Null otherwise, and
+ * the API answers as before. Starred repositories aren't named in the choice, so a list of favorites doesn't vouch
+ * for one.
+ */
+export function listAroundPr(snap: HubSnapshot | null, prId: number, now = Date.now()): HubSnapshot | null {
+  if (!snap || now - snap.listedAt >= STACK_FROM_LIST_MS) return null;
+  const pr = snap.prs.find((p) => p.id === prId);
+  const choice = parseSelection(snap.selection);
+  if (!pr || !choice) return null;
+  const covered = isAll(choice) || choice.projects.includes(pr.repository.projectId) || choice.repos.includes(pr.repository.id);
+  return covered ? snap : null;
+}
+
 export function writeHubSnapshot(scope: string, snap: HubSnapshot, storage: () => SnapshotStorage = browserStore): void {
   memory.set(scope, snap);
   try {
-    storage().setItem(`${KEY}:${scope}`, JSON.stringify({ ...snap, details: [...snap.details] }));
+    storage().setItem(`${KEY}:${scope}`, JSON.stringify({ ...snap, details: [...snap.details], fetched: [...(snap.fetched ?? [])] }));
   } catch {
     // Full or denied storage: the in-memory copy still covers navigation within the page.
   }
@@ -143,7 +171,7 @@ export function applyPatches(prs: PrSummary[], list: HubPatch[]): PrSummary[] {
 }
 
 function parse(raw: string): HubSnapshot | null {
-  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown; selection?: unknown };
+  const json = JSON.parse(raw) as { prs?: unknown; details?: unknown; groups?: unknown; listedAt?: unknown; selection?: unknown; fetched?: unknown };
   if (!Array.isArray(json.prs) || !Array.isArray(json.details) || !Array.isArray(json.groups) || typeof json.listedAt !== "number" || typeof json.selection !== "string")
     return null;
   return {
@@ -157,6 +185,7 @@ function parse(raw: string): HubSnapshot | null {
     groups: json.groups as MyGroup[],
     listedAt: json.listedAt,
     selection: json.selection,
+    fetched: new Map(Array.isArray(json.fetched) ? (json.fetched as [number, DetailRecord][]) : []),
   };
 }
 

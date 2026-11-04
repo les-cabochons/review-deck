@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { hubPatch, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
+import { hubPatch, listAroundPr, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, STACK_FROM_LIST_MS, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
 import { policyFacts, type PrSummary, sectionOf } from "../src/data/list";
 import type { Identity, PrOverview } from "../src/data/model";
 
@@ -43,15 +43,17 @@ const overview = (pr: PrSummary, over: Partial<PrOverview["pr"]> = {}): PrOvervi
 
 beforeEach(() => resetHubCache());
 
-test("Given a saved hub, then a reload reads it back with dates and details intact", () => {
+test("Given a saved hub, then a reload reads it back with dates, details and when they were fetched intact", () => {
   const storage = memoryStorage();
   const restack = { state: "failed" as const, description: "conflict", date: new Date("2026-10-02T00:00:00Z") };
-  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}" }, storage);
+  const fetched = new Map([[1, { scope: "full" as const, at: 1234, row: "main" }]]);
+  writeHubSnapshot("s", { prs: [row(1)], details: new Map([[1, { checks: "passing", restack }]]), groups: [{ id: "t", name: "Team" }], listedAt: Date.now(), selection: "{}", fetched }, storage);
   resetHubCache(); // a new page or tab: only the browser's storage survives
   const snap = readHubSnapshot("s", storage)!;
   assert.equal(snap.prs[0].creationDate.toISOString(), "2026-10-01T00:00:00.000Z");
   assert.equal(snap.details.get(1)?.restack?.date.getTime(), restack.date.getTime());
   assert.deepEqual(snap.groups, [{ id: "t", name: "Team" }]);
+  assert.deepEqual(snap.fetched, fetched);
   assert.equal(readHubSnapshot("other", storage), null);
 });
 
@@ -97,6 +99,26 @@ test("Given a PR completed from its page, then it moves to Recently completed wi
   const [done] = withRecentPatches("s", [pr], 0);
   assert.equal(sectionOf(done, me), "completed");
   assert.equal(done.closedDate?.getTime(), 1000);
+});
+
+test("Given a list of the PR's project kept minutes ago, then the PR page finds its stack in it; a list of another repository, of favorites, or without the PR sends it to the API", () => {
+  const inRepo = (id: number) => row(id, { repository: { id: "r", name: "repo", projectId: "p", projectName: "p" } });
+  const snap = (selection: object, prs = [inRepo(7), inRepo(8)], listedAt = 10_000) => ({ prs, details: new Map(), groups: [], listedAt, selection: JSON.stringify(selection) });
+  const now = 10_000 + 60_000;
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["p"], repos: [] }), 7, now)?.prs.length, 2);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: [], repos: ["r"] }), 7, now)?.prs.length, 2);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: [], repos: [] }), 7, now)?.prs.length, 2); // every project
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["other"], repos: ["other-repo"] }), 7, now), null);
+  assert.equal(listAroundPr(snap({ favorites: true, projects: [], repos: [] }), 7, now), null);
+  assert.equal(listAroundPr(snap({ favorites: false, projects: ["p"], repos: [] }), 9, now), null);
+  assert.equal(listAroundPr({ ...snap({}), selection: "{not json" }, 7, now), null);
+  assert.equal(listAroundPr(null, 7, now), null);
+});
+
+test("Given a kept list older than STACK_FROM_LIST_MS, then the PR page asks the API for its stack", () => {
+  const snap = { prs: [row(7)], details: new Map(), groups: [], listedAt: 10_000, selection: JSON.stringify({ favorites: false, projects: [], repos: [] }) };
+  assert.ok(listAroundPr(snap, 7, 10_000 + STACK_FROM_LIST_MS - 1));
+  assert.equal(listAroundPr(snap, 7, 10_000 + STACK_FROM_LIST_MS), null);
 });
 
 test("Given policy evaluations, then builds give checks and blocking reviewer policies give the review policy", () => {

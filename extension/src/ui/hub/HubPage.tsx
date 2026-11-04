@@ -87,7 +87,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [selected, setSelected] = React.useState(0);
   const search = React.useRef<HTMLInputElement>(null);
   const main = React.useRef<HTMLElement>(null);
-  const { details, loading: detailsLoading, busy, merge, listLoaded, want } = useRowDetails({ source, active, container: main, initial: cached?.details });
+  const { details, records, loading: detailsLoading, busy, merge, listLoaded, want } = useRowDetails({ source, active, container: main, initial: cached });
 
   const [groups, setGroups] = React.useState<MyGroup[]>(cached?.groups ?? []);
   const [trunks, setTrunks] = React.useState<string[] | null>(null);
@@ -153,7 +153,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     if (tag && tagsByKey.size && !tagsByKey.has(tagKey(tag))) setTag(null);
   }, [tag, tagsByKey]);
   const latestLoad = React.useRef(0);
-  const loadPrs = React.useCallback(() => {
+  /** Lists again; with `everything` (the Refresh button), every row's details are fetched again too. */
+  const loadPrs = React.useCallback((everything = false) => {
     if (!source || !scopeKey || !selectionKey) return;
     const load = ++latestLoad.current;
     const requestedAt = Date.now();
@@ -173,17 +174,19 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
       .then((list) => {
         // A slower answer for an earlier selection must not replace the current one.
         if (load !== latestLoad.current) return;
+        const rows = withRecentPatches(cacheScope, list, requestedAt);
         // First: React 16 renders (and may start fetching details) inside setPrs, and those belong to this list.
-        listLoaded(new Set(list.map((p) => p.id)));
-        setPrs(withRecentPatches(cacheScope, list, requestedAt));
+        listLoaded(rows, everything);
+        setPrs(rows);
         setListed({ selection: selectionKey, at: requestedAt });
       })
       .catch((e: Error) => load === latestLoad.current && setError(e.message))
       .finally(() => load === latestLoad.current && setListLoading(false));
   }, [source, scopeKey, selectionKey, cacheScope, listLoaded]);
+  /** The Refresh button fetches the tags, the list and every row's details anew. */
   const load = () => {
     reloadTags();
-    loadPrs();
+    loadPrs(true);
   };
   // A repository choice you just made: don't show the previous one's pull requests meanwhile. One that changed by
   // itself keeps the last rows until its list lands, like changed favorites: a "current" choice resolving to
@@ -205,7 +208,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     () =>
       onHubPatch(cacheScope, (patch) => {
         setPrs((list) => list && applyPatches(list, [patch]));
-        merge(patch.id, patch.details);
+        merge(patch.id, patch.details, patch.row);
       }),
     [cacheScope, merge],
   );
@@ -213,9 +216,10 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   // Save what's shown for the next visit, once things settle.
   React.useEffect(() => {
     if (!prs || !listed) return;
-    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection }), 500);
+    // `records` changes along with `details`, and a copy, since the hook keeps changing its own.
+    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection, fetched: new Map(records) }), 500);
     return () => clearTimeout(timer);
-  }, [cacheScope, prs, details, groups, listed]);
+  }, [cacheScope, prs, details, groups, listed, records]);
 
   const pick = (next: RepoSelection) => {
     touched.current.add("hub.selection");

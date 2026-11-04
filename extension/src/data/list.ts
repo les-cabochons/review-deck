@@ -67,6 +67,20 @@ export function withDetails(details: ReadonlyMap<number, Partial<PrSummary>>, id
 /** "review": only what decides a PR's section (its policies). "full": also comment counts and restack status. */
 export type DetailScope = "review" | "full";
 
+/** The scope details in hand were fetched with. A full fetch, like the PR page, brings a comment count, a review fetch doesn't. */
+export function detailScope(details: Partial<PrSummary>): DetailScope {
+  return details.comments === undefined ? "review" : "full";
+}
+
+/** When and for what a row's details were last fetched. The hub keeps these with its details (`HubSnapshot.fetched`). */
+export interface DetailRecord {
+  scope: DetailScope;
+  /** When they landed. */
+  at: number;
+  /** `rowKey` (ui/hub/detailsDue.ts) of the row they were fetched for. */
+  row: string;
+}
+
 export interface PrListSource {
   readonly kind: "ado" | "mock";
   readonly currentUser: Identity;

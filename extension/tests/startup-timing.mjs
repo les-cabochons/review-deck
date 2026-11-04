@@ -6,14 +6,15 @@
 //   node extension/tests/startup-timing.mjs --only "local hub" --runs 10
 //   node extension/tests/startup-timing.mjs --shots .cache/shots   # screenshots of the skeletons and pages
 //   node extension/tests/startup-timing.mjs --check                # a PR that loads only in part isn't kept in the browser
+//   node extension/tests/startup-timing.mjs --calls --runs 3       # REST calls per step of hub → PR → hub, not timings
 //
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
 // the scenario), the location service (REST calls go to a second server, over HTTP/2 and cross-origin with CORS
-// preflights as dev.azure.com's are, which returns one pull request, PULL_REQUEST, and an empty list for everything
-// else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server without openssl), extension
-// data (nothing stored, answered after ?data= ms) and the access token. Every other service fails, as a locked-down
-// host would. Times are milliseconds from the moment the iframe starts loading, medians over the runs, for a cold
-// browser profile and a warm one (second visit).
+// preflights as dev.azure.com's are, which lists the hub's pull requests, PULL_REQUESTS, returns one of them by id,
+// and an empty list for everything else, as the client asks for them with noArrayWrap; over HTTP/1.1 on this server
+// without openssl), extension data (nothing stored, answered after ?data= ms) and the access token. Every other
+// service fails, as a locked-down host would. Times are milliseconds from the moment the iframe starts loading,
+// medians over the runs, for a cold browser profile and a warm one (second visit).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -33,6 +34,7 @@ const latency = Number(args.get("latency") ?? 30);
 const shots = args.get("shots");
 const check = args.has("check");
 const only = args.get("only");
+const calls = args.has("calls");
 const chrome = args.get("chrome") ?? ["C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"].find(existsSync);
 
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".wasm": "application/wasm", ".woff": "font/woff", ".woff2": "font/woff2", ".png": "image/png", ".svg": "image/svg+xml", ".map": "application/json" };
@@ -87,21 +89,24 @@ function hostHtml(query, handshake, data, apiRoot) {
   </script></body></html>`;
 }
 
+/** What the page shows at each landmark. */
+const LANDMARKS = {
+  skeleton: ".skeleton-page, .inbox-section.skeleton, .page-loading",
+  hubReact: ".hub-toolbar input[type=search]",
+  hubRows: ".pr-row",
+  prSkeleton: ".review-page",
+  // The PR's page with its data, from the copy kept in this browser (data/prCache.ts), the PR and its updates
+  // ahead of the rest (data/adoOverview.ts), or the whole load.
+  prReact: ".pr-actions button",
+  // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
+  prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
+  settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
+};
+
 /** Inside every frame: when each landmark first appears, as epoch milliseconds. */
 const FRAME_MARKS = `(() => {
   const marks = (window.frameMarks = {});
-  const wanted = {
-    skeleton: ".skeleton-page, .inbox-section.skeleton, .page-loading",
-    hubReact: ".hub-toolbar input[type=search]",
-    hubRows: ".pr-row",
-    prSkeleton: ".review-page",
-    // The PR's page with its data, from the copy kept in this browser (data/prCache.ts), the PR and its updates
-    // ahead of the rest (data/adoOverview.ts), or the whole load.
-    prReact: ".pr-actions button",
-    // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
-    prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
-    settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
-  };
+  const wanted = ${JSON.stringify(LANDMARKS)};
   const check = () => {
     for (const [name, selector] of Object.entries(wanted)) if (!(name in marks) && document.querySelector(selector)) marks[name] = Date.now();
   };
@@ -160,9 +165,14 @@ function apiWait(pathname) {
   return base + Math.random() * apiTiming.jitter;
 }
 
+/** Every REST call the stub answered (preflights left out), for `--calls`. */
+const apiLog = [];
+
 /** The REST stub; answers CORS preflights as dev.azure.com does (cached for an hour), after the fixed latency. */
 function answerApi(req, res) {
-  const pathname = new URL(req.url, "http://x").pathname;
+  const url = new URL(req.url, "http://x");
+  const pathname = url.pathname;
+  if (req.method !== "OPTIONS") apiLog.push({ at: Date.now(), path: pathname });
   const wait = req.method === "OPTIONS" ? latency : apiWait(pathname);
   const cors = {
     "access-control-allow-origin": "*",
@@ -180,8 +190,16 @@ function answerApi(req, res) {
       return res.end(JSON.stringify({ message: "Failed by the harness" }));
     }
     res.writeHead(200, { ...cors, "content-type": "application/json" });
-    res.end(JSON.stringify(/\/pullRequests\/\d+$/.test(pathname) ? PULL_REQUEST : []));
+    res.end(JSON.stringify(answer(url)));
   }, wait);
+}
+
+/** What the stub returns: a pull request by id, the hub's rows for a list of active pull requests, nothing otherwise. */
+function answer(url) {
+  const one = /\/pullRequests\/(\d+)$/.exec(url.pathname);
+  if (one) return PULL_REQUESTS.find((p) => p.pullRequestId === Number(one[1])) ?? PULL_REQUEST;
+  if (/\/pullrequests$/i.test(url.pathname) && url.searchParams.get("searchCriteria.status") === "1") return PULL_REQUESTS;
+  return [];
 }
 
 /** A throwaway self-signed certificate (browsers speak HTTP/2 only over TLS), or null without openssl. */
@@ -207,21 +225,49 @@ function certificate() {
   }
 }
 
-/** The one pull request the stub API knows, as GET pullRequests/{id} returns it. */
+const JORDAN = { id: "u1", displayName: "Jordan Rivera", uniqueName: "jordan" };
+const ANA = { id: "u2", displayName: "Ana Lima", uniqueName: "ana@contoso.com" };
+
+/** The pull request the hosted PR scenarios open, as GET pullRequests/{id} returns it; Jordan (the user) is asked to review it. */
 const PULL_REQUEST = {
   pullRequestId: 471,
   title: "Retry failed uploads",
   description: "Retries uploads that fail with a 5xx.",
   status: 1,
   isDraft: false,
-  createdBy: { id: "u2", displayName: "Ana Lima", uniqueName: "ana@contoso.com" },
-  creationDate: "2026-10-01T00:00:00Z",
+  createdBy: ANA,
+  creationDate: "2026-10-20T00:00:00Z",
   sourceRefName: "refs/heads/retry-uploads",
   targetRefName: "refs/heads/main",
   repository: { id: "users-sdk", name: "users-sdk", project: { id: "p1", name: "Storefront" } },
-  reviewers: [],
+  reviewers: [{ ...JORDAN, vote: 0, isRequired: false }],
   mergeStatus: 3,
 };
+
+/**
+ * The hub's rows, 20 active pull requests in the project, all in sections open by default (16 ask Jordan to
+ * review them, 4 are Jordan's own, waiting). Among them are PULL_REQUEST and one stacked on it (472), so its page
+ * shows a stack and fetches its layers' details. The rows a round opens (471, 454) and 472 are the newest, so
+ * they sit at the top of "Needs your review".
+ */
+const PULL_REQUESTS = [
+  ...Array.from({ length: 18 }, (_, i) => {
+    const id = 453 + i;
+    const own = i % 5 === 0;
+    return {
+      ...PULL_REQUEST,
+      pullRequestId: id,
+      title: `Change ${id}`,
+      description: "",
+      createdBy: own ? JORDAN : ANA,
+      creationDate: id === 454 ? "2026-10-19T00:00:00Z" : "2026-10-01T00:00:00Z",
+      sourceRefName: `refs/heads/change-${id}`,
+      reviewers: own ? [] : PULL_REQUEST.reviewers,
+    };
+  }),
+  PULL_REQUEST,
+  { ...PULL_REQUEST, pullRequestId: 472, title: "Retry failed uploads: tests", creationDate: "2026-10-21T00:00:00Z", sourceRefName: "refs/heads/retry-uploads-tests", targetRefName: PULL_REQUEST.sourceRefName },
+];
 
 const SCENARIOS = [
   { name: "hosted hub", path: "/host", frame: ["dom", "skeleton", "hubReact", "settled"], host: ["handshake", "loaded"] },
@@ -262,7 +308,7 @@ async function open(context, origin, path, hosted) {
       );
     }
   };
-  return { page, frame, started, waitFor };
+  return { page, frame, started, waitFor, problems };
 }
 
 async function measure(context, origin, scenario) {
@@ -294,6 +340,10 @@ async function main() {
     }
     if (check) {
       await checkPartialNotKept(browser, origin);
+      return;
+    }
+    if (calls) {
+      await countCalls(browser, origin);
       return;
     }
     console.log(`root ${root}\n${runs} runs per scenario, ${latency} ms added to every response (REST: 0 ms unless the scenario says). Medians, ms from navigation start.\n`);
@@ -338,6 +388,91 @@ async function checkPartialNotKept(browser, origin) {
   } finally {
     await context.close();
   }
+}
+
+/**
+ * The round the hub is for: the hub, a PR opened from one of its rows, the hub again, another PR (one that isn't
+ * stacked), the hub again. Each step's REST calls, from the stub (preflights left out), once the step has been quiet
+ * for a while, meaning no call for 600 ms and no "Updating…" bar. `--runs` rounds, each in a fresh browser profile,
+ * so the first hub visit is cold. A second round in the same profile follows, where the hub starts from its kept rows.
+ */
+async function countCalls(browser, origin) {
+  const rounds = { cold: [], warm: [] };
+  for (let i = 0; i < runs; i++) {
+    // Tall enough for all 20 rows. The hub fetches details for rows near the viewport, and a step that scrolled would start some.
+    const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 1400 } });
+    rounds.cold.push(await hubRound(context, origin));
+    rounds.warm.push(await hubRound(context, origin));
+    await context.close();
+  }
+  console.log(`root ${root}\nREST calls per step of hub → PR → hub, ${runs} rounds each in a fresh profile (cold) and again in it (warm). Medians; a step whose rounds differ lists them.\n`);
+  for (const [label, samples] of Object.entries(rounds)) {
+    console.log(label);
+    for (const [s, step] of samples[0].entries()) {
+      const counts = samples.map((round) => round[s].calls.length);
+      const spread = new Set(counts).size > 1 ? ` (rounds: ${counts.join(", ")})` : "";
+      console.log(`  ${step.name.padEnd(36)} ${String(median(counts)).padStart(4)}${spread}   ${breakdown(samples[0][s].calls)}`);
+    }
+  }
+}
+
+async function hubRound(context, origin) {
+  let page, frame, problems;
+  const steps = [];
+  const step = async (name, act, lists = false) => {
+    const started = Date.now();
+    apiLog.length = 0;
+    await act();
+    // A step that lists isn't quiet before its list call, since the hub shows its kept rows well before that goes out.
+    const listed = () => !lists || apiLog.some((c) => /\/pullrequests$/i.test(c.path));
+    for (;;) {
+      const last = Math.max(started, apiLog.at(-1)?.at ?? 0);
+      // The hub's bar, where the hub shows; a PR page covers the hub, whose bar then says nothing about this step.
+      const updating = await frame.evaluate(() => [...document.querySelectorAll(".hub-progress")].some((el) => el.getClientRects().length > 0));
+      if (listed() && !updating && Date.now() - last > 600) break;
+      if (Date.now() - started > 20_000) {
+        const text = await frame.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "");
+        throw new Error(
+          `${name}: not quiet after 20 s: ${apiLog.length} calls, listed ${listed()}, updating ${updating}.\n  last calls: ${apiLog.slice(-5).map((c) => c.path).join(", ") || "none"}\n  page text: ${JSON.stringify(text)}\n  errors: ${problems.join("\n          ") || "none"}`,
+        );
+      }
+      await page.waitForTimeout(100);
+    }
+    steps.push({ name, calls: apiLog.map((c) => c.path) });
+  };
+  const openPr = (id) => async () => {
+    await frame.click(`.pr-row[data-pr="${id}"]`);
+    await frame.waitForSelector(LANDMARKS.prLive);
+  };
+  const back = async () => {
+    await frame.click(".breadcrumb button.crumb-link");
+    await frame.waitForSelector(LANDMARKS.hubRows, { state: "visible" });
+  };
+  // The page opens inside the step, since a warm visit's cached page has its first calls out before open() returns.
+  await step(
+    "hub, first visit",
+    async () => {
+      ({ page, frame, problems } = await open(context, origin, "/host", true));
+      await frame.waitForSelector(LANDMARKS.hubRows);
+    },
+    true,
+  );
+  await step("PR 471 (stacked) from its row", openPr(471));
+  await step("hub, back from the PR", back, true);
+  await step("PR 454 (not stacked) from its row", openPr(454));
+  await step("hub, back from the PR", back, true);
+  await page.close();
+  return steps;
+}
+
+/** The calls by what they ask for, in the order first seen, like "pullrequests 3, {id}/threads 20, …". */
+function breakdown(paths) {
+  const counts = new Map();
+  for (const p of paths) {
+    const short = p.replace(/^\/api\/(p1\/)?_apis\//, "").replace(/git\/repositories\/[^/]+\/pullRequests\//, "").replace(/\d+/g, "{id}");
+    counts.set(short, (counts.get(short) ?? 0) + 1);
+  }
+  return [...counts].map(([path, n]) => `${path} ${n}`).join(", ");
 }
 
 /** Pictures of the skeletons (a slow handshake and REST API hold them on screen) and of the loaded pages. */
