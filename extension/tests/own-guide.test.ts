@@ -94,13 +94,29 @@ const summary = {
   leftovers: [],
 };
 
-/** The store holding, for `key`, a guide published from Ajour for this PR's hunks, with a summary. */
-async function withPublished(key: ReviewKey) {
+/** The title of the guide published from Ajour. */
+const AJOUR = "Ajour's guide";
+
+/** A guide published from Ajour for this PR's hunks, with a summary; a copy each time. */
+async function ajourGuide(): Promise<SavedReview> {
+  ajourTemplate ??= makeAjourGuide();
+  return structuredClone(await ajourTemplate);
+}
+let ajourTemplate: Promise<SavedReview> | undefined;
+
+async function makeAjourGuide(): Promise<SavedReview> {
+  const key: ReviewKey = { repo: "r", pr: 0, iteration: 3, compareTo: 0 };
   const { state, store } = memoryStore();
   // Group once, to save a guide for exactly these hunks, then make it Ajour's.
   await buildReview(source, meta, key.iteration, key.compareTo, { saved: { store, key } });
   const saved = savedFor(state.doc, key) as SavedReview;
-  state.doc = withSaved(null, key, JSON.parse(JSON.stringify({ ...saved, madeWith: { ...saved.madeWith, app: "ajour" }, summary })));
+  return JSON.parse(JSON.stringify({ ...saved, groups: saved.groups.map((g) => ({ ...g, title: AJOUR })), madeWith: { ...saved.madeWith, app: "ajour" }, summary }));
+}
+
+/** The store holding, for `key`, a guide published from Ajour for this PR's hunks, with a summary. */
+async function withPublished(key: ReviewKey) {
+  const { state, store } = memoryStore();
+  state.doc = withSaved(null, key, await ajourGuide());
   state.saves = 0;
   return { state, store };
 }
@@ -350,14 +366,15 @@ test("Given a write in flight, then of the writes asked for after it only the la
   assert.equal(published.held.length, 2);
 });
 
-test("Given the Azure DevOps store, when the reader regroups A into B, then A's write can't land over B's, and reopening shows B", async () => {
-  // The finding: B commits, then A commits over it; A's response arrives, then B's, which marked B stored while storage
-  // held A. Each step below is the earliest the page allows: B's write starts only once A's response has arrived.
+/**
+ * AdoHost.savedReviews over a data manager whose create and set each commit, then respond, when the test says;
+ * `comparisons` is what the PR's document holds to begin with.
+ */
+async function adoStore(key: ReviewKey, comparisons: unknown = null) {
   Object.assign(globalThis, { window: { addEventListener() {}, parent: { postMessage() {} } }, self: globalThis });
   const { AdoHost } = await import("../src/app/adoHost");
-  const key: ReviewKey = { repo: "r", pr: 10, iteration: 3, compareTo: 0 };
   type Doc = { id: string; comparisons: unknown; __etag?: number };
-  let doc: Doc | null = null;
+  let doc: Doc | null = comparisons ? { id: `p.r.${key.pr}`, comparisons, __etag: 1 } : null;
   const writes: { title: string; commit: () => void; respond: () => void }[] = [];
   // The data manager's create and set: each commits, then responds, when the test says.
   const write = (next: Doc) =>
@@ -385,7 +402,14 @@ test("Given the Azure DevOps store, when the reader regroups A into B, then A's 
     setDocument: (_: string, next: Doc) => write(next),
   };
   const store = AdoHost.prototype.savedReviews.call({ project: { id: "p" }, data: async () => data } as unknown as InstanceType<typeof AdoHost>);
-  const stored = () => storedTitle(doc?.comparisons, key);
+  return { store, writes, stored: () => storedTitle(doc?.comparisons, key) };
+}
+
+test("Given the Azure DevOps store, when the reader regroups A into B, then A's write can't land over B's, and reopening shows B", async () => {
+  // The finding: B commits, then A commits over it; A's response arrives, then B's, which marked B stored while storage
+  // held A. Each step below is the earliest the page allows: B's write starts only once A's response has arrived.
+  const key: ReviewKey = { repo: "r", pr: 10, iteration: 3, compareTo: 0 };
+  const { store, writes, stored } = await adoStore(key);
 
   await grouping(store, key, "A", false);
   await grouping(store, key, "B", true);
@@ -409,16 +433,85 @@ test("Given the Azure DevOps store, when the reader regroups A into B, then A's 
   assert.equal(writes.length, 2);
 });
 
+test("Given the Azure DevOps store and a published guide, when Publish B waits behind Publish A and the reader regroups into C, then B rejects without writing, and reopening shows C", async () => {
+  // The finding: C is the reader's own (the published guide is still saved), so it queues no write to replace B's. A's
+  // response arrived, B's Publish started and succeeded, and storage held B while the page showed C.
+  const key: ReviewKey = { repo: "r", pr: 11, iteration: 3, compareTo: 0 };
+  const { store, writes, stored } = await adoStore(key, await publishedDoc(key));
+  const a = await grouping(store, key, "A", true);
+  const publishingA = publishGuide(store, key, a.ownGuide!);
+  const b = await grouping(store, key, "B", true);
+  const publishingB = assert.rejects(publishGuide(store, key, b.ownGuide!), /a newer grouping took its place/);
+  const c = await grouping(store, key, "C", true);
+  assert.ok(c.ownGuide, "C is kept for the session, with no write of its own");
+  await settled();
+  assert.deepEqual(writes.map((w) => w.title), ["A"]);
+
+  writes[0].commit();
+  writes[0].respond();
+  await publishingA;
+  await publishingB;
+  await settled();
+  assert.deepEqual(writes.map((w) => w.title), ["A"], "B's Publish never starts");
+  assert.equal(stored(), "A");
+  const reopened = await open(store, key);
+  assert.equal(reopened.result.groups[0].title, "C");
+  assert.equal(reopened.ownGuide, c.ownGuide);
+
+  // C, still on show, publishes.
+  const publishingC = publishGuide(store, key, c.ownGuide!);
+  await settled();
+  writes[1].commit();
+  writes[1].respond();
+  await publishingC;
+  assert.equal(stored(), "C");
+  assert.equal(await shownTitle(store, key), "C");
+});
+
+test("Given a save in flight when a guide is published from Ajour, when the reader's Publish waits behind the save and they regroup again, then the Publish rejects without writing", async () => {
+  const key: ReviewKey = { repo: "r", pr: 12, iteration: 3, compareTo: 0 };
+  const { state, store, held } = heldStore();
+  await grouping(store, key, "G1", false);
+  // Another reader publishes from Ajour while G1's save is in flight: the next Regroups are the reader's own.
+  state.doc = withSaved(state.doc, key, await ajourGuide(), { publish: true });
+  const g2 = await grouping(store, key, "G2", true);
+  assert.ok(g2.ownGuide);
+  const publishing = assert.rejects(publishGuide(store, key, g2.ownGuide!), /a newer grouping took its place/);
+  const g3 = await grouping(store, key, "G3", true);
+  assert.ok(g3.ownGuide);
+
+  held[0].commit(true);
+  held[0].respond();
+  await publishing;
+  await settled();
+  assert.deepEqual(held.map((h) => h.title), ["G1"], "G2's Publish never starts");
+  assert.equal(storedTitle(state.doc, key), AJOUR);
+  const reopened = await open(store, key);
+  assert.equal(reopened.result.groups[0].title, "G3");
+  assert.equal(reopened.ownGuide, g3.ownGuide);
+});
+
 /**
  * Plays one sequence of a reader's steps on a comparison: up to three groupings ("group", a Regroup), a Publish of the
- * latest one while it is the reader's own, and each write's commit (written or failed) and response, whenever they are
- * open. `choose` picks one of the steps open at each point; "stop" ends the sequence once every write has had its
- * response. After every step, reopening shows the latest grouping, and the published guide is still saved unless a
- * Publish wrote.
+ * latest one while it is the reader's own, a guide published from Ajour landing in storage ("ajour", once, from another
+ * reader), and each write's commit (written or failed) and response, whenever they are open. A Regroup while a
+ * published guide is saved is the reader's own and queues no write; "ajour" makes them possible from any start, and
+ * lets a Publish wait behind a save. `choose` picks one of the steps open at each point; "stop" ends the sequence once
+ * every write has had its response. After every step:
+ * - a write starts only for the latest grouping, so storage never takes a grouping the page has moved past;
+ * - one write at a time is in the store's hands;
+ * - the published guide is still saved unless a Publish wrote after it landed;
+ * - reopening shows the latest grouping, or the published guide if it landed since, without grouping or saving again;
+ * - while the published guide is saved, a grouping made over it is the reader's own, which they can still Publish.
  */
-async function playSequence(key: ReviewKey, start: unknown, choose: (steps: string[]) => string) {
+async function playSequence(key: ReviewKey, start: unknown, ajour: SavedReview, choose: (steps: string[]) => string) {
   const { state, store, held } = heldStore(start);
-  const publishedTitle = storedTitle(start, key);
+  let publishedTitle = storedTitle(start, key);
+  // A Publish wrote since the published guide landed.
+  let publishWrote = false;
+  let ajourLanded = false;
+  // The published guide landed after the latest grouping.
+  let landedSince = false;
   const steps: string[] = [];
   let groupings = 0;
   let latest: Awaited<ReturnType<typeof open>> | undefined;
@@ -428,6 +521,7 @@ async function playSequence(key: ReviewKey, start: unknown, choose: (steps: stri
     const open_: string[] = [];
     if (groupings < 3) open_.push("group");
     if (latest?.ownGuide && !publishedLatest) open_.push("publish");
+    if (groupings > 0 && !ajourLanded && storedTitle(state.doc, key) !== AJOUR) open_.push("ajour");
     held.forEach((h, i) => {
       if (h.committed === undefined) open_.push(`commit ${i}`, `fail ${i}`);
       if (h.committed !== undefined && !h.responded) open_.push(`respond ${i}`);
@@ -436,47 +530,56 @@ async function playSequence(key: ReviewKey, start: unknown, choose: (steps: stri
     const step = choose(open_);
     steps.push(step);
     if (step === "stop") break;
+    const started = held.length;
     if (step === "group") {
       latest = await grouping(store, key, `G${++groupings}`, true);
       publishedLatest = false;
+      landedSince = false;
     } else if (step === "publish") {
       publishedLatest = true;
       publishes.push(publishGuide(store, key, latest!.ownGuide!).catch(() => {}));
+    } else if (step === "ajour") {
+      state.doc = withSaved(state.doc, key, ajour, { publish: true });
+      publishedTitle = AJOUR;
+      ajourLanded = landedSince = true;
+      publishWrote = false;
     } else {
       const [action, i] = step.split(" ");
       const write = held[Number(i)];
       if (action === "respond") write.respond();
-      else write.commit(action === "commit");
+      else {
+        write.commit(action === "commit");
+        if (write.publish && action === "commit") publishWrote = true;
+      }
     }
     await settled();
     const label = steps.join(", ");
-    // One write at a time is in the store's hands.
-    assert.ok(held.filter((h) => !h.responded).length <= 1, label);
-    // Only a Publish replaces a published guide.
-    const publishWrote = held.some((h) => h.publish && h.committed);
-    if (publishedTitle && !publishWrote) assert.equal(storedTitle(state.doc, key), publishedTitle, label);
+    for (const write of held.slice(started)) assert.equal(write.title, `G${groupings}`, `${label}: a write starts only for the latest grouping`);
+    assert.ok(held.filter((h) => !h.responded).length <= 1, `${label}: one write at a time`);
+    if (publishedTitle && !publishWrote) assert.equal(storedTitle(state.doc, key), publishedTitle, `${label}: only a Publish replaces a published guide`);
     if (groupings === 0) continue;
-    // Reopening shows the latest grouping, from memory or from what is saved, without grouping or saving again.
     const writes = held.length;
     const reopened = await open(store, key);
     await settled();
-    assert.equal(reopened.result.groups[0].title, `G${groupings}`, label);
-    assert.equal(held.length, writes, label);
-    // While the published guide is still saved, the latest grouping is the reader's own, which they can still Publish.
-    if (publishedTitle && !publishWrote) assert.equal(reopened.ownGuide?.groups[0].title, `G${groupings}`, label);
+    const shown = reopened.result.groups[0].title;
+    if (landedSince) assert.ok([`G${groupings}`, AJOUR].includes(shown), `${label}: reopening shows ${shown}`);
+    else assert.equal(shown, `G${groupings}`, label);
+    assert.equal(held.length, writes, `${label}: reopening writes nothing`);
+    if (publishedTitle && !publishWrote && !landedSince) assert.equal(reopened.ownGuide?.groups[0].title, `G${groupings}`, `${label}: the reader's own guide`);
   }
   await Promise.all(publishes);
 }
 
 /** Plays every sequence playSequence allows, each on a comparison of its own; returns how many. */
 async function everySequence(start: (key: ReviewKey) => Promise<unknown>, pr: number) {
+  const ajour = await ajourGuide();
   let played = 0;
   // Depth-first over the choices: each run replays the previous one's choices, then takes the next untried step.
   let choices: number[] = [];
   for (;;) {
     const counts: number[] = [];
     const key: ReviewKey = { repo: "r", pr, iteration: 3, compareTo: played };
-    await playSequence(key, await start(key), (steps) => {
+    await playSequence(key, await start(key), ajour, (steps) => {
       const k = counts.length;
       counts.push(steps.length);
       return steps[choices[k] ?? 0];
@@ -490,11 +593,11 @@ async function everySequence(start: (key: ReviewKey) => Promise<unknown>, pr: nu
   }
 }
 
-test("Given a published guide, then in every order of up to three groupings, Publishes, and their writes' commits and responses, reopening shows the latest grouping, and the published guide stays until a Publish replaces it", async () => {
-  // How many it played, so a change that stops it exploring fails here; the count without Publishes is checked below.
-  assert.equal(await everySequence(publishedDoc, 100), 404);
+test("Given a published guide, then in every order of up to three groupings, Publishes, another Ajour publication, and their writes' commits and responses, only the latest grouping's write starts, reopening shows it, and a published guide stays until a Publish replaces it", async () => {
+  // How many it played, so a change that stops it exploring fails here.
+  assert.equal(await everySequence(publishedDoc, 100), 1829);
 });
 
-test("Given nothing saved, then in every order of up to three groupings and their saves' commits and responses, reopening shows the latest grouping", async () => {
-  assert.equal(await everySequence(async () => null, 101), 98);
+test("Given nothing saved, then in every order of up to three groupings, an Ajour publication that makes the next ones the reader's own, Publishes waiting behind saves, and their writes' commits and responses, only the latest grouping's write starts, and reopening shows it", async () => {
+  assert.equal(await everySequence(async () => null, 101), 1734);
 });

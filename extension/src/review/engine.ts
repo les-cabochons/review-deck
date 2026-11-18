@@ -61,12 +61,14 @@ const writeQueues = new Map<string, { next?: QueuedWrite }>();
 /**
  * Writes `generation`'s guide to the store once the comparison's write in flight, if any, has settled, so the store
  * takes each comparison's writes one at a time, in the order they were asked for. Only the newest waits: one it
- * replaces is dropped, and rejects with SUPERSEDED.
+ * replaces is dropped, and rejects with SUPERSEDED. So does a waiting write whose grouping is no longer the latest
+ * when its turn comes: any grouping counts, also one over a published guide, which is kept for the session and queues
+ * no write of its own.
  *
- * A write is asked for only for the latest grouping (a save when it is grouped, a Publish while it is on show), so
- * writes run in the order of their groupings, and the latest's is the last. Its success alone marks the session guide
- * stored. An older write that settles after the latest was grouped changes nothing: the latest's write, if it has
- * one, is still to come.
+ * A write is asked for only for the latest grouping (a save when it is grouped, a Publish while it is on show), and
+ * starts only while it is still the latest's, so storage never takes a grouping the page has moved past. Its success
+ * alone marks the session guide stored. An older write that settles after the latest was grouped changes nothing: the
+ * latest's write, if it has one, is still to come.
  */
 function queueWrite(id: string, generation: number, start: () => Promise<boolean>): Promise<boolean> {
   return new Promise((resolve, reject) => {
@@ -79,6 +81,12 @@ function queueWrite(id: string, generation: number, start: () => Promise<boolean
 }
 
 function runWrite(id: string, write: QueuedWrite) {
+  // A grouping made while it waited replaced it, even one kept for the session that queued no write.
+  if (sessionGuides.get(id)?.generation !== write.generation) {
+    writeQueues.delete(id);
+    write.reject(new Error(SUPERSEDED));
+    return;
+  }
   const queue: { next?: QueuedWrite } = {};
   writeQueues.set(id, queue);
   let started: Promise<boolean>;
