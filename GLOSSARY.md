@@ -39,3 +39,16 @@ _Avoid_: Release pipeline (that name belongs to Azure DevOps classic releases)
 **Artifact**:
 A named set of files published by one pipeline run. A Release's Artifacts are those published by its latest publishing pipeline run, and each one can be downloaded whole or file by file. This is Azure DevOps' term.
 _Avoid_: Asset
+
+### Reviews
+
+**Guide**:
+A pull request comparison's changes grouped by concern and put in reading order: the Guided view. It's saved in extension data for everyone who opens that comparison.
+_Avoid_: Grouping (in UI copy)
+
+**Published guide**:
+A guide another app wrote for Review Deck to show, today only Ajour (`madeWith.app: "ajour"`). It shows whatever the reader's backend and AI-title settings are, as long as it covers the comparison's hunks. Review Deck never replaces it on its own: a reader who regroups gets their own guide for the session, and only **Publish** puts that guide in its place.
+
+**Summary**:
+What a published guide says above the guide: the problem the pull request fixes, its kinds of change, breaking changes, risky areas, test coverage and leftovers.
+_Avoid_: Description (that's the author's text on the pull request)

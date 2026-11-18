@@ -4,7 +4,7 @@ import { blobIds } from "../data/fileReads";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 import type { BackendService } from "./backend";
-import { packReview, type ReviewKey, reviewMode, type SavedReviews } from "./saved";
+import { type GuideSummary, keepsPublished, packReview, type PublishingApp, type ReviewKey, reviewMode, type SavedReview, type SavedReviews } from "./saved";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
 
@@ -15,6 +15,22 @@ export interface ReviewModel {
   contents: Map<string, FileContents>;
   /** False for the preview shown while the semantic pipeline runs: files and hunks only, no groups. */
   analyzed: boolean;
+  /** The guide on show was published from this app (saved.ts): the page labels it, and never replaces it on its own. */
+  published?: PublishingApp;
+  /** Shown above the guide; published guides may have one. */
+  summary?: GuideSummary;
+  /** The reader grouped the changes over a published guide: theirs shows for the session, and Publish (publishGuide) shares it. */
+  ownGuide?: SavedReview;
+}
+
+/** The guides readers grouped over a published one, by comparison: theirs until the page closes, or they publish it. */
+const ownGuides = new Map<string, SavedReview>();
+const guideId = (key: ReviewKey) => JSON.stringify([key.repo, key.pr, key.iteration, key.compareTo]);
+
+/** Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it couldn't. */
+export async function publishGuide(store: SavedReviews, key: ReviewKey, guide: SavedReview): Promise<void> {
+  await store.save(key, guide, { publish: true });
+  ownGuides.delete(guideId(key));
 }
 
 /** Git treats text containing a NUL character as binary. */
@@ -31,9 +47,12 @@ export interface BuildOptions {
   backend?: BackendService | null;
   /** The project allows sending changed lines to the LLM (ProjectSettings.aiTitles). */
   aiTitles?: boolean;
-  /** Reuses the guided view saved for this comparison (by anyone), and saves a fresh one for everyone. */
+  /**
+   * Reuses the guided view saved for this comparison (by anyone), and saves a fresh one for everyone, unless a guide
+   * published for the same changes is saved: the fresh one is then the reader's own (ReviewModel.ownGuide).
+   */
   saved?: { store: SavedReviews; key: ReviewKey };
-  /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it. */
+  /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it, or a published one for the session. */
   fresh?: boolean;
 }
 
@@ -52,8 +71,11 @@ export async function buildReview(
 ): Promise<ReviewModel> {
   const started = performance.now();
   const backend = options.backend ?? null;
-  // Read while the files download; restoreReview (in the worker) checks it still fits.
-  const saved = options.saved && !options.fresh ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
+  // Read while the files download; restoreReview (in the worker) checks it still fits. A Regroup reads it too, to keep
+  // a published guide. A reader's own guide over a published one shows instead, for as long as the page is open.
+  const key = options.saved?.key;
+  const stored = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
+  const own = key && !options.fresh ? ownGuides.get(guideId(key)) : undefined;
   // On a link straight to the PR, both reads may already be under way (data/fileReads.ts): these then take them over.
   const changes = await source.getChanges(iteration, compareTo);
   const { blobs, stats: blobStats } = await source.getBlobs(blobIds(changes), options.signal);
@@ -70,16 +92,25 @@ export async function buildReview(
   const comparison = { iteration, compareTo };
 
   const aiTitles = options.aiTitles === true;
-  const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles, saved: await saved, assetBase: new URL("../assets/", document.baseURI).toString() };
-  const { result, restored, skipped } = await runAnalysis(job, options.signal, (message) => {
+  const storedNow = await stored;
+  const saved = options.fresh ? null : (own ?? storedNow);
+  const job: AnalysisJob = { ...meta, changes, contents, backend, aiTitles, saved, assetBase: new URL("../assets/", document.baseURI).toString() };
+  const { result, restored, skipped, published, summary } = await runAnalysis(job, options.signal, (message) => {
     if (message.type === "diff") options.onPreview?.({ result: previewResult(meta, message.diff), changes, contents, comparison, analyzed: false });
     else if (message.type === "progress") options.onProgress?.(message.progress);
   });
   for (const warning of result.warnings) console.warn("[review-deck]", warning);
   console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, blobs: blobStats, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
-  if (options.saved) console.info(`[review-deck] guided view: ${restored ? "reused the saved one" : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}`}`);
-  if (!restored && options.saved) void options.saved.store.save(options.saved.key, packReview(result, reviewMode(backend, aiTitles)));
-  return { result, changes, contents, comparison, analyzed: true };
+  if (options.saved) console.info(`[review-deck] guided view: ${restored ? `reused ${own ? "the reader's own" : "the saved one"}` : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}`}`);
+  let ownGuide = restored && own ? own : undefined;
+  if (!restored && options.saved) {
+    const review = packReview(result, reviewMode(backend, aiTitles));
+    if (keepsPublished(storedNow, review)) {
+      ownGuides.set(guideId(options.saved.key), review);
+      ownGuide = review;
+    } else void options.saved.store.save(options.saved.key, review);
+  }
+  return { result, changes, contents, comparison, analyzed: true, ...(published && { published }), ...(summary && { summary }), ...(ownGuide && { ownGuide }) };
 }
 
 function whyGrouped(fresh: boolean | undefined, saved: unknown, skipped: string | undefined): string {
@@ -107,7 +138,7 @@ function runAnalysis(
   job: AnalysisJob,
   signal: AbortSignal | undefined,
   onUpdate: (message: Extract<AnalysisMessage, { type: "diff" | "progress" }>) => void,
-): Promise<{ result: ReviewResult; restored: boolean; skipped?: string }> {
+): Promise<Omit<Extract<AnalysisMessage, { type: "result" }>, "type">> {
   return new Promise((resolve, reject) => {
     const receive = (message: AnalysisMessage) => {
       if (message.type === "diff" || message.type === "progress") onUpdate(message);

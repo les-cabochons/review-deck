@@ -170,9 +170,9 @@ export class LocalHost implements AppHost {
     };
     return {
       load: async (key) => savedFor(read()[id(key)], key),
-      save: async (key, review) => {
+      save: async (key, review, options) => {
         const { [id(key)]: saved, ...others } = read();
-        const comparisons = withSaved(saved, key, review);
+        const comparisons = withSaved(saved, key, review, options);
         if (!comparisons) return;
         const kept = Object.entries(others).slice(0, SAVED_PRS - 1);
         try {
@@ -180,6 +180,7 @@ export class LocalHost implements AppHost {
         } catch (e) {
           // Over the quota (a huge PR): it is grouped on every open.
           console.warn("[review-deck] could not save the guided view:", e);
+          if (options?.publish) throw e;
         }
       },
     };

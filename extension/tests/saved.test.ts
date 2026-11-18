@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReviewResult } from "../../src/core/types";
-import { packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, savedFor, withSaved } from "../src/review/saved";
+import { keepsPublished, packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, type SavedReview, savedFor, withSaved } from "../src/review/saved";
 
 const meta = { title: "Rename fetch helper", description: "" };
 const diff = [
@@ -151,4 +151,106 @@ test("Given a huge PR, then its other saved comparisons are dropped before its d
   assert.deepEqual(withSaved(doc, key(4), sized(200_000))!.map((c) => c.compareTo), [4]);
   // Larger than the budget alone, it is still saved, by itself.
   assert.deepEqual(withSaved(doc, key(5), sized(300_000))!.map((c) => c.compareTo), [5]);
+});
+
+/** A guide as Ajour's Publish guide writes it: Ajour's own mode (no backend, agent titles), with a summary. */
+function publishedFromAjour(overrides: Record<string, unknown> = {}) {
+  return JSON.parse(
+    JSON.stringify({
+      ...packReview(analyzed(), { semantic: false, llmTitles: true }),
+      madeWith: { ...meta, app: "ajour" },
+      summary: {
+        problem: { text: "Callers can't tell a fetch helper from a getter.", source: "ticket", ticket: { id: "#12", title: "Rename get", url: "https://dev.azure.com/o/p/_workitems/edit/12" } },
+        kinds: ["refactor", "breaking"],
+        breaking: [{ text: "`get` is gone from the public API.", hunkIds: ["src/api.ts#0"] }],
+        risks: [],
+        tests: [{ text: "The rename is covered.", hunkIds: ["src/api.test.ts#0"] }],
+        leftovers: [],
+      },
+      ...overrides,
+    }),
+  );
+}
+
+test("Given a guide published from Ajour for this diff, then it shows whatever the reader's backend and AI-title settings, labelled, with its summary", () => {
+  const saved = publishedFromAjour();
+  for (const mode of [reviewMode({}, true), reviewMode({}, false), reviewMode(null, true)]) {
+    const r = restoreReview(saved, mode, diff);
+    if (!("result" in r)) assert.fail(`not restored: ${r.skipped}`);
+    assert.equal(r.published, "ajour");
+    assert.deepEqual(r.result.groups.map((g) => g.title), ["Rename get to fetchJson"]);
+    assert.deepEqual(r.summary, saved.summary);
+  }
+  // Ajour's guide never goes stale the way a fallback grouping does.
+  assert.equal(skipped({ ...saved, fellBack: true, savedAt: 0 }, reviewMode({}, true), diff, 365 * 86_400_000), null);
+});
+
+test("Given a guide published from Ajour for other hunks (a new push), then the PR is grouped again, and that grouping replaces it", () => {
+  const saved = publishedFromAjour();
+  const pushed = diff.replace(/diff --git a\/src\/api\.test\.ts[\s\S]*/, "");
+  assert.match(skipped(saved, reviewMode({}, true), pushed)!, /don't cover this diff/);
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const regrouped = packReview(restored(publishedFromAjour({ groups: [{ ...saved.groups[0], hunkIds: ["src/api.ts#0"] }] }), reviewMode({}, true), pushed), reviewMode({}, true));
+  assert.equal(keepsPublished(savedFor(withSaved(null, key, saved), key), regrouped), false);
+  assert.deepEqual((savedFor(withSaved(withSaved(null, key, saved), key, regrouped), key) as SavedReview).madeWith, regrouped.madeWith);
+});
+
+test("Given a guide published from Ajour, then a reader's own grouping never replaces it on its own, and Publish does", () => {
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const doc = withSaved(null, key, publishedFromAjour());
+  const own = packReview(analyzed(), reviewMode({}, true));
+  // Regroup: the reader's guide is theirs for the session.
+  assert.equal(keepsPublished(savedFor(doc, key), own), true);
+  assert.equal(withSaved(doc, key, own), null);
+  // A fallback, an edited description or another mode change nothing.
+  assert.equal(withSaved(doc, key, { ...own, fellBack: true, madeWith: { title: "New", description: "Edited" } }), null);
+  // Publish replaces it for everyone, and from then on it is Review Deck's own guide.
+  const published = savedFor(withSaved(doc, key, own, { publish: true }), key) as SavedReview;
+  assert.equal(published.madeWith.app, undefined);
+  assert.equal(keepsPublished(published, own), false);
+  // Another comparison's grouping keeps it.
+  assert.equal((savedFor(withSaved(doc, { ...key, compareTo: 2 }, own), key) as SavedReview).madeWith.app, "ajour");
+});
+
+test("Given a published guide among a PR's saved comparisons, then the others are dropped before it when the document is full", () => {
+  const key = (iteration: number): ReviewKey => ({ repo: "r", pr: 7, iteration, compareTo: 0 });
+  const own = packReview(analyzed(), reviewMode({}, true));
+  let doc: unknown = withSaved(null, key(3), publishedFromAjour());
+  for (const it of [4, 5, 6, 7, 8]) doc = withSaved(doc, key(it), own);
+  assert.deepEqual((doc as { iteration: number }[]).map((c) => c.iteration), [8, 3, 7, 6]);
+});
+
+test("Given a saved guide's summary, then it round-trips, an entry without one still loads, and a malformed one loses only its bad parts", () => {
+  const saved = publishedFromAjour();
+  assert.deepEqual((restoreReview(saved, reviewMode(null, false), diff) as { summary?: unknown }).summary, saved.summary);
+  // Saved before summaries, or by Review Deck itself.
+  const plain = restoreReview(JSON.parse(JSON.stringify(packReview(analyzed(), reviewMode({}, true)))), reviewMode({}, true), diff);
+  assert.ok("result" in plain);
+  assert.equal(plain.summary, undefined);
+  assert.equal(plain.published, undefined);
+  const odd = restoreReview(
+    publishedFromAjour({
+      summary: {
+        problem: { text: "Inferred from the commits.", source: "inferred", ticket: { id: "1", title: "x", url: "javascript:alert(1)" } },
+        kinds: ["refactor", "chores"],
+        breaking: [{ text: "Gone.", hunkIds: ["src/api.ts#0", "src/missing.ts#3"] }, { text: 4, hunkIds: [] }],
+        risks: "none",
+      },
+    }),
+    reviewMode({}, true),
+    diff,
+  );
+  assert.ok("result" in odd);
+  assert.deepEqual(odd.summary, {
+    problem: { text: "Inferred from the commits.", source: "inferred" },
+    kinds: ["refactor"],
+    breaking: [{ text: "Gone.", hunkIds: ["src/api.ts#0"] }],
+    risks: [],
+    tests: [],
+    leftovers: [],
+  });
+  // No problem to state: no summary, but the guide still shows.
+  const none = restoreReview(publishedFromAjour({ summary: { kinds: ["fix"] } }), reviewMode({}, true), diff);
+  assert.ok("result" in none);
+  assert.equal(none.summary, undefined);
 });

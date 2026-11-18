@@ -21,6 +21,7 @@ import { viewedStatus } from "./viewed";
 import { FileHeader } from "./FileHeader";
 import { HostLinks } from "./App";
 import { ModalDialog } from "./ModalDialog";
+import { GuideSummaryCard } from "./GuideSummary";
 
 export type FileView = "grouped" | "alpha";
 
@@ -48,6 +49,10 @@ interface Props {
   onRegroup: () => void;
   /** The title or description changed since the grouping was made. */
   groupingStale: boolean;
+  /** Shares the reader's own guide (ReviewModel.ownGuide) in place of the published one. */
+  onPublish: () => void;
+  /** A Publish is under way. */
+  publishing: boolean;
 }
 
 export const FilesTab: React.FC<Props> = (props) => {
@@ -171,6 +176,7 @@ const FilesContent: React.FC<Props> = (props) => {
               <NavRail fileCount={review.result.files.length} onShow={() => setTreeOpenAndFocus(true)} />
             )}
             <div className="files-content">
+              {shownView === "grouped" && <GuideSummaryCard review={review} onOpenGroup={(id) => scrollToId(`group-${id}`)} />}
               {shownView === "grouped" ? (
                 <GroupedView review={review} mode={mode} fileThreads={fileThreads} shown={shown} viewUrl={viewUrl} />
               ) : (
@@ -207,6 +213,8 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
   onShowGrouped,
   onRegroup,
   groupingStale,
+  onPublish,
+  publishing,
 }) => {
   const { disabled } = useReviewActions();
   const { viewedFiles } = useFileReview();
@@ -275,8 +283,35 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
       )}
       {review?.analyzed && !progress && (
         <span className={cx("regroup", groupingStale && "stale")} role={groupingStale ? "status" : undefined}>
+          {review.published && (
+            <span className="guide-source" title="Published from Ajour for this comparison. It stays for everyone until someone publishes another guide.">
+              <Icon iconName="Share" /> Published from Ajour ·
+            </span>
+          )}
+          {review.ownGuide && (
+            <span className="guide-source">
+              Your guide, for this session ·{" "}
+              <button
+                className="link-button"
+                onClick={onPublish}
+                disabled={publishing}
+                title="Replace the guide published from Ajour with yours, for everyone who opens this comparison"
+              >
+                <Icon iconName="Upload" /> {publishing ? "Publishing…" : "Publish"}
+              </button>{" "}
+              ·
+            </span>
+          )}
           {groupingStale && <span className="regroup-hint">Description changed ·</span>}
-          <button className="link-button" onClick={onRegroup} title="Group the changes again, using the current title and description">
+          <button
+            className="link-button"
+            onClick={onRegroup}
+            title={
+              review.published || review.ownGuide
+                ? "Group the changes yourself, for this session. The published guide stays for everyone else."
+                : "Group the changes again, using the current title and description"
+            }
+          >
             <Icon iconName="Refresh" /> Regroup
           </button>
         </span>

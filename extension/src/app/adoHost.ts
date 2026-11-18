@@ -338,12 +338,12 @@ export class AdoHost implements AppHost {
           return null;
         }
       },
-      save: async (key, review: SavedReview) => {
+      save: async (key, review: SavedReview, options) => {
         try {
           const data = await this.data();
           for (let attempt = 1; ; attempt++) {
             const doc = await read(data, key);
-            const comparisons = withSaved(doc?.comparisons, key, review);
+            const comparisons = withSaved(doc?.comparisons, key, review, options);
             if (!comparisons) return;
             const next = { id: id(key), comparisons };
             try {
@@ -359,6 +359,8 @@ export class AdoHost implements AppHost {
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
           console.warn("[review-deck] could not save the guided view:", e);
+          // Publishing was asked for: say it didn't happen.
+          if (options?.publish) throw e;
         }
       },
     };

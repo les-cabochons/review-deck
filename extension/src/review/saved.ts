@@ -4,6 +4,8 @@
 // the title or description doesn't drop it either: the page shows it and offers to regroup (`madeWith`). An analysis
 // that fell back (backend down, a spending cap reached) is saved too, so an outage doesn't regroup on every open, and
 // is grouped again after a while (`fellBack`). AppHost.savedReviews() keeps one document per PR with the comparisons last grouped (savedFor, withSaved).
+// A guide published from Ajour (`madeWith.app`) shows whatever the reader's settings and is never replaced on its own:
+// a reader who regroups keeps their guide for the session, and only Publish puts theirs in its place (keepsPublished).
 import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewResult } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 
@@ -11,6 +13,7 @@ import { parseDiff } from "../../../src/diff/parse";
  * Bump when the saved shape changes, or to have every PR grouped again (saved views outlive extension versions).
  * 2: the description guides grouping. 3: groups record who wrote their title (`titleSource`).
  * 4: the title and description the grouping was made with (`madeWith`), instead of a hash that discarded it on edits.
+ * Still 4 with `madeWith.app` and `summary`: both are optional, and readers before them ignore fields they don't know.
  */
 const FORMAT = 4;
 
@@ -30,11 +33,15 @@ export interface ReviewKey {
   compareTo: number;
 }
 
-/** Where finished groupings are kept (AppHost.savedReviews). Neither method rejects: saving is only a speed-up. */
+/**
+ * Where finished groupings are kept (AppHost.savedReviews). Neither method rejects, saving being only a speed-up,
+ * except a Publish (`publish`), which its reader asked for and is told about when it fails.
+ */
 export interface SavedReviews {
   /** The saved grouping, unchecked (restoreReview checks it), or null. */
   load(key: ReviewKey): Promise<unknown>;
-  save(key: ReviewKey, review: SavedReview): Promise<void>;
+  /** `publish`: replace even a published guide (withSaved). */
+  save(key: ReviewKey, review: SavedReview, options?: { publish?: boolean }): Promise<void>;
 }
 
 /** How the grouping was made; a saved one is reused only if it was made the way the page would make it now. */
@@ -50,11 +57,44 @@ export function reviewMode(backend: unknown, aiTitles: boolean): ReviewMode {
   return { semantic: !!backend, llmTitles: !!backend && aiTitles };
 }
 
+/** The apps that publish guides for Review Deck to show. Absent, Review Deck grouped it. */
+export type PublishingApp = "ajour";
+
+/** The kinds of change a summary names, in the order they show. */
+export const CHANGE_KINDS = ["breaking", "feature", "fix", "refactor", "performance", "tests", "docs", "dependencies", "build"] as const;
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+
+/** One line of a summary, with the hunks it is about (`path#n`, as in the guide's groups). */
+export interface SummaryItem {
+  text: string;
+  hunkIds: string[];
+}
+
+/** What the change is about, shown above the guide: written by the app that published it (Ajour). */
+export interface GuideSummary {
+  /** What the PR fixes: from its linked ticket, or inferred from the commits and code. */
+  problem: { text: string; source: "ticket" | "inferred"; ticket?: { id: string; title: string; url: string } };
+  kinds: ChangeKind[];
+  breaking: SummaryItem[];
+  /** Migrations, security and auth, data deletion, concurrency. */
+  risks: SummaryItem[];
+  /** Which concerns have tests, and which changed code has none. */
+  tests: SummaryItem[];
+  /** TODOs, debug output, commented-out code and skipped tests the PR adds. */
+  leftovers: SummaryItem[];
+}
+
 export interface SavedReview {
   format: number;
+  /** Ignored for a published guide: it shows whatever mode the page groups in. */
   mode: ReviewMode;
-  /** The PR's title and description when it was grouped; the page offers to regroup once they differ. */
-  madeWith: { title: string; description: string };
+  /**
+   * The PR's title and description when it was grouped; the page offers to regroup once they differ. `app`: the app
+   * that published it, which makes it stay until a reader publishes another (keepsPublished).
+   */
+  madeWith: { title: string; description: string; app?: PublishingApp };
+  /** Shown above the guide; only published guides have one. */
+  summary?: GuideSummary;
   /** When it was grouped (ms since the epoch). */
   savedAt: number;
   /** Made without part of `mode` (embeddings or LLM titles failed): reused for RETRY_FALLBACK_MS only. */
@@ -78,6 +118,23 @@ export function packReview(result: ReviewResult, mode: ReviewMode, now = Date.no
   return { format: FORMAT, mode, madeWith, savedAt: now, ...fellBack, groups: result.groups, merges: result.merges, options: result.options, hunks };
 }
 
+/** Where `review` came from, if another app published it (see SavedReview.madeWith). */
+function publishedBy(review: unknown): PublishingApp | null {
+  return (review as Partial<SavedReview> | null)?.madeWith?.app === "ajour" ? "ajour" : null;
+}
+
+/**
+ * Whether `saved` is a published guide that saving `review` leaves in place: it is for the same hunks, so it still
+ * shows for everyone, and `review` is only its reader's. One for other hunks (a new push, another diff) is no use now.
+ */
+export function keepsPublished(saved: unknown, review: SavedReview): boolean {
+  const s = saved as Partial<SavedReview> | null;
+  if (!publishedBy(s) || s?.format !== FORMAT || !Array.isArray(s.groups) || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string") return false;
+  const ids = new Set(review.groups.flatMap((g) => g.hunkIds));
+  const theirs = s.groups.flatMap((g) => (Array.isArray(g?.hunkIds) ? g.hunkIds : []));
+  return theirs.length === ids.size && theirs.every((id) => ids.has(id));
+}
+
 /** One comparison's saved view, as AppHost.savedReviews() keeps them in the PR's document. */
 export interface SavedComparison {
   iteration: number;
@@ -93,25 +150,27 @@ export function savedFor(comparisons: unknown, key: ReviewKey): unknown {
 }
 
 /**
- * A PR's saved views with `review` as `key`'s comparison's, first, then as many of the others as fit (most recently
- * grouped first), so switching comparisons doesn't evict the one everyone else opens. Null if there's nothing to
- * save: `review` fell back, and a complete one made the same way, from the same title and description, is saved.
+ * A PR's saved views with `review` as `key`'s comparison's, first, then as many of the others as fit (published
+ * guides, then the most recently grouped), so switching comparisons doesn't evict the one everyone else opens. Null
+ * if there's nothing to save: a guide published for the same hunks is saved and this isn't a Publish, or `review`
+ * fell back, and a complete one made the same way, from the same title and description, is saved.
  */
-export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview): SavedComparison[] | null {
+export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview, options: { publish?: boolean } = {}): SavedComparison[] | null {
   const saved = Array.isArray(comparisons)
     ? (comparisons as Partial<SavedComparison>[]).filter((c): c is SavedComparison => !!c?.review && typeof c.iteration === "number" && typeof c.compareTo === "number")
     : [];
   const same = (c: SavedComparison) => c.iteration === key.iteration && c.compareTo === key.compareTo;
   const current = saved.find(same)?.review;
+  if (!options.publish && keepsPublished(current, review)) return null;
   // E.g. two reviewers grouped it at once and only one reached the backend: everyone keeps getting the complete one.
   // A Regroup after editing the description still replaces it: that's the grouping its reader asked for.
-  if (review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode) && sameText(current.madeWith, review.madeWith)) {
+  if (!options.publish && review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode) && sameText(current.madeWith, review.madeWith)) {
     return null;
   }
   const kept: SavedComparison[] = [{ iteration: key.iteration, compareTo: key.compareTo, review }];
   let chars = JSON.stringify(kept[0]).length;
-  for (const c of saved) {
-    if (same(c)) continue;
+  const others = saved.filter((c) => !same(c)).sort((a, b) => Number(!!publishedBy(b.review)) - Number(!!publishedBy(a.review)));
+  for (const c of others) {
     chars += JSON.stringify(c).length;
     if (kept.length >= MAX_COMPARISONS || chars > MAX_DOC_CHARS) break;
     kept.push(c);
@@ -119,22 +178,26 @@ export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedRev
   return kept;
 }
 
-/** A saved guided view on top of the diff, or why the page groups the PR again instead (logged by buildReview). */
-export type Restored = { result: ReviewResult } | { skipped: string };
+/**
+ * A saved guided view on top of the diff, with the app that published it and its summary if it has them, or why the
+ * page groups the PR again instead (logged by buildReview).
+ */
+export type Restored = { result: ReviewResult; published?: PublishingApp; summary?: GuideSummary } | { skipped: string };
 
 /**
  * The saved grouping on top of a freshly parsed diff, unless it doesn't fit: another format or mode, made while the
  * backend failed over RETRY_FALLBACK_MS ago, or groups that don't cover exactly this diff's hunks. Its title and
- * description are the ones it was made with.
+ * description are the ones it was made with. A published guide fits in any mode, and for good.
  */
 export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, now = Date.now()): Restored {
   const s = saved as Partial<SavedReview> | null | undefined;
   if (s?.format !== FORMAT) return { skipped: `it was saved in format ${s?.format ?? "none"}, and this version reads ${FORMAT}` };
-  if (!sameMode(s.mode, mode)) {
+  const published = publishedBy(s);
+  if (!published && !sameMode(s.mode, mode)) {
     return { skipped: `it was made ${describeMode(s.mode)}, and the page now groups ${describeMode(mode)}` };
   }
   if (!Array.isArray(s.groups) || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string") return { skipped: "it is incomplete" };
-  if (s.fellBack && !(now - (s.savedAt ?? 0) < RETRY_FALLBACK_MS)) return { skipped: "it was made while the backend was failing, over an hour ago" };
+  if (!published && s.fellBack && !(now - (s.savedAt ?? 0) < RETRY_FALLBACK_MS)) return { skipped: "it was made while the backend was failing, over an hour ago" };
   const files = parseDiff(diff);
   const hunks = new Map<string, HunkInfo>();
   for (const file of files) for (const hunk of file.hunks) hunks.set(hunk.id, hunkInfo(file, hunk, s.hunks?.[hunk.id]));
@@ -152,7 +215,35 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
     options: s.options!,
     warnings: [],
   };
-  return { result };
+  const summary = readSummary(s.summary, hunks);
+  return { result, ...(published && { published }), ...(summary && { summary }) };
+}
+
+/**
+ * The summary as written by another app, checked line by line: a line that doesn't fit is left out, hunk ids not in
+ * this diff are dropped, and so is a ticket link that isn't http(s). Without a problem to state, there is none.
+ */
+function readSummary(raw: unknown, hunks: Map<string, HunkInfo>): GuideSummary | null {
+  const s = raw as Record<string, unknown> | null | undefined;
+  const problem = s?.problem as Record<string, unknown> | undefined;
+  if (!s || typeof problem?.text !== "string" || (problem.source !== "ticket" && problem.source !== "inferred")) return null;
+  const t = problem.ticket as Record<string, unknown> | undefined;
+  const ticket =
+    typeof t?.id === "string" && typeof t.title === "string" && typeof t.url === "string" && /^https?:\/\//i.test(t.url) ? { id: t.id, title: t.title, url: t.url } : null;
+  const items = (list: unknown): SummaryItem[] =>
+    (Array.isArray(list) ? (list as (Record<string, unknown> | null)[]) : []).flatMap((item) =>
+      typeof item?.text === "string"
+        ? [{ text: item.text, hunkIds: (Array.isArray(item.hunkIds) ? (item.hunkIds as unknown[]) : []).filter((id): id is string => typeof id === "string" && hunks.has(id)) }]
+        : [],
+    );
+  return {
+    problem: { text: problem.text, source: problem.source, ...(ticket && { ticket }) },
+    kinds: (Array.isArray(s.kinds) ? (s.kinds as unknown[]) : []).filter((k): k is ChangeKind => (CHANGE_KINDS as readonly unknown[]).includes(k)),
+    breaking: items(s.breaking),
+    risks: items(s.risks),
+    tests: items(s.tests),
+    leftovers: items(s.leftovers),
+  };
 }
 
 function sameMode(a: Partial<ReviewMode> | undefined, b: ReviewMode): boolean {

@@ -3,6 +3,7 @@ import * as React from "react";
 import { isLineAnchor, type PrOverview, type Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 import { groupColor } from "./groupColors";
+import { GuideSummaryCard } from "./GuideSummary";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
@@ -25,6 +26,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, building, onOpenGro
   return (
     <div className="overview">
       <div className="overview-main">
+        {review?.analyzed && <GuideSummaryCard review={review} onOpenGroup={onOpenGroup} />}
         <DescriptionCard data={data} />
         <Timeline data={data} onOpenFiles={onOpenFiles} />
         <CommentComposer label="Add a comment" onSave={(content) => actions.createThread({ content })} />
@@ -211,19 +213,22 @@ const SemanticSummary: React.FC<{ review: ReviewModel | null; building: boolean;
     {!review?.analyzed ? (
       <p className="muted">{building ? "Building guided view…" : "Loading guided view…"}</p>
     ) : (
-      <ul className="summary-groups">
-        {review.result.groups.map((g, i) => (
-          <li key={g.id}>
-            <button className="summary-group" onClick={() => onOpenGroup(g.id)}>
-              <span className="badge" style={{ background: groupColor(review.result.groups, g) }}>
-                {i + 1}
-              </span>
-              <span className={cx("text", g.kind !== "semantic" && "muted")}>{g.title}</span>
-              <span className="count">{g.hunkIds.length}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      <>
+        {review.published && <p className="guide-source">Published from Ajour</p>}
+        <ul className="summary-groups">
+          {review.result.groups.map((g, i) => (
+            <li key={g.id}>
+              <button className="summary-group" onClick={() => onOpenGroup(g.id)}>
+                <span className="badge" style={{ background: groupColor(review.result.groups, g) }}>
+                  {i + 1}
+                </span>
+                <span className={cx("text", g.kind !== "semantic" && "muted")}>{g.title}</span>
+                <span className="count">{g.hunkIds.length}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </>
     )}
   </Side>
 );
