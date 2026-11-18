@@ -51,13 +51,14 @@ async function main() {
         save: async (key, review, options) => {
           if (state.failSave) {
             if (options?.publish) throw new Error("Simulated save failure");
-            return;
+            return false;
           }
           const comparisons = withSaved(kept(), key, review, options);
           if (comparisons) localStorage.setItem(SAVED, JSON.stringify(comparisons));
+          return true;
         },
       }
-    : { load: async () => null, save: async () => {} };
+    : { load: async () => null, save: async () => true };
   const route = { view: "pr" as const, repo: "t3code", pr: 17901 };
   // The local page's host for whatever the harness doesn't stub.
   const overrides: Partial<AppHost> = {

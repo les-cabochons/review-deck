@@ -4,7 +4,7 @@ import { blobIds } from "../data/fileReads";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 import type { BackendService } from "./backend";
-import { type GuideSummary, ownOver, packReview, type PublishingApp, type ReviewKey, reviewMode, type SavedReview, type SavedReviews } from "./saved";
+import { carrySummary, type GuideSummary, keepsPublished, packReview, type PublishingApp, type ReviewKey, reviewMode, type SavedReview, type SavedReviews } from "./saved";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
 
@@ -25,6 +25,8 @@ export interface ReviewModel {
 
 /** The guides readers grouped over a published one, by comparison: theirs until the page closes, or they publish it. */
 const ownGuides = new Map<string, SavedReview>();
+/** Guides that couldn't be saved (SavedReviews.save), by comparison: shown again until the page closes, not grouped again. */
+const unsavedGuides = new Map<string, SavedReview>();
 const guideId = (key: ReviewKey) => JSON.stringify([key.repo, key.pr, key.iteration, key.compareTo]);
 
 /** Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it couldn't. */
@@ -49,7 +51,8 @@ export interface BuildOptions {
   aiTitles?: boolean;
   /**
    * Reuses the guided view saved for this comparison (by anyone), and saves a fresh one for everyone, unless a guide
-   * published for the same changes is saved: the fresh one is then the reader's own (ReviewModel.ownGuide).
+   * published for the same changes is saved: the fresh one is then the reader's own (ReviewModel.ownGuide). One the
+   * store couldn't save is reused for the session instead.
    */
   saved?: { store: SavedReviews; key: ReviewKey };
   /** Analyze again even if a saved grouping fits ("Regroup"); the new one replaces it, or a published one for the session. */
@@ -72,10 +75,12 @@ export async function buildReview(
   const started = performance.now();
   const backend = options.backend ?? null;
   // Read while the files download; restoreReview (in the worker) checks it still fits. A Regroup reads it too, to keep
-  // a published guide. A reader's own guide over a published one shows instead, for as long as the page is open.
+  // a published guide. A reader's own guide over a published one shows instead, for as long as the page is open, and
+  // so does a guide that couldn't be saved.
   const key = options.saved?.key;
   const stored = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
-  const own = key && !options.fresh ? ownGuides.get(guideId(key)) : undefined;
+  const readersOwn = key && !options.fresh ? ownGuides.get(guideId(key)) : undefined;
+  const own = readersOwn ?? (key && !options.fresh ? unsavedGuides.get(guideId(key)) : undefined);
   // On a link straight to the PR, both reads may already be under way (data/fileReads.ts): these then take them over.
   const changes = await source.getChanges(iteration, compareTo);
   const { blobs, stats: blobStats } = await source.getBlobs(blobIds(changes), options.signal);
@@ -102,15 +107,24 @@ export async function buildReview(
   for (const warning of result.warnings) console.warn("[review-deck]", warning);
   console.debug("[review-deck] review built", { files: changes.length, hunks: result.hunks.size, restored, blobs: blobStats, fetchMs, totalMs: Math.round(performance.now() - started), ...result.timings });
   if (options.saved) console.info(`[review-deck] guided view: ${restored ? `reused ${own ? "the reader's own" : "the saved one"}` : `grouped ${whyGrouped(options.fresh, job.saved, skipped)}`}`);
-  let ownGuide = restored && own ? own : undefined;
+  let ownGuide = restored ? readersOwn : undefined;
+  let fresh: SavedReview | undefined;
   if (!restored && options.saved) {
-    const review = packReview(result, reviewMode(backend, aiTitles));
-    // Over a published guide for the same hunks, it is the reader's own, with the published summary.
-    ownGuide = ownOver(storedNow, review) ?? undefined;
-    if (ownGuide) ownGuides.set(guideId(options.saved.key), ownGuide);
-    else void options.saved.store.save(options.saved.key, review);
+    // A regrouping of the same hunks keeps the saved guide's summary, whether it is the published guide or the one a
+    // Publish saved in its place.
+    const review = carrySummary(storedNow, packReview(result, reviewMode(backend, aiTitles)));
+    const id = guideId(options.saved.key);
+    fresh = review;
+    unsavedGuides.delete(id);
+    // Over a published guide for the same hunks, it is the reader's own.
+    if (keepsPublished(storedNow, review)) ownGuides.set(id, (ownGuide = review));
+    else {
+      void options.saved.store.save(options.saved.key, review).then((saved) => {
+        if (!saved) unsavedGuides.set(id, review);
+      });
+    }
   }
-  const shownSummary = summary ?? ownGuide?.summary;
+  const shownSummary = summary ?? fresh?.summary;
   return { result, changes, contents, comparison, analyzed: true, ...(published && { published }), ...(shownSummary && { summary: shownSummary }), ...(ownGuide && { ownGuide }) };
 }
 

@@ -69,8 +69,14 @@ function memoryStore() {
     load: async (key) => savedFor(state.doc, key),
     save: async (key, review, options) => {
       state.saves++;
-      if (state.failing) throw new Error("Simulated save failure");
-      state.doc = withSaved(state.doc, key, review, options) ?? state.doc;
+      try {
+        if (state.failing) throw new Error("Simulated save failure");
+        state.doc = withSaved(state.doc, key, review, options) ?? state.doc;
+        return true;
+      } catch (e) {
+        if (options?.publish) throw e;
+        return false;
+      }
     },
   };
   return { state, store };
@@ -157,4 +163,41 @@ test("Given the local page's store can't write, then a Publish rejects, and a pl
   } finally {
     console.warn = warn;
   }
+});
+
+test("Given a guide published from Ajour, then Regroup, Publish and Regroup again keep its summary, saved for everyone", async () => {
+  const key: ReviewKey = { repo: "r", pr: 4, iteration: 3, compareTo: 0 };
+  const { state, store } = await withPublished(key);
+  const { ownGuide } = await open(store, key, true);
+  await publishGuide(store, key, ownGuide!);
+  assert.equal((savedFor(state.doc, key) as SavedReview).madeWith.app, undefined);
+
+  const again = await open(store, key, true);
+  assert.equal(again.ownGuide, undefined);
+  assert.deepEqual(again.summary, summary);
+  await new Promise((resolve) => setTimeout(resolve));
+  assert.deepEqual((savedFor(state.doc, key) as SavedReview).summary, summary);
+  assert.deepEqual((await open(store, key)).summary, summary);
+});
+
+test("Given a guide published for another comparison, then a grouping too large to save beside it is declined, and kept for the session", async () => {
+  const key: ReviewKey = { repo: "r", pr: 5, iteration: 3, compareTo: 0 };
+  const other = { ...key, compareTo: 1 };
+  const { state, store } = await withPublished(other);
+  const published = savedFor(state.doc, other) as SavedReview;
+  // A published guide that leaves less room than the reader's grouping needs.
+  const large = { ...published, groups: [{ ...published.groups[0], rationale: "x".repeat(255_000) }] };
+  state.doc = withSaved(null, other, large);
+
+  const grouped = await open(store, key);
+  assert.equal(grouped.ownGuide, undefined);
+  await new Promise((resolve) => setTimeout(resolve));
+  assert.equal(state.saves, 1);
+  assert.equal(savedFor(state.doc, key), null);
+  assert.equal((savedFor(state.doc, other) as SavedReview).madeWith.app, "ajour");
+  // The next open shows the same grouping, from memory, without grouping or saving again.
+  const reopened = await open(store, key);
+  assert.equal(reopened.result.groups[0].title, "The reader's grouping");
+  assert.equal(reopened.ownGuide, undefined);
+  assert.equal(state.saves, 1);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReviewResult } from "../../src/core/types";
-import { keepsPublished, ownOver, packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, type SavedReview, savedFor, withSaved } from "../src/review/saved";
+import { carrySummary, GuideTooLarge, keepsPublished, packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, type SavedReview, savedFor, withSaved } from "../src/review/saved";
 
 const meta = { title: "Rename fetch helper", description: "" };
 const diff = [
@@ -307,16 +307,87 @@ test("Given summary lines that are empty or only spaces, then they are left out,
   assert.equal(summary(" \n ", ["Gone."]), undefined);
 });
 
-test("Given a reader's own grouping over a published guide for the same hunks, then it carries the published summary, and what Publish saves has it", () => {
+test("Given a regrouping of the same hunks as a saved guide with a summary, then it carries the summary, whoever made the saved one, and what Publish saves has it", () => {
   const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
   const published = publishedFromAjour();
-  const own = ownOver(published, packReview(analyzed(), reviewMode({}, true)))!;
+  const own = carrySummary(published, packReview(analyzed(), reviewMode({}, true)));
   assert.deepEqual(own.summary, published.summary);
   assert.equal(own.madeWith.app, undefined);
   const saved = savedFor(JSON.parse(JSON.stringify(withSaved(withSaved(null, key, published), key, own, { publish: true }))), key);
   assert.deepEqual((restoreReview(saved, reviewMode({}, true), diff) as { summary?: unknown }).summary, published.summary);
-  // Only a published guide for the same hunks makes the grouping the reader's own.
+  // After that Publish the saved guide is Review Deck's own, and the next regrouping still carries its summary.
+  assert.equal((saved as SavedReview).madeWith.app, undefined);
+  assert.deepEqual(carrySummary(saved, packReview(analyzed(), reviewMode({}, true))).summary, published.summary);
+  // Only a whole saved guide for the same hunks gives its summary.
   const pushed = diff.replace(/diff --git a\/src\/api\.test\.ts[\s\S]*/, "");
-  assert.equal(ownOver(published, packReview(restored(publishedFromAjour({ groups: [{ ...published.groups[0], hunkIds: ["src/api.ts#0"] }] }), reviewMode({}, true), pushed), reviewMode({}, true))), null);
-  assert.equal(ownOver(packReview(analyzed(), reviewMode({}, true)), packReview(analyzed(), reviewMode({}, true))), null);
+  const regrouped = packReview(restored(publishedFromAjour({ groups: [{ ...published.groups[0], hunkIds: ["src/api.ts#0"] }] }), reviewMode({}, true), pushed), reviewMode({}, true));
+  assert.equal(carrySummary(published, regrouped).summary, undefined);
+  assert.equal(carrySummary(packReview(analyzed(), reviewMode({}, true)), packReview(analyzed(), reviewMode({}, true))).summary, undefined);
+  assert.equal(carrySummary({ ...published, groups: [null] }, packReview(analyzed(), reviewMode({}, true))).summary, undefined);
+});
+
+test("Given a published guide for another comparison, then it survives the size limits: a save that doesn't fit beside it is declined, and other guides go first", () => {
+  const key = (compareTo: number): ReviewKey => ({ repo: "r", pr: 7, iteration: 5, compareTo });
+  const rationale = (chars: number) => [{ ...packReview(analyzed(), reviewMode({}, true)).groups[0], rationale: "x".repeat(chars) }];
+  const own = (chars: number) => ({ ...packReview(analyzed(), reviewMode({}, true)), groups: rationale(chars) });
+  const doc = withSaved(null, key(0), publishedFromAjour({ groups: rationale(100_000) }));
+  // Reproduced in review: this dropped the published guide, with no Publish clicked.
+  assert.throws(() => withSaved(doc, key(1), own(200_000)), GuideTooLarge);
+  // A Publish for another comparison doesn't take its place either.
+  assert.throws(() => withSaved(doc, key(1), own(200_000), { publish: true }), GuideTooLarge);
+  // One that fits is saved beside it, and the next one drops it rather than the published guide.
+  const two = withSaved(doc, key(1), own(100_000))!;
+  assert.deepEqual(two.map((c) => c.compareTo), [1, 0]);
+  assert.deepEqual(withSaved(two, key(2), own(100_000))!.map((c) => c.compareTo), [2, 0]);
+  // Alone, a guide over the budget is still saved, by itself.
+  assert.deepEqual(withSaved(withSaved(null, key(1), own(100_000)), key(2), own(300_000))!.map((c) => c.compareTo), [2]);
+});
+
+test("Given a saved guide with malformed hunk facts, then it shows without them, and nothing the page renders is anything but text", () => {
+  const ids = ["src/api.ts#0", "src/api.test.ts#0"];
+  const facts = (saved: unknown) => {
+    const result = restored(saved, reviewMode({}, true));
+    return ids.map((id) => result.hunks.get(id)!);
+  };
+  // As found in review: an object as the symbol, and one as a mechanical reason.
+  const [api, apiTest] = facts(publishedFromAjour({ hunks: { "src/api.ts#0": { symbol: { bad: "data" } }, "src/api.test.ts#0": { mechanical: { kind: "generated", reason: { bad: "data" } } } } }));
+  assert.equal(api.symbol, null);
+  assert.equal(apiTest.mechanical, null);
+  // Every hunk fact the page renders (symbol, test tag, mechanical reason and kind), with each malformed value, on
+  // both kinds of guide.
+  for (const value of [{ bad: "data" }, 4, ["x"], null, "yes", "", " "]) {
+    // "yes" is a fine symbol or reason, but not a test tag.
+    const text = value === "yes" ? 4 : value;
+    const entries = [value, { symbol: text, isTest: value, mechanical: value }, { mechanical: { kind: value, reason: "Lockfile" } }, { mechanical: { kind: "lockfile", reason: text } }];
+    for (const entry of entries) {
+      const hunks = Object.fromEntries(ids.map((id) => [id, entry]));
+      for (const saved of [publishedFromAjour({ hunks }), { ...JSON.parse(JSON.stringify(packReview(analyzed(), reviewMode({}, true)))), hunks }]) {
+        for (const info of facts(saved)) {
+          const what = JSON.stringify(entry);
+          assert.equal(info.symbol, null, what);
+          assert.equal(info.isTest, false, what);
+          assert.equal(info.mechanical, null, what);
+        }
+      }
+    }
+  }
+  // Well-formed facts still come through, and only what the page reads.
+  const [kept] = facts(publishedFromAjour({ hunks: { "src/api.ts#0": { symbol: "fetchJson", isTest: true, mechanical: { kind: "lockfile", reason: "Lockfile", extra: {} } } } }));
+  assert.deepEqual([kept.symbol, kept.isTest, kept.mechanical], ["fetchJson", true, { kind: "lockfile", reason: "Lockfile" }]);
+  // A group's title source, shown as an icon, is dropped when it isn't one the page knows.
+  const [group] = restored(publishedFromAjour({ groups: [{ ...publishedFromAjour().groups[0], titleSource: { bad: "data" } }] }), reviewMode({}, true)).groups;
+  assert.equal(group.titleSource, undefined);
+  // Malformed facts alone leave a published guide in place: it still shows.
+  assert.equal(keepsPublished(publishedFromAjour({ hunks: { "src/api.ts#0": { symbol: { bad: "data" } } } }), packReview(analyzed(), reviewMode({}, true))), true);
+});
+
+test("Given a published guide missing what the page needs (options, merges or the hunk record), then it isn't shown or kept, and a Regroup replaces it", () => {
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const own = packReview(analyzed(), reviewMode({}, true));
+  for (const broken of [{ options: null }, { options: "x" }, { merges: "x" }, { merges: [null] }, { hunks: "x" }, { hunks: [] }, { hunks: null }]) {
+    const saved = publishedFromAjour(broken);
+    assert.match(skipped(saved, reviewMode({}, true))!, /incomplete/, JSON.stringify(broken));
+    assert.equal(keepsPublished(saved, own), false, JSON.stringify(broken));
+    assert.equal((savedFor(withSaved(withSaved(null, key, saved), key, own), key) as SavedReview).madeWith.app, undefined);
+  }
 });

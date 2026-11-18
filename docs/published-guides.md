@@ -27,15 +27,17 @@ An older Review Deck shows a published guide only if its `mode` matches the read
 ## How Review Deck treats it
 
 - **Shown** whenever its groups cover exactly the hunks of Review Deck's own diff for that comparison, each once. `mode`, the backend, the AI-title setting and `fellBack` don't matter.
-- **Read only if every group is whole:** `id`, `kind`, `title` and `rationale` are strings, and `hunkIds` is an array of strings. Otherwise the entry is incomplete. It isn't shown or kept, and the next grouping replaces it.
+- **Read only if it is whole:** `madeWith.title` and `madeWith.description` are strings; in every group, `id`, `kind`, `title` and `rationale` are strings and `hunkIds` is an array of strings; `options` is an object; `merges`, if present, is an array of `{ from, into, symbol }` strings; and `hunks`, if present, is an object. Otherwise the entry is incomplete. It isn't shown or kept, and the next grouping replaces it.
+- **Optional parts that are malformed are dropped,** and the guide still shows without them. This covers a group's `titleSource` that isn't `llm`, `description` or `heuristic`, and these hunk facts: a `symbol` that isn't text, an `isTest` that isn't `true`, and a `mechanical` whose `kind` isn't a known one or whose `reason` isn't text. Malformed facts alone don't make the entry incomplete, so a published guide with them is still kept.
 - **Grouped again**, as for any guide, when the hunks don't match (a new push, or a different diff cut). That grouping replaces the published guide, which no longer fits.
-- **Never replaced on its own.** A reader who regroups gets their own guide, kept in memory for as long as the page is open, with **Publish** in the Files toolbar. Publish saves it in place of the published guide, as Review Deck's own. The reader's guide carries the published summary, so it still shows after a Regroup, and Publish saves it too.
-- **Kept first** when a pull request's document drops older comparisons to stay under its limits.
+- **Never replaced on its own.** A reader who regroups gets their own guide, kept in memory for as long as the page is open, with **Publish** in the Files toolbar. Publish saves it in place of the published guide, as Review Deck's own.
+- **The summary goes where the guide goes.** A regrouping of the same hunks carries the saved guide's summary, whether that guide is still Ajour's or the one a Publish saved in its place. So the summary still shows after Regroup, Publish, then Regroup again, and is saved with each.
+- **Never dropped for another comparison.** A pull request's document keeps published guides when it drops older comparisons to stay under its limits. A guide for another comparison that doesn't fit beside them isn't saved (`withSaved` throws `GuideTooLarge`). The page keeps that guide for the session instead, and a Publish of it fails and says so.
 - **The summary is checked line by line.** Its text is trimmed, a line whose text is empty or only spaces is left out, hunk ids not in the diff are dropped, and a ticket link that isn't `http(s)` is dropped. Without a problem to state, no summary shows, but the guide still does. Each line links to the concerns holding its hunks.
 
 ## Keeping Ajour in sync
 
-Ajour keeps a vendored copy of `saved.ts` and of `buildDiff`, so that its hunk ids match Review Deck's. The next sync picks up `PublishingApp`, `GuideSummary`, `keepsPublished`, `ownOver` and the `publish` option of `withSaved`.
+Ajour keeps a vendored copy of `saved.ts` and of `buildDiff`, so that its hunk ids match Review Deck's. The next sync picks up `PublishingApp`, `GuideSummary`, `keepsPublished`, `carrySummary`, `GuideTooLarge`, the `publish` option of `withSaved`, the stricter check of a saved entry, and `SavedReviews.save` resolving to whether it saved.
 
 ## Checks
 

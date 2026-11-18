@@ -6,7 +6,8 @@
 // is grouped again after a while (`fellBack`). AppHost.savedReviews() keeps one document per PR with the comparisons last grouped (savedFor, withSaved).
 // A guide published from Ajour (`madeWith.app`) shows whatever the reader's settings and is never replaced on its own:
 // a reader who regroups keeps their guide for the session, and only Publish puts theirs in its place (keepsPublished).
-import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewResult } from "../../../src/core/types";
+// Nor is it dropped to make room for another comparison: a guide that doesn't fit beside it isn't saved (GuideTooLarge).
+import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewResult, TitleSource } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 
 /**
@@ -19,7 +20,10 @@ const FORMAT = 4;
 
 /** Comparisons kept per PR, most recently grouped first: the default one, plus the few others reviewers opened. */
 const MAX_COMPARISONS = 4;
-/** A PR's document keeps other comparisons only while it stays under this many characters; the new one always fits. */
+/**
+ * A PR's document keeps other comparisons only while it stays under this many characters. Published guides always
+ * stay: the new one fits beside them or isn't saved (GuideTooLarge). Alone, it always fits.
+ */
 const MAX_DOC_CHARS = 256_000;
 
 /** How long a guided view made while the backend failed is reused before the next open groups again. */
@@ -40,8 +44,19 @@ export interface ReviewKey {
 export interface SavedReviews {
   /** The saved grouping, unchecked (restoreReview checks it), or null. */
   load(key: ReviewKey): Promise<unknown>;
-  /** `publish`: replace even a published guide (withSaved). */
-  save(key: ReviewKey, review: SavedReview, options?: { publish?: boolean }): Promise<void>;
+  /**
+   * `publish`: replace even a published guide (withSaved). Resolves false if `review` isn't saved, nor anything in its
+   * place (it doesn't fit beside the published guides, or the save failed): the page then keeps it for the session.
+   */
+  save(key: ReviewKey, review: SavedReview, options?: { publish?: boolean }): Promise<boolean>;
+}
+
+/** Thrown by withSaved: the guide doesn't fit in the PR's document beside the guides published for its other comparisons. */
+export class GuideTooLarge extends Error {
+  constructor(chars: number) {
+    super(`the guided view doesn't fit beside the published guides (${chars} characters, over ${MAX_DOC_CHARS})`);
+    this.name = "GuideTooLarge";
+  }
 }
 
 /** How the grouping was made; a saved one is reused only if it was made the way the page would make it now. */
@@ -130,23 +145,39 @@ function publishedBy(review: unknown): PublishingApp | null {
  */
 export function keepsPublished(saved: unknown, review: SavedReview): boolean {
   const groups = publishedBy(saved) && readable(saved);
-  return !!groups && covers(groups, new Set(review.groups.flatMap((g) => g.hunkIds)));
+  return !!groups && covers(groups, idsOf(review));
 }
 
 /**
- * `review`, a reader's grouping, as their own guide over `saved` if that is a published guide it leaves in place
- * (keepsPublished), carrying its summary: the summary goes wherever the guide goes, Publish included. Otherwise null.
+ * `review`, a regrouping, with the summary of `saved` if that is a whole guide for the same hunks: the summary goes
+ * wherever the guide goes, whether `saved` is still the published guide or the one a Publish saved in its place.
  */
-export function ownOver(saved: unknown, review: SavedReview): SavedReview | null {
-  if (!keepsPublished(saved, review)) return null;
-  const summary = readSummary((saved as Partial<SavedReview>).summary, new Set(review.groups.flatMap((g) => g.hunkIds)));
+export function carrySummary(saved: unknown, review: SavedReview): SavedReview {
+  const groups = readable(saved);
+  if (!groups || !covers(groups, idsOf(review))) return review;
+  const summary = readSummary((saved as Partial<SavedReview>).summary, idsOf(review));
   return summary ? { ...review, summary } : review;
 }
 
-/** The groups of a saved entry in this format whose fields all hold what the page reads, or null if any doesn't. */
+const idsOf = (review: SavedReview): ReadonlySet<string> => new Set(review.groups.flatMap((g) => g.hunkIds));
+
+const TITLE_SOURCES: readonly unknown[] = ["llm", "description", "heuristic"] satisfies TitleSource[];
+const MECHANICAL_KINDS: readonly unknown[] = ["lockfile", "generated", "rename", "binary", "whitespace", "dependency-manifest"] satisfies MechanicalInfo["kind"][];
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The groups of a saved entry in this format, if it holds everything the page needs: the title and description it was
+ * made with, whole groups (`id`, `kind`, `title` and `rationale` strings, `hunkIds` an array of strings), its
+ * `options`, and its `merges` and `hunks` if it has them. Null if any is missing or malformed. Optional parts that
+ * are malformed are dropped instead: a title source the page doesn't know, and hunk facts (factsOf).
+ */
 function readable(saved: unknown): Group[] | null {
   const s = saved as Partial<SavedReview> | null | undefined;
   if (s?.format !== FORMAT || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string" || !Array.isArray(s.groups)) return null;
+  if (!isRecord(s.options) || ("hunks" in s && !isRecord(s.hunks))) return null;
+  const merge = (m: unknown) => isRecord(m) && typeof m.from === "string" && typeof m.into === "string" && typeof m.symbol === "string";
+  if (s.merges !== undefined && !(Array.isArray(s.merges) && s.merges.every(merge))) return null;
   const valid = (g: Partial<Group> | null) =>
     typeof g?.id === "string" &&
     typeof g.kind === "string" &&
@@ -154,7 +185,24 @@ function readable(saved: unknown): Group[] | null {
     typeof g.rationale === "string" &&
     Array.isArray(g.hunkIds) &&
     g.hunkIds.every((id) => typeof id === "string");
-  return (s.groups as (Partial<Group> | null)[]).every(valid) ? s.groups : null;
+  const groups = s.groups as (Partial<Group> | null)[];
+  if (!groups.every(valid)) return null;
+  return (groups as Group[]).map(({ titleSource, ...g }) => (TITLE_SOURCES.includes(titleSource) ? { ...g, titleSource } : g));
+}
+
+/**
+ * A saved hunk's facts, keeping only those that hold what the page renders: a symbol's text, the test tag, and a
+ * known mechanical kind with its reason.
+ */
+function factsOf(saved: unknown): SavedReview["hunks"][string] {
+  if (!isRecord(saved)) return {};
+  const m = saved.mechanical;
+  const mechanical = isRecord(m) && MECHANICAL_KINDS.includes(m.kind) && typeof m.reason === "string" && m.reason.trim() ? ({ kind: m.kind, reason: m.reason } as MechanicalInfo) : null;
+  return {
+    ...(typeof saved.symbol === "string" && saved.symbol.trim() && { symbol: saved.symbol }),
+    ...(saved.isTest === true && { isTest: true as const }),
+    ...(mechanical && { mechanical }),
+  };
 }
 
 /** Whether `groups` hold exactly the hunks `ids`, each once. */
@@ -178,10 +226,12 @@ export function savedFor(comparisons: unknown, key: ReviewKey): unknown {
 }
 
 /**
- * A PR's saved views with `review` as `key`'s comparison's, first, then as many of the others as fit (published
- * guides, then the most recently grouped), so switching comparisons doesn't evict the one everyone else opens. Null
- * if there's nothing to save: a guide published for the same hunks is saved and this isn't a Publish, or `review`
- * fell back, and a complete one made the same way, from the same title and description, is saved.
+ * A PR's saved views with `review` as `key`'s comparison's, first, then the guides published for other comparisons,
+ * then as many of the others as fit, most recently grouped first, so switching comparisons doesn't evict the one
+ * everyone else opens. Null if there's nothing to save: a guide published for the same hunks is saved and this isn't
+ * a Publish, or `review` fell back, and a complete one made the same way, from the same title and description, is
+ * saved. Throws GuideTooLarge if `review` doesn't fit beside the published guides, Publish or not: they are never
+ * dropped to make room.
  */
 export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedReview, options: { publish?: boolean } = {}): SavedComparison[] | null {
   const saved = Array.isArray(comparisons)
@@ -195,10 +245,12 @@ export function withSaved(comparisons: unknown, key: ReviewKey, review: SavedRev
   if (!options.publish && review.fellBack && current && !current.fellBack && current.format === review.format && sameMode(current.mode, review.mode) && sameText(current.madeWith, review.madeWith)) {
     return null;
   }
-  const kept: SavedComparison[] = [{ iteration: key.iteration, compareTo: key.compareTo, review }];
-  let chars = JSON.stringify(kept[0]).length;
-  const others = saved.filter((c) => !same(c)).sort((a, b) => Number(!!publishedBy(b.review)) - Number(!!publishedBy(a.review)));
-  for (const c of others) {
+  const others = saved.filter((c) => !same(c));
+  const published = others.filter((c) => publishedBy(c.review));
+  const kept: SavedComparison[] = [{ iteration: key.iteration, compareTo: key.compareTo, review }, ...published];
+  let chars = kept.reduce((sum, c) => sum + JSON.stringify(c).length, 0);
+  if (published.length > 0 && chars > MAX_DOC_CHARS) throw new GuideTooLarge(chars);
+  for (const c of others.filter((c) => !publishedBy(c.review))) {
     chars += JSON.stringify(c).length;
     if (kept.length >= MAX_COMPARISONS || chars > MAX_DOC_CHARS) break;
     kept.push(c);
@@ -229,7 +281,8 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
   if (!published && s.fellBack && !(now - (s.savedAt ?? 0) < RETRY_FALLBACK_MS)) return { skipped: "it was made while the backend was failing, over an hour ago" };
   const files = parseDiff(diff);
   const hunks = new Map<string, HunkInfo>();
-  for (const file of files) for (const hunk of file.hunks) hunks.set(hunk.id, hunkInfo(file, hunk, s.hunks?.[hunk.id]));
+  const facts = (id: string) => factsOf(s.hunks && Object.hasOwn(s.hunks, id) ? s.hunks[id] : undefined);
+  for (const file of files) for (const hunk of file.hunks) hunks.set(hunk.id, hunkInfo(file, hunk, facts(hunk.id)));
   if (!covers(groups, new Set(hunks.keys()))) return { skipped: "its groups don't cover this diff's changes" };
   const result: ReviewResult = {
     title: s.madeWith!.title,
@@ -289,14 +342,14 @@ function describeMode(mode: Partial<ReviewMode> | undefined): string {
   return `${mode?.semantic ? "with" : "without"} embeddings and ${mode?.llmTitles ? "with" : "without"} AI titles`;
 }
 
-/** Only what the page reads; the rest feeds the analysis, which a saved grouping skips. */
-function hunkInfo(file: FileDiff, hunk: HunkInfo["hunk"], saved: SavedReview["hunks"][string] | undefined): HunkInfo {
+/** Only what the page reads (`saved`, checked by factsOf); the rest feeds the analysis, which a saved grouping skips. */
+function hunkInfo(file: FileDiff, hunk: HunkInfo["hunk"], saved: SavedReview["hunks"][string]): HunkInfo {
   return {
     hunk,
     file,
     language: null,
-    isTest: saved?.isTest === true,
-    symbol: saved?.symbol ?? null,
+    isTest: saved.isTest === true,
+    symbol: saved.symbol ?? null,
     enclosing: [],
     defines: new Set(),
     impacts: new Set(),
@@ -306,7 +359,7 @@ function hunkInfo(file: FileDiff, hunk: HunkInfo["hunk"], saved: SavedReview["hu
     commentOnly: false,
     addedDecls: [],
     removedDecls: [],
-    mechanical: saved?.mechanical ?? null,
+    mechanical: saved.mechanical ?? null,
     text: "",
   };
 }
