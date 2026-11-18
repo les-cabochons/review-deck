@@ -23,28 +23,44 @@ export interface ReviewModel {
   ownGuide?: SavedReview;
 }
 
-/** The guides readers grouped over a published one, by comparison: theirs until the page closes, or they publish it. */
-const ownGuides = new Map<string, SavedReview>();
-/** Guides that couldn't be saved (SavedReviews.save), by comparison: shown again until the page closes, not grouped again. */
-const unsavedGuides = new Map<string, SavedReview>();
-const guideId = (key: ReviewKey) => JSON.stringify([key.repo, key.pr, key.iteration, key.compareTo]);
 /**
- * Counts each comparison's newest guide (a grouping or a Publish). A save that settles after a newer one began speaks for
- * a superseded guide, so it neither keeps that guide for the session nor drops the newer one.
+ * The latest grouping of a comparison, kept until the page closes. It shows on reopen while what is saved isn't it: a
+ * reader's own guide over a published one (`own`, until a Publish of it), or one the store couldn't save.
  */
-const guideGenerations = new Map<string, number>();
-const nextGeneration = (id: string) => {
-  const generation = (guideGenerations.get(id) ?? 0) + 1;
-  guideGenerations.set(id, generation);
+interface SessionGuide {
+  guide: SavedReview;
+  /** Counts the comparison's groupings, so a save or Publish that settles late knows whether it was the latest's. */
+  generation: number;
+  own: boolean;
+  /** The store last wrote this guide: what is saved shows instead. */
+  stored: boolean;
+}
+const sessionGuides = new Map<string, SessionGuide>();
+const guideId = (key: ReviewKey) => JSON.stringify([key.repo, key.pr, key.iteration, key.compareTo]);
+
+/** A new grouping replaces the comparison's session guide; returns its generation. */
+function keepGrouping(id: string, guide: SavedReview, own: boolean): number {
+  const generation = (sessionGuides.get(id)?.generation ?? 0) + 1;
+  sessionGuides.set(id, { guide, generation, own, stored: false });
   return generation;
-};
+}
+
+/**
+ * A save or Publish of `generation` wrote its guide: the latest grouping's is now saved, and an older one's wrote over
+ * whatever the latest saved. One that wrote nothing changes nothing.
+ */
+function guideWritten(id: string, generation: number) {
+  const entry = sessionGuides.get(id);
+  if (entry) entry.stored = entry.generation === generation;
+}
 
 /** Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it couldn't. */
 export async function publishGuide(store: SavedReviews, key: ReviewKey, guide: SavedReview): Promise<void> {
   const id = guideId(key);
-  const generation = nextGeneration(id);
+  const entry = sessionGuides.get(id);
+  const generation = entry?.guide === guide ? entry.generation : 0;
   await store.save(key, guide, { publish: true });
-  if (guideGenerations.get(id) === generation) ownGuides.delete(id);
+  guideWritten(id, generation);
 }
 
 /** Git treats text containing a NUL character as binary. */
@@ -91,8 +107,9 @@ export async function buildReview(
   // so does a guide that couldn't be saved.
   const key = options.saved?.key;
   const stored = options.saved ? options.saved.store.load(options.saved.key) : Promise.resolve(null);
-  const readersOwn = key && !options.fresh ? ownGuides.get(guideId(key)) : undefined;
-  const own = readersOwn ?? (key && !options.fresh ? unsavedGuides.get(guideId(key)) : undefined);
+  const session = key && !options.fresh ? sessionGuides.get(guideId(key)) : undefined;
+  const own = session && !session.stored ? session.guide : undefined;
+  const readersOwn = own && session?.own ? own : undefined;
   // On a link straight to the PR, both reads may already be under way (data/fileReads.ts): these then take them over.
   const changes = await source.getChanges(iteration, compareTo);
   const { blobs, stats: blobStats } = await source.getBlobs(blobIds(changes), options.signal);
@@ -127,13 +144,13 @@ export async function buildReview(
     const review = carrySummary(storedNow, packReview(result, reviewMode(backend, aiTitles)));
     const id = guideId(options.saved.key);
     fresh = review;
-    const generation = nextGeneration(id);
-    unsavedGuides.delete(id);
-    // Over a published guide for the same hunks, it is the reader's own.
-    if (keepsPublished(storedNow, review)) ownGuides.set(id, (ownGuide = review));
+    // Over a published guide for the same hunks, it is the reader's own, and isn't saved.
+    const overPublished = keepsPublished(storedNow, review);
+    const generation = keepGrouping(id, review, overPublished);
+    if (overPublished) ownGuide = review;
     else {
       void options.saved.store.save(options.saved.key, review).then((saved) => {
-        if (!saved && guideGenerations.get(id) === generation) unsavedGuides.set(id, review);
+        if (saved) guideWritten(id, generation);
       });
     }
   }
