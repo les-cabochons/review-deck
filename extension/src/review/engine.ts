@@ -29,7 +29,7 @@ export interface ReviewModel {
  */
 interface SessionGuide {
   guide: SavedReview;
-  /** Counts the comparison's groupings, so a save or Publish that settles late knows whether it was the latest's. */
+  /** Counts the comparison's groupings, so a write that settles knows whether it was the latest's. */
   generation: number;
   own: boolean;
   /** The store last wrote this guide: what is saved shows instead. */
@@ -45,22 +45,69 @@ function keepGrouping(id: string, guide: SavedReview, own: boolean): number {
   return generation;
 }
 
+/** Why a save or Publish that never reached the store was dropped. */
+const SUPERSEDED = "a newer grouping took its place";
+
+interface QueuedWrite {
+  generation: number;
+  /** Calls the store. */
+  start: () => Promise<boolean>;
+  resolve: (written: boolean) => void;
+  reject: (error: unknown) => void;
+}
+/** Per comparison with a write in flight: the write that starts once it settles, if any. */
+const writeQueues = new Map<string, { next?: QueuedWrite }>();
+
 /**
- * A save or Publish of `generation` wrote its guide: the latest grouping's is now saved, and an older one's wrote over
- * whatever the latest saved. One that wrote nothing changes nothing.
+ * Writes `generation`'s guide to the store once the comparison's write in flight, if any, has settled, so the store
+ * takes each comparison's writes one at a time, in the order they were asked for. Only the newest waits: one it
+ * replaces is dropped, and rejects with SUPERSEDED.
+ *
+ * A write is asked for only for the latest grouping (a save when it is grouped, a Publish while it is on show), so
+ * writes run in the order of their groupings, and the latest's is the last. Its success alone marks the session guide
+ * stored. An older write that settles after the latest was grouped changes nothing: the latest's write, if it has
+ * one, is still to come.
  */
-function guideWritten(id: string, generation: number) {
-  const entry = sessionGuides.get(id);
-  if (entry) entry.stored = entry.generation === generation;
+function queueWrite(id: string, generation: number, start: () => Promise<boolean>): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    const write = { generation, start, resolve, reject };
+    const queue = writeQueues.get(id);
+    if (!queue) return runWrite(id, write);
+    queue.next?.reject(new Error(SUPERSEDED));
+    queue.next = write;
+  });
 }
 
-/** Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it couldn't. */
+function runWrite(id: string, write: QueuedWrite) {
+  const queue: { next?: QueuedWrite } = {};
+  writeQueues.set(id, queue);
+  let started: Promise<boolean>;
+  try {
+    started = write.start();
+  } catch (e) {
+    started = Promise.reject(e);
+  }
+  started
+    .then((written) => {
+      const entry = sessionGuides.get(id);
+      if (written && entry?.generation === write.generation) entry.stored = true;
+      write.resolve(written);
+    }, write.reject)
+    .finally(() => {
+      if (queue.next) runWrite(id, queue.next);
+      else writeQueues.delete(id);
+    });
+}
+
+/**
+ * Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it
+ * couldn't, or if a newer grouping replaced the guide before its write started.
+ */
 export async function publishGuide(store: SavedReviews, key: ReviewKey, guide: SavedReview): Promise<void> {
   const id = guideId(key);
   const entry = sessionGuides.get(id);
-  const generation = entry?.guide === guide ? entry.generation : 0;
-  await store.save(key, guide, { publish: true });
-  guideWritten(id, generation);
+  if (entry?.guide !== guide) throw new Error(SUPERSEDED);
+  await queueWrite(id, entry.generation, () => store.save(key, guide, { publish: true }));
 }
 
 /** Git treats text containing a NUL character as binary. */
@@ -149,9 +196,9 @@ export async function buildReview(
     const generation = keepGrouping(id, review, overPublished);
     if (overPublished) ownGuide = review;
     else {
-      void options.saved.store.save(options.saved.key, review).then((saved) => {
-        if (saved) guideWritten(id, generation);
-      });
+      const saving = options.saved;
+      // A save that a newer grouping's replaced before it started is dropped: nothing to report.
+      void queueWrite(id, generation, () => saving.store.save(saving.key, review)).catch(() => {});
     }
   }
   const shownSummary = summary ?? fresh?.summary;
