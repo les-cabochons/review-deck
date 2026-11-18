@@ -26,12 +26,17 @@ An older Review Deck shows a published guide only if its `mode` matches the read
 
 ## How Review Deck treats it
 
-- **Shown** whenever its groups cover exactly the hunks of Review Deck's own diff for that comparison. `mode`, the backend, the AI-title setting and `fellBack` don't matter.
+- **Shown** whenever its groups cover exactly the hunks of Review Deck's own diff for that comparison, each once. `mode`, the backend, the AI-title setting and `fellBack` don't matter.
+- **Read only if every group is whole:** `id`, `kind`, `title` and `rationale` are strings, and `hunkIds` is an array of strings. Otherwise the entry is incomplete. It isn't shown or kept, and the next grouping replaces it.
 - **Grouped again**, as for any guide, when the hunks don't match (a new push, or a different diff cut). That grouping replaces the published guide, which no longer fits.
-- **Never replaced on its own.** A reader who regroups gets their own guide, kept in memory for as long as the page is open, with **Publish** in the Files toolbar. Publish saves it in place of the published guide, as Review Deck's own.
+- **Never replaced on its own.** A reader who regroups gets their own guide, kept in memory for as long as the page is open, with **Publish** in the Files toolbar. Publish saves it in place of the published guide, as Review Deck's own. The reader's guide carries the published summary, so it still shows after a Regroup, and Publish saves it too.
 - **Kept first** when a pull request's document drops older comparisons to stay under its limits.
-- **The summary is checked line by line.** A line without text is left out, hunk ids not in the diff are dropped, and a ticket link that isn't `http(s)` is dropped. Without a problem to state, no summary shows, but the guide still does. Each line links to the concerns holding its hunks.
+- **The summary is checked line by line.** Its text is trimmed, a line whose text is empty or only spaces is left out, hunk ids not in the diff are dropped, and a ticket link that isn't `http(s)` is dropped. Without a problem to state, no summary shows, but the guide still does. Each line links to the concerns holding its hunks.
 
 ## Keeping Ajour in sync
 
-Ajour keeps a vendored copy of `saved.ts` and of `buildDiff`, so that its hunk ids match Review Deck's. The next sync picks up `PublishingApp`, `GuideSummary`, `keepsPublished` and the `publish` option of `withSaved`.
+Ajour keeps a vendored copy of `saved.ts` and of `buildDiff`, so that its hunk ids match Review Deck's. The next sync picks up `PublishingApp`, `GuideSummary`, `keepsPublished`, `ownOver` and the `publish` option of `withSaved`.
+
+## Checks
+
+`extension/tests/saved.test.ts` covers the entry, and `extension/tests/own-guide.test.ts` covers the reader's guide and Publish through `buildReview`. `extension/tests/published-guide.browser.js` checks the Files toolbar's label and Publish's toasts in the write harness (`npm run ext:test:browser`, with `npm run ext:dev` running).

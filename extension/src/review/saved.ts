@@ -125,14 +125,42 @@ function publishedBy(review: unknown): PublishingApp | null {
 
 /**
  * Whether `saved` is a published guide that saving `review` leaves in place: it is for the same hunks, so it still
- * shows for everyone, and `review` is only its reader's. One for other hunks (a new push, another diff) is no use now.
+ * shows for everyone, and `review` is only its reader's. One for other hunks (a new push, another diff), or that
+ * restoreReview couldn't read, is no use now.
  */
 export function keepsPublished(saved: unknown, review: SavedReview): boolean {
-  const s = saved as Partial<SavedReview> | null;
-  if (!publishedBy(s) || s?.format !== FORMAT || !Array.isArray(s.groups) || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string") return false;
-  const ids = new Set(review.groups.flatMap((g) => g.hunkIds));
-  const theirs = s.groups.flatMap((g) => (Array.isArray(g?.hunkIds) ? g.hunkIds : []));
-  return theirs.length === ids.size && theirs.every((id) => ids.has(id));
+  const groups = publishedBy(saved) && readable(saved);
+  return !!groups && covers(groups, new Set(review.groups.flatMap((g) => g.hunkIds)));
+}
+
+/**
+ * `review`, a reader's grouping, as their own guide over `saved` if that is a published guide it leaves in place
+ * (keepsPublished), carrying its summary: the summary goes wherever the guide goes, Publish included. Otherwise null.
+ */
+export function ownOver(saved: unknown, review: SavedReview): SavedReview | null {
+  if (!keepsPublished(saved, review)) return null;
+  const summary = readSummary((saved as Partial<SavedReview>).summary, new Set(review.groups.flatMap((g) => g.hunkIds)));
+  return summary ? { ...review, summary } : review;
+}
+
+/** The groups of a saved entry in this format whose fields all hold what the page reads, or null if any doesn't. */
+function readable(saved: unknown): Group[] | null {
+  const s = saved as Partial<SavedReview> | null | undefined;
+  if (s?.format !== FORMAT || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string" || !Array.isArray(s.groups)) return null;
+  const valid = (g: Partial<Group> | null) =>
+    typeof g?.id === "string" &&
+    typeof g.kind === "string" &&
+    typeof g.title === "string" &&
+    typeof g.rationale === "string" &&
+    Array.isArray(g.hunkIds) &&
+    g.hunkIds.every((id) => typeof id === "string");
+  return (s.groups as (Partial<Group> | null)[]).every(valid) ? s.groups : null;
+}
+
+/** Whether `groups` hold exactly the hunks `ids`, each once. */
+function covers(groups: Group[], ids: ReadonlySet<string>): boolean {
+  const grouped = groups.flatMap((g) => g.hunkIds);
+  return grouped.length === ids.size && new Set(grouped).size === ids.size && grouped.every((id) => ids.has(id));
 }
 
 /** One comparison's saved view, as AppHost.savedReviews() keeps them in the PR's document. */
@@ -196,48 +224,51 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
   if (!published && !sameMode(s.mode, mode)) {
     return { skipped: `it was made ${describeMode(s.mode)}, and the page now groups ${describeMode(mode)}` };
   }
-  if (!Array.isArray(s.groups) || typeof s.madeWith?.title !== "string" || typeof s.madeWith.description !== "string") return { skipped: "it is incomplete" };
+  const groups = readable(s);
+  if (!groups) return { skipped: "it is incomplete" };
   if (!published && s.fellBack && !(now - (s.savedAt ?? 0) < RETRY_FALLBACK_MS)) return { skipped: "it was made while the backend was failing, over an hour ago" };
   const files = parseDiff(diff);
   const hunks = new Map<string, HunkInfo>();
   for (const file of files) for (const hunk of file.hunks) hunks.set(hunk.id, hunkInfo(file, hunk, s.hunks?.[hunk.id]));
-  const grouped = s.groups.flatMap((g) => g.hunkIds);
-  if (grouped.length !== hunks.size || !grouped.every((id) => hunks.has(id))) return { skipped: "its groups don't cover this diff's changes" };
+  if (!covers(groups, new Set(hunks.keys()))) return { skipped: "its groups don't cover this diff's changes" };
   const result: ReviewResult = {
-    title: s.madeWith.title,
-    description: s.madeWith.description,
+    title: s.madeWith!.title,
+    description: s.madeWith!.description,
     files,
     hunks,
     pairs: [],
-    groups: s.groups,
+    groups,
     merges: s.merges ?? [],
     timings: {},
     options: s.options!,
     warnings: [],
   };
-  const summary = readSummary(s.summary, hunks);
+  const summary = readSummary(s.summary, new Set(hunks.keys()));
   return { result, ...(published && { published }), ...(summary && { summary }) };
 }
 
 /**
- * The summary as written by another app, checked line by line: a line that doesn't fit is left out, hunk ids not in
- * this diff are dropped, and so is a ticket link that isn't http(s). Without a problem to state, there is none.
+ * The summary as written by another app, checked line by line: its text is trimmed, a line without any is left out,
+ * hunk ids not in this diff (`ids`) are dropped, and so is a ticket link that isn't http(s). Without a problem to
+ * state, there is none.
  */
-function readSummary(raw: unknown, hunks: Map<string, HunkInfo>): GuideSummary | null {
+function readSummary(raw: unknown, ids: ReadonlySet<string>): GuideSummary | null {
   const s = raw as Record<string, unknown> | null | undefined;
   const problem = s?.problem as Record<string, unknown> | undefined;
-  if (!s || typeof problem?.text !== "string" || (problem.source !== "ticket" && problem.source !== "inferred")) return null;
-  const t = problem.ticket as Record<string, unknown> | undefined;
+  const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const stated = text(problem?.text);
+  if (!s || !stated || (problem!.source !== "ticket" && problem!.source !== "inferred")) return null;
+  const t = problem!.ticket as Record<string, unknown> | undefined;
   const ticket =
     typeof t?.id === "string" && typeof t.title === "string" && typeof t.url === "string" && /^https?:\/\//i.test(t.url) ? { id: t.id, title: t.title, url: t.url } : null;
   const items = (list: unknown): SummaryItem[] =>
     (Array.isArray(list) ? (list as (Record<string, unknown> | null)[]) : []).flatMap((item) =>
-      typeof item?.text === "string"
-        ? [{ text: item.text, hunkIds: (Array.isArray(item.hunkIds) ? (item.hunkIds as unknown[]) : []).filter((id): id is string => typeof id === "string" && hunks.has(id)) }]
+      text(item?.text)
+        ? [{ text: text(item!.text), hunkIds: (Array.isArray(item!.hunkIds) ? (item!.hunkIds as unknown[]) : []).filter((id): id is string => typeof id === "string" && ids.has(id)) }]
         : [],
     );
   return {
-    problem: { text: problem.text, source: problem.source, ...(ticket && { ticket }) },
+    problem: { text: stated, source: problem!.source, ...(ticket && { ticket }) },
     kinds: (Array.isArray(s.kinds) ? (s.kinds as unknown[]) : []).filter((k): k is ChangeKind => (CHANGE_KINDS as readonly unknown[]).includes(k)),
     breaking: items(s.breaking),
     risks: items(s.risks),

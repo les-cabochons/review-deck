@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReviewResult } from "../../src/core/types";
-import { keepsPublished, packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, type SavedReview, savedFor, withSaved } from "../src/review/saved";
+import { keepsPublished, ownOver, packReview, type ReviewKey, type ReviewMode, restoreReview, reviewMode, type SavedReview, savedFor, withSaved } from "../src/review/saved";
 
 const meta = { title: "Rename fetch helper", description: "" };
 const diff = [
@@ -253,4 +253,70 @@ test("Given a saved guide's summary, then it round-trips, an entry without one s
   const none = restoreReview(publishedFromAjour({ summary: { kinds: ["fix"] } }), reviewMode({}, true), diff);
   assert.ok("result" in none);
   assert.equal(none.summary, undefined);
+});
+
+test("Given a published guide with a malformed group, then it isn't shown or kept, and a Regroup replaces it, without throwing", () => {
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const good = publishedFromAjour();
+  const own = packReview(analyzed(), reviewMode({}, true));
+  const malformed = [
+    [null, { hunkIds: ["src/api.ts#0", "src/api.test.ts#0"] }],
+    [{ ...good.groups[0], hunkIds: ["src/api.ts#0", 4] }],
+    [{ ...good.groups[0], hunkIds: "src/api.ts#0" }],
+    ...(["id", "kind", "title", "rationale"] as const).map((field) => [{ ...good.groups[0], [field]: undefined }]),
+  ];
+  for (const groups of malformed) {
+    const saved = publishedFromAjour({ groups });
+    assert.match(skipped(saved, reviewMode({}, true))!, /incomplete/, JSON.stringify(groups));
+    assert.equal(keepsPublished(saved, own), false, JSON.stringify(groups));
+    assert.equal((savedFor(withSaved(withSaved(null, key, saved), key, own), key) as SavedReview).madeWith.app, undefined);
+  }
+});
+
+test("Given groups that repeat a hunk id, then they don't cover a diff with another hunk, even with as many ids", () => {
+  const twice = (saved: SavedReview) => ({ ...saved, groups: [{ ...saved.groups[0], hunkIds: ["src/api.ts#0", "src/api.ts#0"] }] });
+  const own = packReview(analyzed(), reviewMode({}, true));
+  assert.match(skipped(twice(own), reviewMode({}, true))!, /don't cover this diff/);
+  assert.match(skipped(twice(publishedFromAjour()), reviewMode({}, true))!, /don't cover this diff/);
+  assert.equal(keepsPublished(twice(publishedFromAjour()), own), false);
+  assert.equal(keepsPublished(publishedFromAjour(), twice(own)), false);
+});
+
+test("Given summary lines that are empty or only spaces, then they are left out, and the text of the others is trimmed", () => {
+  const summary = (problem: string, lines: string[]) => {
+    const r = restoreReview(
+      publishedFromAjour({
+        summary: { problem: { text: problem, source: "inferred" }, kinds: [], breaking: lines.map((text) => ({ text, hunkIds: [] })), risks: [], tests: [], leftovers: [{ text: "", hunkIds: [] }] },
+      }),
+      reviewMode({}, true),
+      diff,
+    );
+    assert.ok("result" in r);
+    return r.summary;
+  };
+  assert.deepEqual(summary("  Fixes the rename. ", ["", "   ", " Gone. "]), {
+    problem: { text: "Fixes the rename.", source: "inferred" },
+    kinds: [],
+    breaking: [{ text: "Gone.", hunkIds: [] }],
+    risks: [],
+    tests: [],
+    leftovers: [],
+  });
+  // No problem to state: no summary, but the guide still shows.
+  assert.equal(summary("", ["Gone."]), undefined);
+  assert.equal(summary(" \n ", ["Gone."]), undefined);
+});
+
+test("Given a reader's own grouping over a published guide for the same hunks, then it carries the published summary, and what Publish saves has it", () => {
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const published = publishedFromAjour();
+  const own = ownOver(published, packReview(analyzed(), reviewMode({}, true)))!;
+  assert.deepEqual(own.summary, published.summary);
+  assert.equal(own.madeWith.app, undefined);
+  const saved = savedFor(JSON.parse(JSON.stringify(withSaved(withSaved(null, key, published), key, own, { publish: true }))), key);
+  assert.deepEqual((restoreReview(saved, reviewMode({}, true), diff) as { summary?: unknown }).summary, published.summary);
+  // Only a published guide for the same hunks makes the grouping the reader's own.
+  const pushed = diff.replace(/diff --git a\/src\/api\.test\.ts[\s\S]*/, "");
+  assert.equal(ownOver(published, packReview(restored(publishedFromAjour({ groups: [{ ...published.groups[0], hunkIds: ["src/api.ts#0"] }] }), reviewMode({}, true), pushed), reviewMode({}, true))), null);
+  assert.equal(ownOver(packReview(analyzed(), reviewMode({}, true)), packReview(analyzed(), reviewMode({}, true))), null);
 });

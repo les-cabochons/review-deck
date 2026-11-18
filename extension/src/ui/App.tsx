@@ -213,7 +213,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       .then(({ publishGuide }) => publishGuide(host.savedReviews(), { repo: route.repo, pr: route.pr, iteration, compareTo }, shown.ownGuide!))
       .then(
         () => {
-          setReview((r) => (r === shown ? { ...r, ownGuide: undefined, published: undefined, summary: undefined } : r));
+          // Saved as Review Deck's own guide, with the summary it carried.
+          setReview((r) => (r === shown ? { ...r, ownGuide: undefined, published: undefined } : r));
           setToast({ message: "Published your guide. Everyone who opens this comparison now sees it." });
         },
         (e: Error) => setToast({ message: `Could not publish your guide: ${e.message}` }),

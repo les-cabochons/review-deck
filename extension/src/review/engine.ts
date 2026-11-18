@@ -4,7 +4,7 @@ import { blobIds } from "../data/fileReads";
 import type { FileChange, PrSource } from "../data/model";
 import type { AnalysisJob, AnalysisMessage, AnalysisProgress, FileContents } from "./analysis";
 import type { BackendService } from "./backend";
-import { type GuideSummary, keepsPublished, packReview, type PublishingApp, type ReviewKey, reviewMode, type SavedReview, type SavedReviews } from "./saved";
+import { type GuideSummary, ownOver, packReview, type PublishingApp, type ReviewKey, reviewMode, type SavedReview, type SavedReviews } from "./saved";
 
 export type { AnalysisProgress, FileContents } from "./analysis";
 
@@ -105,12 +105,13 @@ export async function buildReview(
   let ownGuide = restored && own ? own : undefined;
   if (!restored && options.saved) {
     const review = packReview(result, reviewMode(backend, aiTitles));
-    if (keepsPublished(storedNow, review)) {
-      ownGuides.set(guideId(options.saved.key), review);
-      ownGuide = review;
-    } else void options.saved.store.save(options.saved.key, review);
+    // Over a published guide for the same hunks, it is the reader's own, with the published summary.
+    ownGuide = ownOver(storedNow, review) ?? undefined;
+    if (ownGuide) ownGuides.set(guideId(options.saved.key), ownGuide);
+    else void options.saved.store.save(options.saved.key, review);
   }
-  return { result, changes, contents, comparison, analyzed: true, ...(published && { published }), ...(summary && { summary }), ...(ownGuide && { ownGuide }) };
+  const shownSummary = summary ?? ownGuide?.summary;
+  return { result, changes, contents, comparison, analyzed: true, ...(published && { published }), ...(shownSummary && { summary: shownSummary }), ...(ownGuide && { ownGuide }) };
 }
 
 function whyGrouped(fresh: boolean | undefined, saved: unknown, skipped: string | undefined): string {
