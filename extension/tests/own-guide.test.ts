@@ -29,6 +29,9 @@ Object.assign(globalThis, { Worker: AnalysisWorker });
 // The build's log lines.
 console.debug = console.info = () => {};
 
+/** The title the stand-in pipeline gives its one concern, so a test can tell one grouping from the next. */
+let groupTitle = "The reader's grouping";
+
 function grouped(job: AnalysisJob, diff: string): ReviewResult {
   const files = parseDiff(diff);
   const ids = files.flatMap((f) => f.hunks.map((h) => h.id));
@@ -38,7 +41,7 @@ function grouped(job: AnalysisJob, diff: string): ReviewResult {
     files,
     hunks: new Map(),
     pairs: [],
-    groups: [{ id: "g1", kind: "semantic", hunkIds: ids, title: "The reader's grouping", rationale: "Grouped on this page." }],
+    groups: [{ id: "g1", kind: "semantic", hunkIds: ids, title: groupTitle, rationale: "Grouped on this page." }],
     merges: [],
     timings: {},
     options: { semantic: false, titler: "heuristic", weights: { structural: 1, testPairing: 1, lexical: 1, semantic: 0, path: 1, description: 1 }, minEdgeWeight: 0.1 },
@@ -200,4 +203,64 @@ test("Given a guide published for another comparison, then a grouping too large 
   assert.equal(reopened.result.groups[0].title, "The reader's grouping");
   assert.equal(reopened.ownGuide, undefined);
   assert.equal(state.saves, 1);
+});
+
+/** A store whose plain saves wait until the test settles them, in any order, as written or not. */
+function heldStore() {
+  const state = { doc: null as unknown };
+  const held: { title: string; settle: (written: boolean) => void }[] = [];
+  const store: SavedReviews = {
+    load: async (key) => savedFor(state.doc, key),
+    save: (key, review, options) =>
+      new Promise((resolve) => {
+        held.push({
+          title: review.groups[0].title,
+          settle: (written) => {
+            if (written) state.doc = withSaved(state.doc, key, review, options) ?? state.doc;
+            resolve(written);
+          },
+        });
+      }),
+  };
+  return { state, store, held };
+}
+
+const settled = () => new Promise((resolve) => setTimeout(resolve));
+
+async function grouping(store: SavedReviews, key: ReviewKey, title: string, fresh: boolean) {
+  groupTitle = title;
+  try {
+    return await open(store, key, fresh);
+  } finally {
+    groupTitle = "The reader's grouping";
+  }
+}
+
+test("Given a first save still pending when a Regroup's save succeeds, then the first save failing late doesn't bring the first grouping back", async () => {
+  const key: ReviewKey = { repo: "r", pr: 6, iteration: 3, compareTo: 0 };
+  const { state, store, held } = heldStore();
+  await grouping(store, key, "First grouping", false);
+  await grouping(store, key, "New regroup", true);
+  assert.deepEqual(held.map((h) => h.title), ["First grouping", "New regroup"]);
+
+  held[1].settle(true);
+  await settled();
+  held[0].settle(false);
+  await settled();
+  assert.equal((savedFor(state.doc, key) as SavedReview).groups[0].title, "New regroup");
+  assert.equal((await open(store, key)).result.groups[0].title, "New regroup");
+});
+
+test("Given a first save still pending when a Regroup's save fails, then the first save succeeding late keeps the Regroup for the session", async () => {
+  const key: ReviewKey = { repo: "r", pr: 7, iteration: 3, compareTo: 0 };
+  const { state, store, held } = heldStore();
+  await grouping(store, key, "First grouping", false);
+  await grouping(store, key, "New regroup", true);
+
+  held[1].settle(false);
+  await settled();
+  held[0].settle(true);
+  await settled();
+  assert.equal((savedFor(state.doc, key) as SavedReview).groups[0].title, "First grouping");
+  assert.equal((await open(store, key)).result.groups[0].title, "New regroup");
 });

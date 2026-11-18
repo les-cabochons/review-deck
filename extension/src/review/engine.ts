@@ -28,11 +28,23 @@ const ownGuides = new Map<string, SavedReview>();
 /** Guides that couldn't be saved (SavedReviews.save), by comparison: shown again until the page closes, not grouped again. */
 const unsavedGuides = new Map<string, SavedReview>();
 const guideId = (key: ReviewKey) => JSON.stringify([key.repo, key.pr, key.iteration, key.compareTo]);
+/**
+ * Counts each comparison's newest guide (a grouping or a Publish). A save that settles after a newer one began speaks for
+ * a superseded guide, so it neither keeps that guide for the session nor drops the newer one.
+ */
+const guideGenerations = new Map<string, number>();
+const nextGeneration = (id: string) => {
+  const generation = (guideGenerations.get(id) ?? 0) + 1;
+  guideGenerations.set(id, generation);
+  return generation;
+};
 
 /** Puts the reader's own guide (ReviewModel.ownGuide) in place of the published one, for everyone. Rejects if it couldn't. */
 export async function publishGuide(store: SavedReviews, key: ReviewKey, guide: SavedReview): Promise<void> {
+  const id = guideId(key);
+  const generation = nextGeneration(id);
   await store.save(key, guide, { publish: true });
-  ownGuides.delete(guideId(key));
+  if (guideGenerations.get(id) === generation) ownGuides.delete(id);
 }
 
 /** Git treats text containing a NUL character as binary. */
@@ -115,12 +127,13 @@ export async function buildReview(
     const review = carrySummary(storedNow, packReview(result, reviewMode(backend, aiTitles)));
     const id = guideId(options.saved.key);
     fresh = review;
+    const generation = nextGeneration(id);
     unsavedGuides.delete(id);
     // Over a published guide for the same hunks, it is the reader's own.
     if (keepsPublished(storedNow, review)) ownGuides.set(id, (ownGuide = review));
     else {
       void options.saved.store.save(options.saved.key, review).then((saved) => {
-        if (!saved) unsavedGuides.set(id, review);
+        if (!saved && guideGenerations.get(id) === generation) unsavedGuides.set(id, review);
       });
     }
   }
