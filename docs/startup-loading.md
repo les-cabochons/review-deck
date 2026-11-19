@@ -167,6 +167,23 @@ The first visit's 70 are the list (3), the project picker's catalog (2), the use
 
 These counts come from the stub, not from Azure DevOps, which isn't reachable from here. Since the stub's pull request has two changed files, the first PR a cold round opens makes one more call, the blobs zip, so 17 for PR 471. The PRs after it read the same blobs from the browser. The app makes the same calls there, each 250 to 520 ms. The hub's progress bar also used to stay on, unseen, when a details request landed while a PR page covered the hub. The round's quiet check found that, and it's fixed. The timing scenarios run against the same stub. The hosted PR ones land where the previous section measured them, with medians of 5 for `prReact` / `prLive` at 255 / 258 ms at REST 0 ms and 564 / 1133 ms with slow threads. The hosted hub, with rows to show at last, settles at 311 ms cold and 89 ms warm.
 
+## A PR opened from the hub draws from its row (November 4, 2026)
+
+The hub's rows already hold most of what the PR page shows first. They have the title, status, author, branches, reviewers and their votes. The list API also returns the description, cut to about 400 characters, and the rows now keep it (`PrSummary.description`). The cut keeps the hub cache small. 300 rows grow by at most about 120K characters.
+
+Without a kept copy, the PR page now starts from the PR's hub row (`prFromRow` in `data/hubCache.ts`), before any of its REST calls answers. That page is a `partial` overview with no updates yet. Everything else says it's loading, the Files tab waits for the updates call, and the buttons wait as they do for the kept copy and the partial. The partial from the PR and its updates replaces it, then the whole overview. A kept copy wins over the row, because it is complete. The hub holds what it shows in memory at once (`holdHubSnapshot`), so a PR opened before the hub's 500 ms save to `localStorage` still finds its row. A link to a PR in a new tab also starts from the row when this browser's hub cache lists it.
+
+The row can be out of date. It is as old as the hub's last list, which is seconds when the PR is opened from the hub, and up to a month for a link opened in a new tab. A vote cast elsewhere, an edited title or a completed PR shows its old value until the partial lands, and nothing can be done on the page until then.
+
+Two harness scenarios open PR 471 from its hub row, timed from the click. One is a quick click (or Enter), where the press starts the PR's load. In the other, the pointer rests on the row for 300 ms first, so the hover prefetch has a head start. Both use the uneven REST answers (250 to 520 ms). The table gives medians of 15 cold runs (nothing kept), in ms from the click. "Warm" opens the PR a second time from the kept copy, and is unchanged at about 60 ms.
+
+| Hub to PR | Before: prReact / prLive | After: prReact / prLive |
+| --- | --- | --- |
+| Quick click | 578 / 601 | 56 / 590 |
+| Hover 300 ms, then click | 189 / 227 | 29 / 223 |
+
+`prLive` doesn't move, because the buttons still wait for all seven calls. The REST call counts (`--calls`) and the other scenarios are unchanged, and `--check` still finds no partial kept. `npm run ext:timing -- --shots .cache/shots` also takes `4-pr-from-hub-row.png`, the page drawn from the row with the PR's calls held back.
+
 ## Measure startup
 
 Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files; on a Mac, `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.

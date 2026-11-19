@@ -4,9 +4,13 @@ import type { ReviewModel } from "../review/engine";
 /** Which update the Files tab shows, against which (0: the PR's base). */
 export type Comparison = ReviewModel["comparison"];
 
-/** The latest update against the PR's base, which the Files tab opens on; iteration 0 until the PR is known. */
+/**
+ * The latest update against the PR's base, which the Files tab opens on. Iteration 0, with nothing to build yet, until
+ * the updates are known. A page drawn from the PR's hub row (hubCache.ts prFromRow) doesn't know them.
+ */
 export function latestComparison(data: PrOverview | null): Comparison {
-  return { iteration: data ? latestIteration(data) : 0, compareTo: 0 };
+  if (!data || (data.partial && data.iterations.length === 0)) return { iteration: 0, compareTo: 0 };
+  return { iteration: latestIteration(data), compareTo: 0 };
 }
 
 export const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;

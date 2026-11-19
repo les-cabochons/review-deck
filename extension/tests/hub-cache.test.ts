@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { hubPatch, listAroundPr, onHubPatch, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, STACK_FROM_LIST_MS, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
+import { holdHubSnapshot, hubPatch, listAroundPr, onHubPatch, prFromRow, prSkeletonHint, readHubSnapshot, rememberPr, resetHubCache, STACK_FROM_LIST_MS, withRecentPatches, writeHubSnapshot } from "../src/data/hubCache";
 import { policyFacts, type PrSummary, sectionOf } from "../src/data/list";
 import type { Identity, PrOverview } from "../src/data/model";
 
@@ -68,6 +68,29 @@ test("Given a cached hub row, then the PR page's skeleton shows its title, autho
   writeHubSnapshot("s", { prs: [row(7, { title: "Fix cache", isDraft: true })], details: new Map(), groups: [], listedAt: Date.now(), selection: "{}" }, storage);
   assert.deepEqual(prSkeletonHint("s", 7, storage), { id: 7, title: "Fix cache", repo: "repo", author: ana, sourceBranch: "feature", targetBranch: "main", status: "draft" });
   assert.deepEqual(prSkeletonHint("s", 8, storage), { id: 8 });
+});
+
+test("Given a hub row, then the PR's page starts from it as a partial overview with no updates and no tags; an unlisted PR gets none", () => {
+  const storage = memoryStorage();
+  const pr = row(7, { description: "Retries uploads.", labels: ["api"], reviewers: [{ ...me, vote: 10, isRequired: true }] });
+  writeHubSnapshot("s", { prs: [pr], details: new Map(), groups: [], listedAt: Date.now(), selection: "{}" }, storage);
+  const seed = prFromRow("s", 7, storage)!;
+  assert.equal(seed.partial, true);
+  assert.equal(seed.pr.title, "PR 7");
+  assert.equal(seed.pr.description, "Retries uploads.");
+  assert.deepEqual(seed.pr.reviewers, pr.reviewers);
+  assert.deepEqual(seed.iterations, []);
+  // The partial that replaces it has no tags yet either, so they don't show and then vanish.
+  assert.deepEqual(seed.pr.labels, []);
+  assert.equal(prFromRow("s", 8, storage), null);
+});
+
+test("Given rows the hub just showed, then a PR opened before the save to storage still draws from its row", () => {
+  const storage = memoryStorage();
+  holdHubSnapshot("s", { prs: [row(7)], details: new Map(), groups: [], listedAt: Date.now(), selection: "{}" });
+  assert.equal(prFromRow("s", 7, storage)?.pr.id, 7);
+  resetHubCache(); // Another tab starts without this page's held rows.
+  assert.equal(prFromRow("s", 7, storage), null);
 });
 
 test("Given I vote on a PR page, then the cached hub already shows it under You reviewed", () => {

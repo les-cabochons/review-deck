@@ -117,6 +117,42 @@ export function prSkeletonHint(scope: string, id: number, storage: () => Snapsho
   };
 }
 
+/**
+ * The PR's page as its hub row knows it, so opening it from the hub draws the real page at once instead of a
+ * skeleton: the title, description, status, author, branches and reviewers. It is a partial overview (PrOverview),
+ * like the PR and its updates ahead of the rest, but without the updates either, so the Files tab waits for them.
+ * Null when the hub didn't list the PR. The tags wait like the rest, because the partial that follows has none yet.
+ */
+export function prFromRow(scope: string, id: number, storage: () => SnapshotStorage = browserStore): PrOverview | null {
+  const row = readHubSnapshot(scope, storage)?.prs.find((p) => p.id === id);
+  if (!row) return null;
+  return {
+    pr: {
+      id,
+      title: row.title,
+      description: row.description ?? "",
+      status: row.status,
+      isDraft: row.isDraft,
+      createdBy: row.createdBy,
+      creationDate: row.creationDate,
+      sourceBranch: row.sourceBranch,
+      targetBranch: row.targetBranch,
+      repository: row.repository,
+      reviewers: row.reviewers,
+      labels: [],
+      // Only the buttons read these, and they wait for the load.
+      headCommit: "",
+      mergeStatus: "notSet",
+    },
+    iterations: [],
+    threads: [],
+    commits: [],
+    policies: [],
+    workItems: [],
+    partial: true,
+  };
+}
+
 /** The PR page's latest view of one PR, as a hub patch. */
 export function hubPatch(overview: PrOverview, loadedAt = Date.now()): HubPatch {
   const { pr, threads, policies } = overview;

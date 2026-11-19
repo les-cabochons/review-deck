@@ -162,7 +162,8 @@ export interface PrOverview {
   workItems: WorkItemRef[];
   /**
    * Only `pr` and `iterations` are in. The threads, commits, policies, work items and the PR's tags are still loading,
-   * so the page can draw before the slowest of Azure DevOps' calls answers. Never kept (prCache.ts) nor acted on.
+   * so the page can draw before the slowest of Azure DevOps' calls answers. Drawn from the PR's hub row
+   * (hubCache.ts prFromRow), `iterations` is empty too. Never kept (prCache.ts) nor acted on.
    */
   partial?: true;
 }

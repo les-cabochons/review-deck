@@ -613,10 +613,23 @@ async function screenshots(browser, origin, dir) {
   await partial.page.screenshot({ path: join(dir, "3-pr-partial.png") });
   await partial.page.close();
 
+  // Opened from the hub with the PR's own calls held back, so the page shows as the hub's row knows it (hubCache.ts prFromRow).
+  const fromHub = await open(context, origin, "/host", true);
+  await fromHub.waitFor("hubRows");
+  await fromHub.page.route(`**/pullRequests/${PULL_REQUEST.pullRequestId}**`, async (route) => {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    await route.continue().catch(() => {});
+  });
+  await fromHub.frame.locator(`.pr-row[data-pr="${PULL_REQUEST.pullRequestId}"]`).click();
+  await fromHub.waitFor("prReact");
+  await fromHub.page.waitForTimeout(300);
+  await fromHub.page.screenshot({ path: join(dir, "4-pr-from-hub-row.png") });
+  await fromHub.page.close();
+
   const local = await open(context, origin, "/dist/review.html?local=1&theme=dark", false);
   await local.waitFor("hubRows");
   await local.page.waitForTimeout(500);
-  await local.page.screenshot({ path: join(dir, "4-local-hub-loaded.png") });
+  await local.page.screenshot({ path: join(dir, "5-local-hub-loaded.png") });
   // Hold the PR's data back, to see its skeleton filled in from the hub's cache.
   await local.page.route("**/dev-data/demo-*.json", async (route) => {
     await new Promise((ok) => setTimeout(ok, 3000));
@@ -624,10 +637,10 @@ async function screenshots(browser, origin, dir) {
   });
   await local.page.locator(".pr-row").first().click();
   await local.page.waitForTimeout(600);
-  await local.page.screenshot({ path: join(dir, "5-local-pr-opening.png") });
+  await local.page.screenshot({ path: join(dir, "6-local-pr-opening.png") });
   await local.waitFor("prReact");
   await local.page.waitForTimeout(500);
-  await local.page.screenshot({ path: join(dir, "6-local-pr-loaded.png") });
+  await local.page.screenshot({ path: join(dir, "7-local-pr-loaded.png") });
   await context.close();
   console.log(`Screenshots in ${dir}`);
 }
