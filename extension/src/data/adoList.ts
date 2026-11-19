@@ -126,6 +126,7 @@ export class AdoPrListSource implements PrListSource {
     return {
       id: p.pullRequestId,
       title: p.title,
+      description: p.description ?? "",
       repository: { id: p.repository.id, name: p.repository.name, projectId: p.repository.project?.id ?? this.projectId, projectName: p.repository.project?.name ?? "" },
       createdBy: identity(p.createdBy),
       creationDate: new Date(p.creationDate),

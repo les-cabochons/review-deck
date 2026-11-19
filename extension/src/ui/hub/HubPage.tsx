@@ -12,7 +12,7 @@ import {
   SECTION_META,
   type SectionId,
 } from "../../data/list";
-import { applyPatches, onHubPatch, readHubSnapshot, withRecentPatches, writeHubSnapshot } from "../../data/hubCache";
+import { applyPatches, holdHubSnapshot, onHubPatch, readHubSnapshot, withRecentPatches, writeHubSnapshot } from "../../data/hubCache";
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { preferencesLoaded, readPreference, writePreference } from "../preferences";
@@ -213,11 +213,14 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     [cacheScope, merge],
   );
 
-  // Save what's shown for the next visit, once things settle.
+  // Hold what's shown for a PR opened from it right away (its page draws from the row), and save it for the next
+  // visit once things settle.
   React.useEffect(() => {
     if (!prs || !listed) return;
     // `records` changes along with `details`, and a copy, since the hook keeps changing its own.
-    const timer = setTimeout(() => writeHubSnapshot(cacheScope, { prs, details, groups, listedAt: listed.at, selection: listed.selection, fetched: new Map(records) }), 500);
+    const snap = { prs, details, groups, listedAt: listed.at, selection: listed.selection, fetched: new Map(records) };
+    holdHubSnapshot(cacheScope, snap);
+    const timer = setTimeout(() => writeHubSnapshot(cacheScope, snap), 500);
     return () => clearTimeout(timer);
   }, [cacheScope, prs, details, groups, listed, records]);
 
