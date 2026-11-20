@@ -204,6 +204,25 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setRegroup((n) => n + 1);
   };
   const groupingStale = !!data && !!groupedWith && (groupedWith.title !== data.pr.title || groupedWith.description !== data.pr.description);
+  const [publishing, setPublishing] = React.useState(false);
+  /** Puts the reader's own guide in place of the published one, for everyone who opens this comparison. */
+  const publishNow = () => {
+    const shown = review;
+    if (!shown?.ownGuide || publishing) return;
+    const { iteration, compareTo } = shown.comparison;
+    setPublishing(true);
+    import("../review/engine")
+      .then(({ publishGuide }) => publishGuide(host.savedReviews(), { repo: route.repo, pr: route.pr, iteration, compareTo }, shown.ownGuide!))
+      .then(
+        () => {
+          // Saved as Review Deck's own guide, with the summary it carried.
+          setReview((r) => (r === shown ? { ...r, ownGuide: undefined, published: undefined } : r));
+          setToast({ message: "Published your guide. Everyone who opens this comparison now sees it." });
+        },
+        (e: Error) => setToast({ message: `Could not publish your guide: ${e.message}` }),
+      )
+      .finally(() => setPublishing(false));
+  };
 
   React.useEffect(() => {
     // The partial has no threads yet; the full load's are read for the comparison then.
@@ -340,6 +359,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onShowGrouped={showGrouped}
                       onRegroup={regroupNow}
                       groupingStale={groupingStale}
+                      onPublish={publishNow}
+                      publishing={publishing}
                     />
                     </React.Suspense>
                   )}

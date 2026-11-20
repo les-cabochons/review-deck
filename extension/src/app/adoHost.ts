@@ -338,27 +338,31 @@ export class AdoHost implements AppHost {
           return null;
         }
       },
-      save: async (key, review: SavedReview) => {
+      save: async (key, review: SavedReview, options) => {
         try {
           const data = await this.data();
           for (let attempt = 1; ; attempt++) {
             const doc = await read(data, key);
-            const comparisons = withSaved(doc?.comparisons, key, review);
-            if (!comparisons) return;
+            const comparisons = withSaved(doc?.comparisons, key, review, options);
+            if (!comparisons) return true;
             const next = { id: id(key), comparisons };
             try {
               // The etag makes the save fail if someone else saved since the read, instead of dropping their comparison.
               if (doc) await data.setDocument(REVIEWS_COLLECTION, { ...next, __etag: doc.__etag });
               else await data.createDocument(REVIEWS_COLLECTION, next);
-              return;
+              return true;
             } catch (e) {
               // Lost the race (merge with theirs) or a passing failure: read and try again.
               if (attempt >= SAVE_ATTEMPTS) throw e;
             }
           }
         } catch (e) {
-          // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
+          // E.g. a huge PR over the document size limit, or one that doesn't fit beside the published guides (GuideTooLarge):
+          // the page keeps it for the session, and it is analyzed again on the next visit.
           console.warn("[review-deck] could not save the guided view:", e);
+          // Publishing was asked for: say it didn't happen.
+          if (options?.publish) throw e;
+          return false;
         }
       },
     };

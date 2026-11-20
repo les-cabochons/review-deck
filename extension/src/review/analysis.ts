@@ -7,7 +7,7 @@ import { SyntaxParsers } from "../../../src/parse/treesitter";
 import { type PipelineProgress, runPipeline } from "../../../src/pipeline";
 import type { FileChange } from "../data/model";
 import { type BackendService, RemoteEmbedder, RemoteTitler } from "./backend";
-import { restoreReview, reviewMode } from "./saved";
+import { type GuideSummary, type PublishingApp, restoreReview, reviewMode } from "./saved";
 
 /** Old/new text for every changed file, keyed by repo path. `null` = absent on that side. */
 export interface FileContents {
@@ -47,6 +47,10 @@ export type AnalysisMessage =
       result: ReviewResult;
       /** From the saved grouping, not a fresh analysis. */
       restored: boolean;
+      /** The saved grouping was published from this app. */
+      published?: PublishingApp;
+      /** The saved grouping's summary. */
+      summary?: GuideSummary;
       /** Why a saved grouping was there but not used. */
       skipped?: string;
     }
@@ -86,7 +90,7 @@ export async function runJob(job: AnalysisJob, send: (message: AnalysisMessage) 
     // A saved guided view shows straight away; the A–Z preview is only for while a fresh analysis runs.
     const restored = job.saved ? restoreReview(job.saved, reviewMode(job.backend, job.aiTitles), diff) : null;
     if (restored && "result" in restored) {
-      send({ type: "result", result: restored.result, restored: true });
+      send({ type: "result", result: restored.result, restored: true, published: restored.published, summary: restored.summary });
       return;
     }
     send({ type: "diff", diff });

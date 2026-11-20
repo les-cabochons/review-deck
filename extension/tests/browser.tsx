@@ -4,12 +4,16 @@ import "../src/styles.css";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import { MockPrSource } from "../src/data/mockSource";
-import type { AppHost } from "../src/app/host";
+import { type AppHost, DEFAULT_PROJECT_SETTINGS } from "../src/app/host";
+import { LocalHost } from "../src/app/localHost";
+import { type SavedReviews, savedFor, withSaved } from "../src/review/saved";
 import { PrPage } from "../src/ui/App";
 
 async function main() {
-  const source = await MockPrSource.fetch("../dev-data/t3code-17901.json");
-  const state = { failWrite: false, failRefresh: false, pauseWrite: false, writes: 0, analyses: 0, resume: () => {}, source };
+  const params = new URLSearchParams(location.search);
+  // ?snapshot=<id> opens another PR from extension/dev-data.
+  const source = await MockPrSource.fetch(`../dev-data/${params.get("snapshot") ?? "t3code-17901"}.json`);
+  const state = { failWrite: false, failRefresh: false, failSave: false, pauseWrite: false, writes: 0, analyses: 0, resume: () => {}, source };
   const create = source.actions.createThread;
   source.actions.createThread = async (input) => {
     state.writes++;
@@ -37,8 +41,27 @@ async function main() {
     return changes(...args);
   };
   Object.assign(window, { reviewTest: state });
+  // With ?saved, guided views are kept in localStorage across reloads (published-guide.browser.js edits them there),
+  // and `failSave` makes saves fail as a host's do: silently, except a Publish. Without it, every open groups.
+  const SAVED = "write-test-saved";
+  const kept = (): unknown => JSON.parse(localStorage.getItem(SAVED) ?? "null");
+  const savedReviews: SavedReviews = params.has("saved")
+    ? {
+        load: async (key) => savedFor(kept(), key),
+        save: async (key, review, options) => {
+          if (state.failSave) {
+            if (options?.publish) throw new Error("Simulated save failure");
+            return false;
+          }
+          const comparisons = withSaved(kept(), key, review, options);
+          if (comparisons) localStorage.setItem(SAVED, JSON.stringify(comparisons));
+          return true;
+        },
+      }
+    : { load: async () => null, save: async () => true };
   const route = { view: "pr" as const, repo: "t3code", pr: 17901 };
-  const host: AppHost = {
+  // The local page's host for whatever the harness doesn't stub.
+  const overrides: Partial<AppHost> = {
     kind: "local",
     cacheScope: "write-test",
     currentUser: source.currentUser,
@@ -49,15 +72,15 @@ async function main() {
     prSource: async () => source,
     setTitle: (title) => (document.title = title),
     backendService: async () => null,
-    projectSettings: async () => ({ aiTitles: false }),
-    updateProjectSettings: async () => ({ aiTitles: false }),
+    projectSettings: async () => DEFAULT_PROJECT_SETTINGS,
+    updateProjectSettings: async () => DEFAULT_PROJECT_SETTINGS,
     canManageProject: async () => false,
-    savedReviews: () => ({ load: async () => null, save: async () => {} }),
+    savedReviews: () => savedReviews,
     reviewUrl: () => location.href,
     nativePrUrl: () => null,
     createPrUrl: () => null,
-    settingsUrl: () => null,
   };
+  const host = Object.create(await LocalHost.create(), Object.getOwnPropertyDescriptors(overrides)) as AppHost;
   ReactDOM.render(<PrPage host={host} route={route} source={source} />, document.getElementById("root"));
 }
 
