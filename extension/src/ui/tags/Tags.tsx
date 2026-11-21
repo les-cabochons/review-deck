@@ -42,19 +42,22 @@ export const useProjectTags = () => React.useContext(TagContext);
 /** Loads the project's tags once for both pages; editors call reload() after a change. */
 export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.ReactNode }> = ({ host, children }) => {
   const [tags, setTags] = React.useState<TagDef[]>([]);
-  /** Counts Hide and Show clicks, so a reload that read the styles before a click doesn't undo it on screen. */
-  const toggles = React.useRef(0);
+  /**
+   * Hide and Show clicks so far, and the count at each tag's last click. A reload keeps the on-screen flag of a
+   * tag clicked after it started, since it may have read the styles before that click's save.
+   */
+  const clicks = React.useRef({ count: 0, last: new Map<string, number>() });
   const reload = React.useCallback(() => {
-    const before = toggles.current;
+    const before = clicks.current.count;
     host
       .tags()
       .list()
       .then(
         (next) =>
           setTags((shown) => {
-            if (toggles.current === before) return next;
             const hidden = new Map(shown.map((t) => [tagKey(t.name), t.hidden]));
-            return next.map((t) => ({ ...t, hidden: hidden.get(tagKey(t.name)) ?? t.hidden }));
+            const clickedAfter = (key: string) => (clicks.current.last.get(key) ?? 0) > before;
+            return next.map((t) => (clickedAfter(tagKey(t.name)) ? { ...t, hidden: hidden.get(tagKey(t.name)) ?? t.hidden } : t));
           }),
         (e) => console.warn("[review-deck] tags unavailable:", e),
       );
@@ -70,7 +73,7 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     async (name: string, hidden: boolean) => {
       // No reload after a save: the list already shows it, and a reload landing between two quick clicks would
       // undo the second one on screen until its own save finished.
-      toggles.current++;
+      clicks.current.last.set(tagKey(name), ++clicks.current.count);
       setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden } : t)));
       try {
         await host.tags().hide(name, hidden);
