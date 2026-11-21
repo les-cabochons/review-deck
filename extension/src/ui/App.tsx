@@ -22,6 +22,7 @@ import { useStack } from "./stack/useStack";
 import { usePreference } from "./usePreference";
 import { ReviewActionsProvider, useReviewActions } from "./ReviewActions";
 import { PendingReviewProvider } from "./review/PendingReview";
+import { PresenceProvider, PresenceStack } from "./presence/Presence";
 import { CompletionButton, CompletionNotice } from "./review/CompletionControls";
 import { EMPTY_REVIEW_FORM, ReviewButton, type ReviewForm, VoteButton } from "./review/ReviewControls";
 import { ago, Avatar, cx, IdentityNames, plural, Time } from "./util";
@@ -60,6 +61,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   /** `data` is the kept copy or a partial. Changes wait for the first load, so none is made from what may be out of date. */
   const [stale, setStale] = React.useState(!!data);
   const [error, setError] = React.useState<string | null>(null);
+  /** The first full load landed. Who else is on the PR is asked only then, behind the page's own REST calls. */
+  const [loadedOnce, setLoadedOnce] = React.useState(false);
   /** Why loading failed while the kept copy shows; it stays, marked as possibly out of date, as the hub keeps its rows. */
   const [refreshError, setRefreshError] = React.useState<string | null>(null);
   const staleNow = React.useRef(stale);
@@ -99,6 +102,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     setData(d);
     setStale(false);
     setRefreshError(null);
+    setLoadedOnce(true);
   };
   /** A load said which update is the latest: show it, unless the reader chose another comparison. */
   const showLatest = (d: PrOverview) => {
@@ -242,6 +246,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   }
 
   const people = React.useMemo(() => knownPeople(data, source.currentUser), [data, source.currentUser]);
+  /** Where this browser keeps your drafts: the pending review, and the review in progress others see. */
+  const draftsKey = `${route.repo}.${route.pr}.${source.currentUser.id}`;
+  const presence = React.useMemo(() => host.presence(route), [host, route.pr]);
   const names = React.useMemo(() => new Map(people.map((p) => [p.id, p.displayName])), [people]);
   const native = host.nativePrUrl(route);
   const links = React.useMemo(
@@ -277,7 +284,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   return (
     <IdentityNames.Provider value={names}>
       <ReviewActionsProvider source={source} onData={loaded} stale={stale}>
-        <PendingReviewProvider storageKey={`${route.repo}.${route.pr}.${source.currentUser.id}`}>
+        <PendingReviewProvider storageKey={draftsKey}>
+          <PresenceProvider store={presence} me={source.currentUser} tab={tab} draftsKey={draftsKey} active={loadedOnce}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
               <div className="review-page">
@@ -349,6 +357,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
               </div>
             </HostLinks.Provider>
           </MentionProvider>
+          </PresenceProvider>
         </PendingReviewProvider>
       </ReviewActionsProvider>
     </IdentityNames.Provider>
@@ -430,6 +439,7 @@ const PrHeader: React.FC<{
             {pr.title} <span className="pr-id">!{pr.id}</span>
           </h1>
           <div className="pr-actions">
+            <PresenceStack label />
             <ReviewButton vote={vote} form={reviewForm} onForm={setReviewForm} />
             <VoteButton vote={vote} />
             <CompletionButton data={data} />
@@ -475,6 +485,7 @@ const PrHeader: React.FC<{
           {pr.sourceBranch} → {pr.targetBranch}
         </span>
         <div className="pr-bar-actions">
+          <PresenceStack size={20} />
           <ReviewButton vote={vote} form={reviewForm} onForm={setReviewForm} />
           <VoteButton vote={vote} />
           <CompletionButton data={data} />

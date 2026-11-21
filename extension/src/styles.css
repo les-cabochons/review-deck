@@ -1501,6 +1501,130 @@ kbd {
   font-size: 11px;
   margin-top: 2px;
 }
+
+/* Who else is on the pull request (ui/presence): faces in both headers, a status under each person in the sidebar. */
+.pr-header,
+.pr-bar {
+  /* The badges' and faces' ring takes the color behind them, so they read as cut out. */
+  --presence-ring: var(--canvas);
+}
+.presence-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.presence-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  box-sizing: border-box;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--presence-ring, var(--surface));
+  background: var(--ok);
+}
+.presence-badge.reviewing {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+}
+.presence-badge svg {
+  width: 7px;
+  height: 7px;
+  fill: #fff;
+}
+/* Away with a review in progress: a ring with the pencil, not a filled badge. */
+.presence-badge.reviewing.away {
+  background: var(--presence-ring, var(--surface));
+  border-color: var(--accent);
+}
+.presence-badge.reviewing.away svg {
+  fill: var(--accent);
+}
+.presence-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--fg2);
+}
+.presence-status.here::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.presence-status.here.reviewing,
+.presence-doing-review {
+  color: var(--link);
+}
+.presence-stack {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: default;
+}
+.presence-stack:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.presence-faces {
+  display: inline-flex;
+  align-items: center;
+}
+.presence-faces > * + * {
+  margin-left: -5px;
+}
+.presence-faces .avatar {
+  box-shadow: 0 0 0 2px var(--presence-ring, var(--surface));
+}
+.presence-more {
+  margin-left: 2px;
+  font-size: 11px;
+  color: var(--fg2);
+}
+.presence-label {
+  font-size: 12px;
+  color: var(--fg2);
+  white-space: nowrap;
+}
+/* Who does what: under the faces on hover or keyboard focus. */
+.presence-card {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: none;
+  gap: 8px;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-callout);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+.presence-stack:hover .presence-card,
+.presence-stack:focus-within .presence-card {
+  display: grid;
+}
+.presence-person {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
 .reviewer-picker {
   padding: 10px;
   background: var(--surface-2);

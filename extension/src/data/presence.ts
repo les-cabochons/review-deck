@@ -94,7 +94,7 @@ function readRecord(raw: unknown): PresenceRecord | null {
   const imageUrl = typeof user.imageUrl === "string" && user.imageUrl.startsWith("https://") ? user.imageUrl : undefined;
   return {
     id: r.id,
-    user: { id: user.id, displayName: user.displayName, ...(imageUrl && { imageUrl }) },
+    user: { id: user.id, displayName: user.displayName, ...(imageUrl ? { imageUrl } : {}) },
     seenAt: r.seenAt,
     left: r.left === true,
     tab: typeof r.tab === "string" && TABS.includes(r.tab) ? (r.tab as PresenceTab) : "overview",
