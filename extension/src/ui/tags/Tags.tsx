@@ -22,7 +22,7 @@ interface ProjectTags {
   host: AppHost | null;
   /**
    * Hides or shows the tag in the hub sidebar for everyone in the project. The list changes at once; a failed
-   * save reloads the tags and rejects with a readable message.
+   * save puts the flag back and rejects with a readable message.
    */
   setTagHidden: (name: string, hidden: boolean) => Promise<void>;
 }
@@ -42,11 +42,22 @@ export const useProjectTags = () => React.useContext(TagContext);
 /** Loads the project's tags once for both pages; editors call reload() after a change. */
 export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.ReactNode }> = ({ host, children }) => {
   const [tags, setTags] = React.useState<TagDef[]>([]);
+  /** Counts Hide and Show clicks, so a reload that read the styles before a click doesn't undo it on screen. */
+  const toggles = React.useRef(0);
   const reload = React.useCallback(() => {
+    const before = toggles.current;
     host
       .tags()
       .list()
-      .then(setTags, (e) => console.warn("[review-deck] tags unavailable:", e));
+      .then(
+        (next) =>
+          setTags((shown) => {
+            if (toggles.current === before) return next;
+            const hidden = new Map(shown.map((t) => [tagKey(t.name), t.hidden]));
+            return next.map((t) => ({ ...t, hidden: hidden.get(tagKey(t.name)) ?? t.hidden }));
+          }),
+        (e) => console.warn("[review-deck] tags unavailable:", e),
+      );
   }, [host]);
   React.useEffect(reload, [reload]);
   const [revision, setRevision] = React.useState(0);
@@ -59,15 +70,18 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     async (name: string, hidden: boolean) => {
       // No reload after a save: the list already shows it, and a reload landing between two quick clicks would
       // undo the second one on screen until its own save finished.
-      setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden } : t)));
+      toggles.current++;
+      const show = (value: boolean) => setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden: value } : t)));
+      show(hidden);
       try {
         await host.tags().hide(name, hidden);
       } catch (e) {
-        reload();
+        // A click always flips the flag, so the saved value is the other one.
+        show(!hidden);
         throw e;
       }
     },
-    [host, reload],
+    [host],
   );
   const value = React.useMemo(
     () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),
