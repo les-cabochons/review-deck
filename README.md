@@ -291,7 +291,7 @@ then runs the pipeline there. The A–Z diff shows first, and the grouping repla
 |---|---|
 | `src/diff/parse.ts` | Unified diff → files and hunks with stable `path#n` IDs. |
 | `src/parse/` | web-tree-sitter with WASM grammars for TS/TSX/JS, Python, Go, Rust, Java, C#, Ruby, PHP and C/C++, loaded only for the languages a PR touches. Per file: declarations with spans, identifiers (definition or use, plain or member), string literals, comments, imports. |
-| `src/analyze/hunks.ts` | Expands each hunk to its enclosing declaration. Records what it **defines**, what it **references**, and one hop of **impact** (unchanged functions in the same file that use something it changed). |
+| `src/analyze/hunks.ts` | Expands each hunk to its enclosing declaration. Records what it **defines**, what it **references**, and one hop of **impact** (unchanged functions in the same file that use something it changed). The page lists the **affected** code under the hunk: the impact narrowed to declarations no hunk touches that use the changed declaration by name. |
 | `src/analyze/mechanical.ts` | Lockfiles, generated files, pure renames, binary files, whitespace-only hunks and dependency-only `package.json` edits. |
 | `src/score/` | Pairwise signals, each 0..1 with evidence (below). |
 | `src/cluster/` | Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. A small community whose new symbols are used by exactly one other community is absorbed into it. Singletons go to **misc**. |
@@ -340,6 +340,9 @@ The weights were tuned on everything except #17826, so treat these as a smoke te
 - **Hunks are the atom:** a hunk that mixes two concerns can't be split.
 - **Name-based matching:** structural links use names, not types, so two unrelated members with the same
   name can link.
+- **Affected code stops at the file:** "Also used by unchanged…" lists code in the changed file only, because
+  the page reads no other file. Callers elsewhere in the repository aren't listed. A changed method counts only
+  for members of its own class, and a local variable named like the changed declaration can add a false entry.
 
 ## Development
 

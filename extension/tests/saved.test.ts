@@ -67,6 +67,22 @@ test("Given a saved grouping for the same diff and mode, then reopening shows it
   assert.equal(result.hunks.get("src/api.test.ts#0")!.file.path, "src/api.test.ts");
 });
 
+test("Given a hunk with affected code, then reopening the saved grouping still lists it, and a guide saved without it or with a malformed one lists none", () => {
+  const mode = reviewMode({}, true);
+  const fresh = analyzed();
+  fresh.hunks.get("src/api.ts#0")!.affected = ["loadUser", "Client.send"];
+  const saved = JSON.parse(JSON.stringify(packReview(fresh, mode)));
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.affected, ["loadUser", "Client.send"]);
+  // A hunk with no fact to show isn't saved at all, and restores with an empty list.
+  assert.equal(saved.hunks["src/api.test.ts#0"].affected, undefined);
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.test.ts#0")!.affected, []);
+  // Saved documents are written by other versions and apps, so the page reads only names.
+  saved.hunks["src/api.ts#0"].affected = ["loadUser", 3, null];
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.affected, ["loadUser"]);
+  saved.hunks["src/api.ts#0"].affected = "loadUser";
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.affected, []);
+});
+
 test("Given a grouping made another way, or for other hunks, then the PR is analyzed again, saying why", () => {
   const saved = packReview(analyzed(), reviewMode({}, true));
   // The project turned AI titles off, or the page has no backend.

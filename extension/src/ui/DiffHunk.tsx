@@ -23,7 +23,26 @@ interface Props {
   mode: DiffMode;
   threads: ThreadIndex;
   symbol?: string | null;
+  /** HunkInfo.affected: unchanged code in the file that uses what this chunk changes. */
+  affected?: readonly string[];
 }
+
+/** Names listed before the rest fold into "and N more" (the tooltip has them all). */
+const AFFECTED_SHOWN = 5;
+
+/** The line under a chunk's header naming the unchanged code that uses what it changes. */
+const AffectedNote: React.FC<{ names: readonly string[] }> = ({ names }) => {
+  const rest = names.length - AFFECTED_SHOWN;
+  return (
+    <div className="hunk-affected" title={`Unchanged code in this file that uses what this change touches, matched by name:\n${names.join("\n")}`}>
+      Also used by unchanged{" "}
+      {names.slice(0, AFFECTED_SHOWN).map((name, i) => (
+        <React.Fragment key={name}>{i > 0 && ", "}<code>{name}</code></React.Fragment>
+      ))}
+      {rest > 0 && ` and ${rest} more`}
+    </div>
+  );
+};
 
 export const DiffHunk: React.FC<Props> = (props) => {
   const { hunk, mode } = props;
@@ -32,7 +51,10 @@ export const DiffHunk: React.FC<Props> = (props) => {
   const [loaded, setLoadLarge] = React.useState(false);
   const loadLarge = loaded || lineAnnotations(hunk, props.threads.keys()).length > 0;
   // The id is a scroll target: the diff below mounts only near the viewport (FilesTab scrollToThread).
-  const header = <div className="pierre-hunk-header" id={`diff-${hunk.id}`}>{hunk.header}{props.symbol && <strong>{props.symbol}</strong>}</div>;
+  const header = <>
+    <div className="pierre-hunk-header" id={`diff-${hunk.id}`}>{hunk.header}{props.symbol && <strong>{props.symbol}</strong>}</div>
+    {!!props.affected?.length && <AffectedNote names={props.affected} />}
+  </>;
   if (!hunk.header) return <div className="diff-note">No content changes, rename or mode change only.</div>;
   if (hunk.lines.length > LARGE_HUNK_LINES && !loadLarge)
     return <>
@@ -52,10 +74,10 @@ export const DiffHunk: React.FC<Props> = (props) => {
 
 const HUNK_HEADER_HEIGHT = 24;
 
-/** Placeholder height for a whole DiffHunk (header + diff) before it first renders. */
-export function estimateHunkHeight(hunk: Hunk, mode: DiffMode): number {
+/** Placeholder height for a whole DiffHunk (header, the affected line if any, diff) before it first renders. */
+export function estimateHunkHeight(hunk: Hunk, mode: DiffMode, affected = false): number {
   if (!hunk.header) return 40;
-  return HUNK_HEADER_HEIGHT + (hunk.lines.length > LARGE_HUNK_LINES ? 44 : diffHeight(hunk, mode));
+  return HUNK_HEADER_HEIGHT * (affected ? 2 : 1) + (hunk.lines.length > LARGE_HUNK_LINES ? 44 : diffHeight(hunk, mode));
 }
 
 /** One row per line (changed pairs share a row side by side), plus Pierre's block padding. */

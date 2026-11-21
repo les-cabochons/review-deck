@@ -11,6 +11,7 @@ It replaces the pull request pages with a full-width inbox and review page, in t
 ## Changes grouped by concern
 
 - **Grouped by default.** Hunks are clustered using the code's structure (definitions, references, imports, renames) parsed with tree-sitter. Each group gets a title, a one-line rationale, and its hunks ordered definitions first.
+- **Affected code.** Under a change, "Also used by unchanged…" names the code in the same file that uses what changed but isn't in the pull request.
 - **A–Z when you want it.** One click switches back to the plain file list. Badges show which concern each hunk landed in.
 - **Fast diffs.** Inline or side-by-side, with syntax highlighting and word-level changes. A file tree shows folders, file icons and change counts.
 - **Any comparison.** Compare the base or any update against any later update.
