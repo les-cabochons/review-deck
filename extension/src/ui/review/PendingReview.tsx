@@ -35,15 +35,22 @@ export function usePendingReview(): PendingReview {
 let nextId = 0;
 const newId = () => `draft-${Date.now().toString(36)}-${++nextId}`;
 
+/**
+ * The drafts this browser keeps for `storageKey`, as saved now. Every tab of the browser reads the same ones, even a
+ * tab whose own list is older (each tab reads them once, when its page opens).
+ */
+export function storedDrafts(storageKey: string): Draft[] {
+  try {
+    const drafts: unknown = JSON.parse(readLocal(`pending.${storageKey}`) || "[]");
+    return Array.isArray(drafts) ? (drafts as Draft[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export const PendingReviewProvider: React.FC<{ storageKey: string }> = ({ storageKey, children }) => {
   const key = `pending.${storageKey}`;
-  const [drafts, setDrafts] = React.useState<Draft[]>(() => {
-    try {
-      return JSON.parse(readLocal(key) || "[]") as Draft[];
-    } catch {
-      return [];
-    }
-  });
+  const [drafts, setDrafts] = React.useState<Draft[]>(() => storedDrafts(storageKey));
   const latest = React.useRef(drafts);
   const save = React.useCallback(
     (next: Draft[]) => {

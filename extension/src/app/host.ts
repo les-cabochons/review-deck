@@ -3,6 +3,7 @@ import type { Feature, OrganizationSettings } from "../data/access";
 import type { PrListSource, PrSummary } from "../data/list";
 import { DEFAULT_RELEASE_SETTINGS, type ReleaseCatalog, readReleaseSettings, type ReleaseSettings } from "../data/releases";
 import type { Identity, PrSource } from "../data/model";
+import type { PresenceStore } from "../data/presence";
 import type { TagStore } from "../data/tags";
 import type { BackendService, RestackOutcome } from "../review/backend";
 import type { SavedReviews } from "../review/saved";
@@ -143,6 +144,8 @@ export interface AppHost {
   restack(pr: PrSummary): Promise<RestackOutcome[]>;
   /** Finished groupings, so reopening a pull request shows them without re-running the analysis. */
   savedReviews(): SavedReviews;
+  /** The records of who has this pull request open or a review in progress on it (data/presence.ts). */
+  presence(route: Extract<Route, { view: "pr" }>): PresenceStore;
   /** This project's tags, with their colors and descriptions. */
   tags(): TagStore;
   /** Your starred repositories, kept per user across projects. */

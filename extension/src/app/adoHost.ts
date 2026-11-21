@@ -9,6 +9,7 @@ import type { PrSummary } from "../data/list";
 import { AdoPrSource } from "../data/adoSource";
 import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
+import type { PresenceStore } from "../data/presence";
 import type { ReleaseCatalog } from "../data/releases";
 import { type BackendService, restackPr, type RestackOutcome } from "../review/backend";
 import { type ReviewKey, type SavedReview, type SavedReviews, savedFor, withSaved } from "../review/saved";
@@ -26,6 +27,8 @@ const SETTINGS_COLLECTION = "project-settings";
 const REVIEWS_COLLECTION = "saved-reviews";
 /** User-scoped extension data value holding your starred repository ids. */
 const FAVORITES_KEY = "favorite-repos";
+/** Prefix of the extension data collections holding who is on each pull request, one collection per PR (data/presence.ts). */
+const PRESENCE_COLLECTION = "presence";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
 const EDIT_PROJECT = 2;
@@ -359,6 +362,29 @@ export class AdoHost implements AppHost {
         } catch (e) {
           // E.g. a huge PR over the document size limit: it is analyzed on every open, as before.
           console.warn("[review-deck] could not save the guided view:", e);
+        }
+      },
+    };
+  }
+
+  /**
+   * In extension data shared by the organization: one collection per pull request, one document per browser, so each
+   * page writes only its own and never conflicts with another's. Keyed by the project and the PR's id rather than the
+   * route's repository, which may be its id or its name.
+   */
+  presence(route: Extract<Route, { view: "pr" }>): PresenceStore {
+    const collection = [PRESENCE_COLLECTION, this.project.id, route.pr].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
+    return {
+      // __etag -1: last write wins, and creates the document the first time.
+      save: async (record) => void (await (await this.data()).setDocument(collection, { ...record, __etag: -1 })),
+      remove: async (id) => (await this.data()).deleteDocument(collection, id),
+      list: async () => {
+        try {
+          return await (await this.data()).getDocuments(collection);
+        } catch (e) {
+          // No one has opened the PR since presence shipped.
+          if ((e as { status?: number }).status === 404) return [];
+          throw e;
         }
       },
     };

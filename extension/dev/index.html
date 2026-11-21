@@ -99,7 +99,8 @@
       const inner = new URLSearchParams();
       inner.set("local", "1");
       inner.set("theme", theme.value);
-      for (const k of ["pr", "repo"]) if (shell.get(k)) inner.set(k, shell.get(k));
+      // presence=demo: made-up people on the PR (app/localHost.ts presence).
+      for (const k of ["pr", "repo", "presence"]) if (shell.get(k)) inner.set(k, shell.get(k));
       frame.src = `/dist/review.html?${inner}${location.hash}`;
 
       function mirror() {

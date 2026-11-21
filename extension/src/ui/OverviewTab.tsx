@@ -6,6 +6,7 @@ import { groupColor } from "./groupColors";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
+import { OthersOnPr } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
 import { Avatar, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 
@@ -33,6 +34,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, building, onOpenGro
         {sidebarTop}
         <SemanticSummary review={review} building={building} onOpenGroup={onOpenGroup} />
         <Reviewers data={data} />
+        <OthersOnPr reviewers={data.pr.reviewers} />
         <Checks data={data} />
         <Tags data={data} />
         <WorkItems data={data} />

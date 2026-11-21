@@ -3,6 +3,7 @@ import { Icon } from "azure-devops-ui/Icon";
 import { Button } from "azure-devops-ui/Button";
 import type { PrOverview } from "../data/model";
 import { MoreMenu } from "./controls";
+import { PresenceAvatar, PresenceStatus, usePresence } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
 import { useSearch } from "./useSearch";
 import { TagPill, useProjectTags } from "./tags/Tags";
@@ -11,6 +12,7 @@ import { Avatar, cx, voteInfo } from "./util";
 
 export const Reviewers: React.FC<{ data: PrOverview }> = ({ data }) => {
   const { actions, disabled, run } = useReviewActions();
+  const presence = usePresence();
   const [adding, setAdding] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [required, setRequired] = React.useState(false);
@@ -79,14 +81,16 @@ export const Reviewers: React.FC<{ data: PrOverview }> = ({ data }) => {
           .sort((a, b) => Number(b.isRequired) - Number(a.isRequired))
           .map((r) => {
             const v = voteInfo(r.vote);
+            const here = presence.find((p) => p.who.id === r.id);
             return (
               <li key={r.id} className="editable-reviewer">
-                <Avatar who={r} />
+                <PresenceAvatar who={r} presence={here} />
                 <div className="name">
                   {r.displayName}
                   <span className={cx("reviewer-vote", `tone-${v.tone}`)}>
                     {v.icon && <Icon iconName={v.icon} />} {v.label}
                   </span>
+                  {here && <PresenceStatus presence={here} />}
                 </div>
                 {r.isRequired && <span className="tag">Required</span>}
                 <MoreMenu

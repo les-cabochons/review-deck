@@ -3,6 +3,7 @@ import { MockPrListSource, type PrSummary } from "../data/list";
 import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
 import { MockReleaseCatalog } from "../data/mockReleases";
+import type { PresenceRecord, PresenceStore } from "../data/presence";
 import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
 import type { BackendService, RestackOutcome } from "../review/backend";
 import { type ReviewKey, type SavedReviews, savedFor, withSaved } from "../review/saved";
@@ -14,6 +15,7 @@ const FAVORITES_KEY = "review-deck.local.favoriteRepos";
 const BACKEND_KEY = "review-deck.local.backend";
 const ORGANIZATION_KEY = "review-deck.local.organizationSettings";
 const REVIEWS_KEY = "review-deck.local.savedReviews";
+const PRESENCE_KEY = "review-deck.local.presence";
 /** Pull requests whose guided views the local page keeps, most recently grouped first (localStorage holds ~5 MB). */
 const SAVED_PRS = 20;
 
@@ -183,6 +185,44 @@ export class LocalHost implements AppHost {
         }
       },
     };
+  }
+
+  /**
+   * In localStorage, shared by the dev tabs. They all run as the same user, who is never listed, so
+   * `?presence=demo` adds made-up people: the PR's first reviewer reviewing now, its second away with drafts, and
+   * someone who isn't a reviewer.
+   */
+  presence(route: Extract<Route, { view: "pr" }>): PresenceStore {
+    const key = `${PRESENCE_KEY}.${route.pr}`;
+    const read = (): Record<string, unknown> => {
+      try {
+        return JSON.parse(localStorage.getItem(key) ?? "{}") ?? {};
+      } catch {
+        return {};
+      }
+    };
+    const demo = new URLSearchParams(location.search).get("presence") === "demo";
+    return {
+      save: async (record) => localStorage.setItem(key, JSON.stringify({ ...read(), [record.id]: record })),
+      remove: async (id) => {
+        const { [id]: _, ...others } = read();
+        localStorage.setItem(key, JSON.stringify(others));
+      },
+      list: async () => [...Object.values(read()), ...(demo ? await this.demoPresence(route) : [])],
+    };
+  }
+
+  private async demoPresence(route: Extract<Route, { view: "pr" }>): Promise<PresenceRecord[]> {
+    const now = Date.now();
+    const { reviewers } = (await (await this.prSource(route)).load()).pr;
+    const [first, second] = reviewers.filter((r) => r.id !== this.currentUser.id);
+    const records: PresenceRecord[] = [
+      { id: "demo-other", user: { id: "demo-samuel", displayName: "Samuel Côté" }, seenAt: now, tab: "overview", drafts: 0 },
+    ];
+    const user = (r: Identity) => ({ id: r.id, displayName: r.displayName, imageUrl: r.imageUrl });
+    if (first) records.push({ id: "demo-first", user: user(first), seenAt: now, tab: "files", drafts: 3, draftsSince: now - 20 * 60_000 });
+    if (second) records.push({ id: "demo-second", user: user(second), seenAt: now - 86_400_000, left: true, tab: "files", drafts: 2, draftsSince: now - 86_400_000 });
+    return records;
   }
 
   /** Kept in localStorage; the local user may change them. */

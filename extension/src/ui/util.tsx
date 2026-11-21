@@ -47,7 +47,9 @@ export const Markdown: React.FC<{ text: string; className?: string }> = ({ text,
   return <div className={`markdown ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
-export const Avatar: React.FC<{ who: Identity; size?: number }> = ({ who, size = 24 }) => {
+/** A person's picture, or their initials when there is none. `tooltip` false drops the name on hover, where a card already shows it. */
+export const Avatar: React.FC<{ who: Pick<Identity, "displayName" | "imageUrl">; size?: number; tooltip?: boolean }> = ({ who, size = 24, tooltip = true }) => {
+  const title = tooltip ? who.displayName : undefined;
   const [failed, setFailed] = React.useState(false);
   const initials = who.displayName
     .split(/[\s._-]+/)
@@ -56,7 +58,7 @@ export const Avatar: React.FC<{ who: Identity; size?: number }> = ({ who, size =
     .map((p) => p[0]!.toUpperCase())
     .join("");
   return failed || !who.imageUrl ? (
-    <span className="avatar initials" style={{ width: size, height: size, fontSize: size * 0.42 }} title={who.displayName}>
+    <span className="avatar initials" style={{ width: size, height: size, fontSize: size * 0.42 }} title={title}>
       {initials}
     </span>
   ) : (
@@ -66,7 +68,7 @@ export const Avatar: React.FC<{ who: Identity; size?: number }> = ({ who, size =
       width={size}
       height={size}
       alt=""
-      title={who.displayName}
+      title={title}
       onError={() => setFailed(true)}
     />
   );
