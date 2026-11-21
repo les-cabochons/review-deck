@@ -25,6 +25,10 @@
     "ext:test:browser": "node scripts/build-write-test.mjs",
     "ext:timing": "node extension/tests/startup-timing.mjs",
     "backend:typecheck": "tsc --noEmit -p backend",
+    "browser:build": "node browser-extension/build.mjs",
+    "browser:typecheck": "tsc --noEmit -p browser-extension",
+    "browser:test": "tsx --test browser-extension/tests/*.test.ts",
+    "browser:test:redirect": "node browser-extension/build.mjs && node browser-extension/tests/redirect.browser.mjs",
     "backend:build": "node backend/build.mjs",
     "ext:package": "node extension/build.mjs && tfx extension create --root extension --manifest-globs vss-extension.json --output-path extension/"
   },
@@ -32,6 +36,7 @@
     "@azure/data-tables": "^13.3.2",
     "@azure/functions": "^4.16.5",
     "@swc/core": "^1.16.18",
+    "@types/chrome": "^0.3.7",
     "@types/node": "^24.19.2",
     "@types/react": "^16.14.70",
     "@types/react-dom": "^16.9.25",

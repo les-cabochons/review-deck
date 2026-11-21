@@ -4,6 +4,7 @@ out/
 extension/dev-data/
 extension/dist/
 extension/test-dist/
+browser-extension/dist/
 .playwright-mcp/
 .playwright-cli/
 *.vsix
