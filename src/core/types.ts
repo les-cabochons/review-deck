@@ -46,6 +46,22 @@ export interface MechanicalInfo {
   reason: string;
 }
 
+/**
+ * A fixed rule's hit on a hunk's added lines (src/analyze/safety.ts): a likely secret, or a migration that can lose
+ * data or break a deploy. It never holds the matched text, because findings are saved with the guide.
+ */
+export interface SafetyFinding {
+  kind: "secret" | "migration";
+  /** `medium`: the rule is often right but also hits harmless code (a password-like literal, a rename). */
+  severity: "high" | "medium";
+  /** The rule's short name, e.g. "AWS access key" or "Drops a column". */
+  rule: string;
+  /** One sentence on why it matters. */
+  message: string;
+  /** New-side line it was found on, or null when the file itself is the finding (a committed `.env`). */
+  line: number | null;
+}
+
 /** A hunk enriched with syntactic facts. */
 export interface HunkInfo {
   hunk: Hunk;
@@ -79,6 +95,8 @@ export interface HunkInfo {
   addedDecls: string[];
   removedDecls: string[];
   mechanical: MechanicalInfo | null;
+  /** What the safety rules found on the hunk's added lines, in line order. A hunk with any is never mechanical. */
+  findings: SafetyFinding[];
   /** Compact text used for embeddings and LLM prompts. */
   text: string;
 }

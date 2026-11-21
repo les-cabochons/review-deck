@@ -1,32 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { structuredPatch } from "diff";
-import { mergeConfig } from "../../core/config.js";
-import type { FileProvider, HunkInfo } from "../../core/types.js";
-import { parseDiff } from "../../diff/parse.js";
-import { createNodeParsers } from "../../node/parsers.js";
-import { analyzeHunks } from "../hunks.js";
-
-const parsers = await createNodeParsers();
-
-/**
- * The analysed hunks of one file, in file order, parsed with the real grammar for `path`. Modified by default; an
- * added or deleted file gets the `/dev/null` side and file mode line git writes.
- */
-async function analyze(path: string, before: string[], after: string[], status: "modified" | "added" | "deleted" = "modified"): Promise<HunkInfo[]> {
-  const [oldText, newText] = [before.join("\n"), after.join("\n")];
-  const patch = structuredPatch(path, path, oldText, newText, "", "", { context: 0 });
-  const diff = [
-    `diff --git a/${path} b/${path}`,
-    ...(status === "added" ? ["new file mode 100644"] : status === "deleted" ? ["deleted file mode 100644"] : []),
-    status === "added" ? "--- /dev/null" : `--- a/${path}`,
-    status === "deleted" ? "+++ /dev/null" : `+++ b/${path}`,
-    ...patch.hunks.flatMap((h) => [`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`, ...h.lines]),
-    "",
-  ].join("\n");
-  const files: FileProvider = { get: async (_path, side) => (side === "old" ? oldText : newText) };
-  return [...(await analyzeHunks(parseDiff(diff), files, parsers, mergeConfig({}))).values()];
-}
+import { analyzeFile as analyze } from "./analyze.js";
 
 test("Given a changed function, then the unchanged functions in the file that call it are listed as affected, and the others aren't", async () => {
   const file = (body: string) => [
@@ -90,8 +64,8 @@ test("Given a changed top-level function used inside a class, then the method th
 
 test("Given an added or a deleted file, then nothing is listed: it has no unchanged code", async () => {
   const file = ["export function loadUser(id: string) { return parseUser(id); }", "export function parseUser(text: string) { return { text }; }"];
-  const [added] = await analyze("src/new.ts", [], file, "added");
-  const [deleted] = await analyze("src/old.ts", file, [], "deleted");
+  const [added] = await analyze("src/new.ts", null, file);
+  const [deleted] = await analyze("src/old.ts", file, null);
   assert.equal(added.file.status, "added");
   assert.equal(deleted.file.status, "deleted");
   assert.deepEqual(added.affected, []);
