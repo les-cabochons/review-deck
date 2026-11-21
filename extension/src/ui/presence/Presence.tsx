@@ -42,6 +42,8 @@ export const PresenceProvider: React.FC<{
     let busy = false;
     let warned = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    /** The last check-in's save. Leaving waits for it, or it could land after and undo what leaving wrote. */
+    let saving: Promise<unknown> = Promise.resolve();
     // Once per page: a store that keeps failing would otherwise log at every check-in.
     const warn = (what: string, e: unknown) => {
       if (!warned) console.warn(`[review-deck] could not ${what} who is on the pull request:`, e);
@@ -64,7 +66,7 @@ export const PresenceProvider: React.FC<{
       busy = true;
       clearTimeout(timer);
       try {
-        await store.save(record());
+        await (saving = store.save(record()));
       } catch (e) {
         warn("save", e);
       }
@@ -82,7 +84,10 @@ export const PresenceProvider: React.FC<{
     // Best effort: a closing page may not finish the call. Its record then ages out after HERE_MS.
     const leave = () => {
       const r = record();
-      (r.drafts ? store.save({ ...r, left: true }) : store.remove(id)).catch(() => {});
+      void saving
+        .catch(() => {})
+        .then(() => (r.drafts ? store.save({ ...r, left: true }) : store.remove(id)))
+        .catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pagehide", leave);
