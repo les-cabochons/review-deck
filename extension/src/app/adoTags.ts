@@ -25,6 +25,8 @@ export class AdoTagStore implements TagStore {
   constructor(private readonly env: Env) {}
 
   async list(): Promise<TagDef[]> {
+    // After this page's queued saves, so a reload never shows what a pending Hide is about to change.
+    await this.writes;
     const [names, styles] = await Promise.all([
       this.definitions().then(
         (d) => d.map((t) => t.name),

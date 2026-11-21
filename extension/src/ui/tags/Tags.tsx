@@ -22,7 +22,7 @@ interface ProjectTags {
   host: AppHost | null;
   /**
    * Hides or shows the tag in the hub sidebar for everyone in the project. The list changes at once; a failed
-   * save puts the flag back and rejects with a readable message.
+   * save reloads the tags and rejects with a readable message.
    */
   setTagHidden: (name: string, hidden: boolean) => Promise<void>;
 }
@@ -71,17 +71,16 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
       // No reload after a save: the list already shows it, and a reload landing between two quick clicks would
       // undo the second one on screen until its own save finished.
       toggles.current++;
-      const show = (value: boolean) => setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden: value } : t)));
-      show(hidden);
+      setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden } : t)));
       try {
         await host.tags().hide(name, hidden);
       } catch (e) {
-        // A click always flips the flag, so the saved value is the other one.
-        show(!hidden);
+        // The store lists after its queued saves, so this shows what they stored, other clicks included.
+        reload();
         throw e;
       }
     },
-    [host],
+    [host, reload],
   );
   const value = React.useMemo(
     () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),

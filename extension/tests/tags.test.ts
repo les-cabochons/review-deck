@@ -89,17 +89,32 @@ test("Given a tag hidden, then it keeps its color and stays hidden through an ed
   assert.deepEqual(withTagHidden(renamed, "defect", false), { defect: { name: "Defect", color: "#0e8a16", description: "Broken" } });
 });
 
-test("Given two tags hidden at once in Azure DevOps, then the saved styles keep both", async () => {
-  // Extension data with slow reads and writes, like the real service: two saves that each read before the
-  // other writes would keep only the last tag.
-  let doc: { tags: TagStyles } | null = null;
+/** An Azure DevOps tag store over extension data with slow reads and writes, like the real service. */
+function slowAdoTagStore() {
+  const state: { doc: { tags: TagStyles } | null } = { doc: null };
   const later = <T>(value: () => T) => new Promise<T>((resolve) => setTimeout(() => resolve(value()), 5));
   const data = {
-    getDocument: () => later(() => (doc ? structuredClone(doc) : Promise.reject(Object.assign(new Error("Not found"), { status: 404 })))),
-    setDocument: (_: string, next: { tags: TagStyles }) => later(() => (doc = structuredClone({ tags: next.tags }))),
+    getDocument: () => later(() => (state.doc ? structuredClone(state.doc) : Promise.reject(Object.assign(new Error("Not found"), { status: 404 })))),
+    setDocument: (_: string, next: { tags: TagStyles }) => later(() => (state.doc = structuredClone({ tags: next.tags }))),
   } as unknown as IExtensionDataManager;
   const store = new AdoTagStore({ hostUrl: "https://dev.azure.com/org/", projectId: "project", token: async () => "", data: async () => data });
+  return { store, state };
+}
+
+test("Given two tags hidden at once in Azure DevOps, then the saved styles keep both", async () => {
+  // Two saves that each read before the other writes would keep only the last tag.
+  const { store, state } = slowAdoTagStore();
   await Promise.all([store.hide("2.2.0", true), store.hide("2.3.0", true)]);
-  assert.deepEqual(Object.keys(doc!.tags).sort(), ["2.2.0", "2.3.0"]);
-  assert.ok(Object.values(doc!.tags).every((style) => style.hidden));
+  assert.deepEqual(Object.keys(state.doc!.tags).sort(), ["2.2.0", "2.3.0"]);
+  assert.ok(Object.values(state.doc!.tags).every((style) => style.hidden));
+});
+
+test("Given a Hide still saving in Azure DevOps, then listing the tags shows it hidden", async (t) => {
+  // The project's tag definitions: none, so the list is the styled tags.
+  t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ value: [] })));
+  const { store } = slowAdoTagStore();
+  const saving = store.hide("2.2.0", true);
+  const tags = await store.list();
+  await saving;
+  assert.deepEqual(tags.map((tag) => [tag.name, tag.hidden]), [["2.2.0", true]]);
 });
