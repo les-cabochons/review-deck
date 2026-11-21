@@ -83,6 +83,19 @@ test("Given a hunk with affected code, then reopening the saved grouping still l
   assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.affected, []);
 });
 
+test("Given a hunk with a safety finding, then reopening the saved grouping still shows it, and a finding that isn't whole is dropped", () => {
+  const mode = reviewMode({}, true);
+  const fresh = analyzed();
+  const finding = { kind: "secret", severity: "high", rule: "AWS access key", message: "Looks like a real credential.", line: 2 } as const;
+  fresh.hunks.get("src/api.ts#0")!.findings = [finding];
+  const saved = JSON.parse(JSON.stringify(packReview(fresh, mode)));
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.findings, [finding]);
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.test.ts#0")!.findings, []);
+  // Saved documents are written by other versions and apps: the page renders only findings it can read.
+  saved.hunks["src/api.ts#0"].findings = [finding, { ...finding, severity: "critical" }, { rule: "No message" }, "text", null];
+  assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.findings, [finding]);
+});
+
 test("Given a grouping made another way, or for other hunks, then the PR is analyzed again, saying why", () => {
   const saved = packReview(analyzed(), reviewMode({}, true));
   // The project turned AI titles off, or the page has no backend.

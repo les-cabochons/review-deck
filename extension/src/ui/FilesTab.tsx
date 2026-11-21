@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { FileDiff, Group, HunkInfo } from "../../../src/core/types";
 import { isLineAnchor, type FileAnchor, type Iteration, type Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
-import { type DiffMode, DiffHunk, estimateHunkHeight, type ThreadIndex } from "./DiffHunk";
+import { type DiffMode, DiffHunk, estimateHunkHeight, hunkNotes, type ThreadIndex } from "./DiffHunk";
 import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
@@ -909,13 +909,13 @@ const HunkCard: React.FC<{
   return (
     <article className="hunk-card" id={`hunk-${info.hunk.id}`} hidden={hidden}>
       {/* The article stays as a scroll target; its contents mount near the viewport. */}
-      <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode, info.affected.length > 0))}>
+      <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode, hunkNotes(info)))}>
       <FileHeader file={info.file} hunk={info.hunk} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>
         <FileStatusPill file={info.file} />
         {info.isTest && <span className="tag">test</span>}
         {info.mechanical && <span className="tag">{info.mechanical.reason}</span>}
       </FileHeader>
-      {!collapsed && <DiffHunk file={info.file} hunk={info.hunk} mode={mode} threads={lineIndex(threads)} symbol={info.symbol} affected={info.affected} />}
+      {!collapsed && <DiffHunk file={info.file} hunk={info.hunk} mode={mode} threads={lineIndex(threads)} symbol={info.symbol} affected={info.affected} findings={info.findings} />}
       </LazyMount>
     </article>
   );
@@ -937,7 +937,7 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, view
         const collapsed = isCollapsed(hunkIds);
         return (
           <article key={f.path} className="file-card" id={`file-${f.path}`}>
-            <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : f.hunks.reduce((n, h) => n + estimateHunkHeight(h, mode, !!review.result.hunks.get(h.id)?.affected.length), 0))}>
+            <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : f.hunks.reduce((n, h) => n + estimateHunkHeight(h, mode, hunkNotes(review.result.hunks.get(h.id))), 0))}>
             <FileHeader file={f} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads viewUrl={viewUrl(f)}>
               <FileStatusPill file={f} />
             </FileHeader>
@@ -945,7 +945,7 @@ const AlphaView: React.FC<ViewProps> = ({ review, mode, fileThreads, shown, view
               <ThreadCard key={t.id} thread={t} fileLabel={`line ${t.file.line} (outside the diff)`} compact />
             ))}
             {!collapsed && f.hunks.map((h) => (
-              <DiffHunk key={h.id} file={f} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} affected={review.result.hunks.get(h.id)?.affected} />
+              <DiffHunk key={h.id} file={f} hunk={h} mode={mode} threads={index} symbol={review.result.hunks.get(h.id)?.symbol} affected={review.result.hunks.get(h.id)?.affected} findings={review.result.hunks.get(h.id)?.findings} />
             ))}
             </LazyMount>
           </article>

@@ -7,7 +7,7 @@
 // A guide published from Ajour (`madeWith.app`) shows whatever the reader's settings and is never replaced on its own:
 // a reader who regroups keeps their guide for the session, and only Publish puts theirs in its place (keepsPublished).
 // Nor is it dropped to make room for another comparison: a guide that doesn't fit beside it isn't saved (GuideTooLarge).
-import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewRelations, ReviewResult, TitleSource } from "../../../src/core/types";
+import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewRelations, ReviewResult, SafetyFinding, TitleSource } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
 import { readRelations } from "../../../src/relations/relations";
 
@@ -119,10 +119,10 @@ export interface SavedReview {
   merges: ReviewResult["merges"];
   options: ReviewResult["options"];
   /**
-   * The hunk facts the page shows, only for hunks that have any (most have none). `affected` was added without a
-   * new format: a guide saved before it lists no affected code until the PR is grouped again.
+   * The hunk facts the page shows, only for hunks that have any (most have none). `affected` and `findings` were
+   * added without a new format: a guide saved before them shows neither until the PR is grouped again.
    */
-  hunks: Record<string, { symbol?: string; isTest?: true; mechanical?: MechanicalInfo; affected?: string[] }>;
+  hunks: Record<string, { symbol?: string; isTest?: true; mechanical?: MechanicalInfo; affected?: string[]; findings?: SafetyFinding[] }>;
   /**
    * How the concerns connect (src/relations). Optional, so the format stays 4: guides saved before it, and guides
    * another app published without it, show their concerns without links, and the page says why.
@@ -134,12 +134,13 @@ export interface SavedReview {
 export function packReview(result: ReviewResult, mode: ReviewMode, now = Date.now()): SavedReview {
   const hunks: SavedReview["hunks"] = {};
   for (const [id, h] of result.hunks) {
-    if (!h.symbol && !h.isTest && !h.mechanical && h.affected.length === 0) continue;
+    if (!h.symbol && !h.isTest && !h.mechanical && h.affected.length === 0 && h.findings.length === 0) continue;
     hunks[id] = {
       ...(h.symbol && { symbol: h.symbol }),
       ...(h.isTest && { isTest: true }),
       ...(h.mechanical && { mechanical: h.mechanical }),
       ...(h.affected.length > 0 && { affected: h.affected }),
+      ...(h.findings.length > 0 && { findings: h.findings }),
     };
   }
   const madeWith = { title: result.title, description: result.description };
@@ -207,8 +208,8 @@ function readable(saved: unknown): Group[] | null {
 
 /**
  * A saved hunk's facts, keeping only those that hold what the page renders: a symbol's text, the test tag, a
- * known mechanical kind with its reason, and the names of the unchanged code it affects. A guide saved before
- * `affected` existed has none.
+ * known mechanical kind with its reason, the names of the unchanged code it affects, and its whole safety findings.
+ * A guide saved before `affected` and `findings` existed has neither.
  */
 function factsOf(saved: unknown): SavedReview["hunks"][string] {
   if (!isRecord(saved)) return {};
@@ -219,6 +220,7 @@ function factsOf(saved: unknown): SavedReview["hunks"][string] {
     ...(saved.isTest === true && { isTest: true as const }),
     ...(mechanical && { mechanical }),
     ...(Array.isArray(saved.affected) && { affected: saved.affected.filter((name): name is string => typeof name === "string") }),
+    ...(Array.isArray(saved.findings) && { findings: savedFindings(saved.findings) }),
   };
 }
 
@@ -380,6 +382,21 @@ function hunkInfo(file: FileDiff, hunk: HunkInfo["hunk"], saved: SavedReview["hu
     addedDecls: [],
     removedDecls: [],
     mechanical: saved.mechanical ?? null,
+    findings: saved.findings ?? [],
     text: "",
   };
+}
+
+/** The findings of a saved hunk, read as saved, so checked: one that isn't whole is dropped, the rest still show. */
+function savedFindings(value: unknown): SafetyFinding[] {
+  if (!Array.isArray(value)) return [];
+  return (value as Partial<SafetyFinding>[]).flatMap((f) =>
+    (f?.kind === "secret" || f?.kind === "migration") &&
+    (f.severity === "high" || f.severity === "medium") &&
+    typeof f.rule === "string" &&
+    typeof f.message === "string" &&
+    (f.line === null || typeof f.line === "number")
+      ? [{ kind: f.kind, severity: f.severity, rule: f.rule, message: f.message, line: f.line }]
+      : [],
+  );
 }
