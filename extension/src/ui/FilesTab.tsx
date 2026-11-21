@@ -9,7 +9,6 @@ import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
 import { DropdownButton, ModeToggle } from "./controls";
-import { GroupingStatus } from "./GroupingStatus";
 import { TitleSourceIcon } from "./TitleSource";
 import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
@@ -39,7 +38,7 @@ interface Props {
   onMode: (m: DiffMode) => void;
   /** Scroll target requested by another tab (group id). */
   focusGroup?: string | null;
-  /** Grouping progress while the worker runs; null once done. */
+  /** Grouping progress while the worker runs; null once done. Only the PR header shows it; here it hides Regroup. */
   progress: AnalysisProgress | null;
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
   holdPreview: boolean;
@@ -136,21 +135,6 @@ const FilesContent: React.FC<Props> = (props) => {
             toThread: (file, content) => lineThreadInput(review, props.selection, file, content),
           }}
         >
-          {!review.analyzed && props.progress && (
-            <div className="analyzing-note" role="status">
-              <div className="analyzing-text">
-                <span className="spinner" aria-hidden="true" />
-                <span>
-                  <strong>Building the guided view of {plural(review.result.files.length, "file")}…</strong> {props.progress.label}. Showing files A–Z
-                  until it's done.
-                </span>
-                <span className="analyzing-percent">{Math.round(props.progress.fraction * 100)}%</span>
-              </div>
-              <div className="progress-track" aria-hidden="true">
-                <div className="progress-fill" style={{ width: `${Math.round(props.progress.fraction * 100)}%` }} />
-              </div>
-            </div>
-          )}
           {review.analyzed && props.holdPreview && view === "grouped" && (
             <div className="analyzing-note ready" role="status">
               <div className="analyzing-text">
@@ -263,8 +247,6 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
           }))}
         />
       </span>
-      {/* The toolbar is sticky, so progress stays visible however far the reader scrolls. */}
-      {progress && <GroupingStatus progress={progress} />}
       {ready !== null && (
         <span className="grouping-status ready" role="status">
           <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}

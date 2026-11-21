@@ -6,7 +6,7 @@ async page => {
   const f = page.frameLocator('#frame');
   const settle = async () => {
     await f.locator('.file-header').first().waitFor();
-    await f.locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
+    await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
     await page.waitForTimeout(1500);
   };
   await page.reload();

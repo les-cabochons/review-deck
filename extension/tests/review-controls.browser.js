@@ -2,7 +2,7 @@
 // Uses only the local mock and this browser profile's viewed state.
 async page => {
   await page.goto('http://127.0.0.1:5173/dev/?pr=17901&repo=t3code#files');
-  await page.frameLocator('#frame').locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
+  await page.frameLocator('#frame').locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   return page.evaluate(async () => {
     const frame = document.querySelector("#frame");
     const doc = frame.contentDocument;

@@ -13,7 +13,7 @@ async page => {
   await page.goto('http://127.0.0.1:5173/dev/?pr=485&repo=users-sdk#files');
   const f = page.frameLocator('#frame');
   await f.locator('.file-header').first().waitFor();
-  await f.locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
+  await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   const view = f.locator('.files-toolbar .mode-toggle').first().locator('button').first();
   if ((await view.textContent()).trim() !== 'Guided') await view.click();
   await f.locator('.group-section').first().waitFor();
