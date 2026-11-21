@@ -45,7 +45,7 @@ for (const h of quiet ? [] : result.hunks.values()) {
   console.log(
     `${h.hunk.id.padEnd(34)} [${truthOf.get(h.hunk.id)}] sym=${h.symbol} ${h.mechanical ? `MECH(${h.mechanical.kind})` : ""}${h.commentOnly ? " COMMENT" : ""}`,
   );
-  console.log(`   def={${[...h.defines].join(",")}} imp={${[...h.impacts].join(",")}} ref={${[...h.references].join(",")}}`);
+  console.log(`   def={${[...h.defines].join(",")}} imp={${[...h.impacts].join(",")}} aff={${h.affected.join(",")}} ref={${[...h.references].join(",")}}`);
 }
 console.log(`\n== pairs (weight >= ${config.minEdgeWeight})`);
 for (const p of [...result.pairs].sort((a, b) => b.weight - a.weight)) {
