@@ -8,7 +8,7 @@ async page => {
   await page.goto('http://127.0.0.1:5173/dev/?pr=17826&repo=t3code#files');
   const f = page.frameLocator('#frame');
   await f.locator('.file-header').first().waitFor();
-  await f.locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
+  await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1000);
   const result = {};
   for (const view of ['Guided', 'Files A–Z']) {

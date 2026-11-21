@@ -1946,7 +1946,7 @@ kbd {
 .files-content {
   min-width: 0;
 }
-/* grouping status: banner in the Files tab, compact status in the PR header */
+/* grouping status: progress in the PR header only; the Files tab banner says when grouping is done */
 .analyzing-note {
   margin: 0 0 12px;
   padding: 8px 12px;
@@ -1975,22 +1975,6 @@ kbd {
 .analyzing-text > span:nth-child(2) {
   flex: 1;
   min-width: 0;
-}
-.analyzing-percent {
-  font-variant-numeric: tabular-nums;
-  color: var(--fg);
-}
-.progress-track {
-  height: 3px;
-  margin-top: 8px;
-  border-radius: 2px;
-  background: var(--surface-3);
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s ease-out;
 }
 .spinner {
   flex: none;

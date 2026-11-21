@@ -10,7 +10,7 @@ async page => {
   await page.goto('about:blank');
   await page.goto('http://127.0.0.1:5173/dist/review.html?local&pr=17901&repo=t3code#files');
   await page.locator('.file-header').first().waitFor();
-  await page.locator('.analyzing-note').waitFor({ state: 'detached', timeout: 60000 });
+  await page.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
   const view = page.locator('.mode-toggle').first();
   if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
