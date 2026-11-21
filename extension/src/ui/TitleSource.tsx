@@ -1,6 +1,17 @@
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
-import type { Group, TitleSource } from "../../../src/core/types";
+import type { Group, ReviewLevel, TitleSource } from "../../../src/core/types";
+
+const LEVEL_LABEL: Record<ReviewLevel, string> = { must: "Must read", skim: "Skim", skip: "Skip" };
+
+/** A concern's review level next to its title, with the reason as its tooltip. Ordinary concerns have none. */
+export const LevelPill: React.FC<{ group: Group }> = ({ group }) =>
+  group.level ? (
+    <span className={`level-pill level-${group.level}`} title={group.levelReason || undefined}>
+      {group.level === "must" && <Icon iconName="Warning" />}
+      {LEVEL_LABEL[group.level]}
+    </span>
+  ) : null;
 
 const LABEL: Record<TitleSource, string> = {
   llm: "Written by AI from the changes and the PR description",

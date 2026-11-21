@@ -96,6 +96,19 @@ test("Given a hunk with a safety finding, then reopening the saved grouping stil
   assert.deepEqual(restored(saved, mode).hunks.get("src/api.ts#0")!.findings, [finding]);
 });
 
+test("Given a concern with a review level, then reopening the saved grouping keeps it, and a level the page doesn't know is dropped", () => {
+  const mode = reviewMode({}, true);
+  const fresh = analyzed();
+  Object.assign(fresh.groups[0], { level: "must", levelReason: "Safety rules hit: AWS access key." });
+  const saved = JSON.parse(JSON.stringify(packReview(fresh, mode)));
+  const [group] = restored(saved, mode).groups;
+  assert.deepEqual([group.level, group.levelReason], ["must", "Safety rules hit: AWS access key."]);
+  // Saved documents are written by other versions and apps.
+  Object.assign(saved.groups[0], { level: "urgent", levelReason: 3 });
+  const [unknown] = restored(saved, mode).groups;
+  assert.deepEqual([unknown.level, unknown.levelReason, unknown.title], [undefined, undefined, "Rename get to fetchJson"]);
+});
+
 test("Given a grouping made another way, or for other hunks, then the PR is analyzed again, saying why", () => {
   const saved = packReview(analyzed(), reviewMode({}, true));
   // The project turned AI titles off, or the page has no backend.

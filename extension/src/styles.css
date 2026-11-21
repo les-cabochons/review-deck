@@ -2869,11 +2869,38 @@ kbd {
 .title-source.source-llm {
   color: var(--link);
 }
+/* A must-read concern in the Files navigator, where a pill wouldn't fit. */
+.nav-must {
+  flex: none;
+  color: var(--err);
+}
+/* A concern's review level, after its title (LevelPill). */
+.level-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  color: var(--fg2);
+  white-space: nowrap;
+}
+.level-pill.level-must {
+  color: var(--err);
+}
 .rationale {
   margin: 0;
   padding: 0 16px 4px 44px;
   font-size: 12px;
   color: var(--fg2);
+}
+.rationale.level-reason {
+  color: var(--fg);
 }
 .hunk-card,
 .file-card {
