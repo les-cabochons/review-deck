@@ -1584,6 +1584,19 @@ kbd {
 .presence-faces > * + * {
   margin-left: -5px;
 }
+/* Each face sits over the next, so the next doesn't cover its badge (ui/presence MAX_FACES is 4). */
+.presence-faces > :nth-child(1) {
+  z-index: 4;
+}
+.presence-faces > :nth-child(2) {
+  z-index: 3;
+}
+.presence-faces > :nth-child(3) {
+  z-index: 2;
+}
+.presence-faces > :nth-child(4) {
+  z-index: 1;
+}
 .presence-faces .avatar {
   box-shadow: 0 0 0 2px var(--presence-ring, var(--surface));
 }
