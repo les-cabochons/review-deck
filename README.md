@@ -11,6 +11,9 @@ thing end up together, ordered so definitions come before their uses and code co
 - **A review page:** Overview, Files and Commits. Files opens in the **Guided** view, grouped by concern,
   with a Files A–Z toggle and inline or side-by-side diffs.
 - **GitHub-style reviews:** draft comments, then submit them all with a verdict.
+- **Who's on the PR:** the faces of the others who have it open, and in the reviewers list who is reviewing
+  now or has unsent drafts. Each open PR page saves your name, picture, tab and number of drafts (never
+  their text) in the organization's extension data every 30 seconds, so anyone in the organization can read them.
 - **Stacked PRs:** PRs that target another PR's branch show as a stack.
 - **A Changelog hub (Repos › Changelog):** a repository's release tags as cards, each with a changelog
   generated from conventional commits and the artifacts of its publishing pipeline.
