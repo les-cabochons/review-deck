@@ -52,7 +52,12 @@ interface Props {
   onPublish: () => void;
   /** A Publish is under way. */
   publishing: boolean;
+  /** The tab row's place for the toolbar, which is drawn there on screens wider than a phone. Null until it mounts. */
+  toolbarSlot: HTMLElement | null;
 }
+
+/** Wider than the stylesheet's phone layout (`max-width: 800px`). */
+const WIDE_SCREEN = "(min-width: 801px)";
 
 export const FilesTab: React.FC<Props> = (props) => {
   const comparison = props.review?.comparison ?? props.selection;
@@ -118,15 +123,22 @@ const FilesContent: React.FC<Props> = (props) => {
     onToggleGroup: toggleNavGroup,
   });
 
+  // The toolbar shows what's on screen; picking "Grouped" while held switches over.
+  const toolbar = (
+    <Toolbar
+      {...props}
+      view={props.holdPreview ? "alpha" : view}
+      onView={(v) => (v === "grouped" && props.holdPreview ? props.onShowGrouped() : props.onView(v))}
+      ready={props.holdPreview && view === "grouped" ? groups : null}
+    />
+  );
+  // Beside the tabs, in the row that sticks under the compact PR header. On phones it would wrap to three rows
+  // there, so it stays at the top of the tab and scrolls away.
+  const tabRow = useMediaQuery(WIDE_SCREEN) ? props.toolbarSlot : null;
+
   return (
     <div className="files-tab">
-      {/* The toolbar shows what's on screen; picking "Grouped" while held switches over. */}
-      <Toolbar
-        {...props}
-        view={props.holdPreview ? "alpha" : view}
-        onView={(v) => (v === "grouped" && props.holdPreview ? props.onShowGrouped() : props.onView(v))}
-        ready={props.holdPreview && view === "grouped" ? groups : null}
-      />
+      {tabRow ? createPortal(toolbar, tabRow) : toolbar}
       {props.error && <div className="error-box">{props.error}</div>}
       {!review && props.error ? null : !review ? (
         <div className="loading">Loading changes…</div>
@@ -174,6 +186,19 @@ const FilesContent: React.FC<Props> = (props) => {
     </div>
   );
 };
+
+/** Whether the window matches a media query, kept current as the window resizes. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = React.useState(() => window.matchMedia(query).matches);
+  React.useEffect(() => {
+    const list = window.matchMedia(query);
+    const update = () => setMatches(list.matches);
+    update();
+    list.addEventListener("change", update);
+    return () => list.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
 
 /** Whether the file tree sidebar is shown. Hidden, it leaves a slim rail and the diffs take the rest of the width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
@@ -325,15 +350,16 @@ function scrollToId(id: string) {
 }
 
 /**
- * Space kept under the navigator and its rail. It matches the stylesheet's `calc(100vh - 64px - var(--pr-bar-h))`:
- * the 48px sticky top under the compact PR header, plus this gap.
+ * Space kept under the navigator and its rail. It matches the stylesheet's
+ * `calc(100vh - var(--pr-bar-h) - var(--pr-tabs-h) - 32px)`: the 16px between the tab row and their sticky top, plus
+ * this gap.
  */
 const NAV_BOTTOM_GAP = 16;
 
 /**
  * Caps the sticky navigator, or the rail that replaces it, at the part of the window below its top, so its bottom
  * stays on screen before the page scrolls past the PR header. The stylesheet sizes both to fit only once they are
- * stuck under the toolbar. It only does so while the element is sticky. In the phone sheet the navigator is static
+ * stuck under the tab row. It only does so while the element is sticky. In the phone sheet the navigator is static
  * and the sheet sizes it.
  */
 function useFitViewport(element: HTMLElement | null) {

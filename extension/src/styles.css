@@ -1056,9 +1056,11 @@ kbd {
   padding: 8px var(--page-x) 10px;
 }
 /* The compact header (GitHub's sticky one): fixed to the top once .pr-header scrolls behind it. What else sticks on
-   the page (tab bar, files toolbar, navigator) sits under it, --pr-bar-h lower. */
+   the page sits under it: the tab row --pr-bar-h lower, and the file tree --pr-tabs-h lower again. App.tsx keeps
+   --pr-tabs-h at the tab row's height, which is two lines when the Files tab's toolbar doesn't fit beside the tabs. */
 .review-page {
   --pr-bar-h: 48px;
+  --pr-tabs-h: 43px;
 }
 .pr-bar {
   position: fixed;
@@ -1074,11 +1076,14 @@ kbd {
   padding: 0 var(--page-x);
   background: var(--canvas);
   border-bottom: 1px solid var(--line);
-  box-shadow: var(--shadow-card);
   font-size: 13px;
   visibility: hidden;
   opacity: 0;
   transition: opacity 0.12s, visibility 0s 0.12s;
+}
+/* With the tab row stuck under it, the two read as one block and the tab row's bottom border is its only edge. */
+.pr-bar.over-tabs {
+  border-bottom-color: transparent;
 }
 /* Stays up while its review panel or completion dialog is open, even back at the top of the page. */
 .pr-bar.pinned,
@@ -1178,10 +1183,36 @@ kbd {
   border-radius: 3px;
   padding: 1px 6px;
 }
+/* The tab row. On the Files tab it also holds the files toolbar (.tab-row-controls, filled by FilesTab.tsx), so
+   one row sticks under the compact header and the tabs stay in reach. Short of room, the toolbar takes a second
+   line, and wraps inside it when that is too short as well. */
 .pr-tabs {
+  flex-wrap: wrap;
   padding: 0 calc(var(--page-x) - 8px);
   border-bottom: 1px solid var(--line);
   background: var(--canvas);
+}
+/* azure-devops-ui lets the tabs take the whole row; the toolbar gets what they don't use. */
+.pr-tabs .bolt-tabbar-tabs {
+  flex-grow: 0;
+}
+/* A divider after the last tab, on the tabs' side so it stays on their line when the toolbar wraps. */
+.pr-tabs:has(.files-toolbar) .bolt-tabbar-tabs::after {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+}
+/* The 8px margins line the toolbar up with the page's content, as the tabs' own padding does for their labels. */
+.tab-row-controls {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 8px;
+}
+.tab-row-controls .files-toolbar {
+  padding: 5px 0;
 }
 .tab-content {
   padding: 16px var(--page-x) 64px;
@@ -2037,16 +2068,14 @@ kbd {
 }
 
 /* ---------- files ---------- */
+/* On phones the toolbar is the first thing in the tab and scrolls away with it. Wider, it sits in the tab row
+   (.tab-row-controls) and sticks with it. FilesTab.tsx picks, at the same 800px as the phone rules below. */
 .files-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   padding: 0 0 12px;
-  position: sticky;
-  top: var(--pr-bar-h, 0px);
-  background: var(--canvas);
-  z-index: 3;
 }
 .compare {
   display: inline-flex;
@@ -2341,11 +2370,13 @@ kbd {
   --trees-font-family: "Segoe UI", sans-serif;
   --trees-font-size: 12px;
 }
+/* Sticks 16px under the tab row, where it already is before any scroll (.tab-content's top padding), and keeps
+   16px under itself (NAV_BOTTOM_GAP in FilesTab.tsx). */
 .navigator {
   position: sticky;
-  top: calc(48px + var(--pr-bar-h, 0px));
+  top: calc(var(--pr-bar-h, 0px) + var(--pr-tabs-h, 0px) + 16px);
   align-self: start;
-  max-height: calc(100vh - 64px - var(--pr-bar-h, 0px));
+  max-height: calc(100vh - var(--pr-bar-h, 0px) - var(--pr-tabs-h, 0px) - 32px);
   overflow: auto;
   font-size: 13px;
   background: var(--surface);
@@ -2518,9 +2549,9 @@ kbd {
 /* The slim rail that replaces the hidden file tree. It is as tall as the visible window and shows the tree again. */
 .nav-rail {
   position: sticky;
-  top: calc(48px + var(--pr-bar-h, 0px));
+  top: calc(var(--pr-bar-h, 0px) + var(--pr-tabs-h, 0px) + 16px);
   align-self: start;
-  height: calc(100vh - 64px - var(--pr-bar-h, 0px));
+  height: calc(100vh - var(--pr-bar-h, 0px) - var(--pr-tabs-h, 0px) - 32px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2604,7 +2635,7 @@ kbd {
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
   margin-bottom: 16px;
-  scroll-margin-top: calc(52px + var(--pr-bar-h, 0px));
+  scroll-margin-top: calc(var(--pr-bar-h, 0px) + var(--pr-tabs-h, 0px) + 16px);
   box-shadow: var(--shadow-card);
 }
 .group-header {
@@ -2732,7 +2763,7 @@ kbd {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
-  scroll-margin-top: calc(52px + var(--pr-bar-h, 0px));
+  scroll-margin-top: calc(var(--pr-bar-h, 0px) + var(--pr-tabs-h, 0px) + 16px);
   background: var(--surface);
 }
 .file-card {
@@ -3389,11 +3420,8 @@ kbd {
   .files-content {
     padding-bottom: 64px;
   }
-  /* The toolbar wraps to three rows here: sticky, it hid a sixth of the screen and the concern a jump landed on.
-     The button above keeps the viewed count in sight instead. */
-  .files-toolbar {
-    position: static;
-  }
+  /* The toolbar is not in the sticky tab row here (FilesTab.tsx): it wraps to three rows, and stuck it hid a sixth
+     of the screen and the concern a jump landed on. The button above keeps the viewed count in sight instead. */
   .group-section,
   .hunk-card,
   .file-card {
