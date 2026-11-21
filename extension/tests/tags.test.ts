@@ -1,19 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { IExtensionDataManager } from "azure-devops-extension-api/Common";
 import {
   defaultTagColor,
   mergeTags,
   parseColor,
-  parseHiddenTags,
-  serializeHiddenTags,
   sidebarTags,
   tagNameError,
+  type TagStyles,
   tagPillStyle,
   tagTextColor,
   withoutTag,
   withTag,
   withTagHidden,
 } from "../src/data/tags";
+import { AdoTagStore } from "../src/app/adoTags";
 
 test("Given tag names from Azure DevOps, PRs and saved styles, then each tag appears once with its style", () => {
   const tags = mergeTags(["bug", "Docs", "BUG"], { bug: { color: "#B60205", description: "Broken" }, "needs-design": { name: "Needs design", color: "#5319e7" } });
@@ -55,31 +56,50 @@ test("Given a dark theme, then pills are a tint of the color with text lightened
 });
 
 test("Given hidden tags, then the sidebar lists the others, plus the hidden one filtering the list", () => {
-  const tags = mergeTags(["2.2.0", "bug", "PROD"], {});
-  const hidden = parseHiddenTags(serializeHiddenTags(withTagHidden(withTagHidden(new Set(), "2.2.0", true), "Prod", true)));
+  const styles = withTagHidden(withTagHidden({}, "2.2.0", true), "Prod", true);
+  const tags = mergeTags(["2.2.0", "bug", "PROD"], styles);
   assert.deepEqual(
-    sidebarTags(tags, hidden, null).map((t) => t.name),
+    sidebarTags(tags, null).map((t) => t.name),
     ["bug"],
   );
   // Hiding the tag that filters the list keeps it listed, so the filter can still be cleared.
   assert.deepEqual(
-    sidebarTags(tags, hidden, "prod").map((t) => t.name),
+    sidebarTags(tags, "prod").map((t) => t.name),
     ["bug", "PROD"],
   );
   assert.deepEqual(
-    sidebarTags(tags, withTagHidden(hidden, "PROD", false), null).map((t) => t.name),
+    sidebarTags(mergeTags(["2.2.0", "bug", "PROD"], withTagHidden(styles, "PROD", false)), null).map((t) => t.name),
     ["bug", "PROD"],
   );
 });
 
-test("Given a hidden tag renamed, then it stays hidden under its new name only", () => {
-  const hidden = withTagHidden(new Set(["prod", "2.2.0"]), "Production", true, "PROD");
-  assert.deepEqual([...hidden].sort(), ["2.2.0", "production"]);
+test("Given a tag hidden, then it keeps its color and stays hidden through an edit and a rename", () => {
+  // Never styled: hiding stores the color it already shows.
+  const hidden = withTagHidden({}, "PROD", true);
+  assert.deepEqual(hidden, { prod: { name: "PROD", color: defaultTagColor("prod"), hidden: true } });
+  const styled = withTagHidden({ bug: { color: "#b60205", description: "Broken" } }, "bug", true);
+  assert.deepEqual(styled, { bug: { color: "#b60205", description: "Broken", hidden: true } });
+  // The tag form never sends the flag; saving keeps it.
+  const edited = withTag(styled, "bug", { name: "bug", color: "#0e8a16", description: "Broken" });
+  assert.equal(edited.bug.hidden, true);
+  const renamed = withTag(edited, "bug", { name: "Defect", color: "#0e8a16", description: "Broken" });
+  assert.deepEqual(Object.keys(renamed), ["defect"]);
+  assert.equal(renamed.defect.hidden, true);
+  // Shown again: the flag is gone, not stored as false.
+  assert.deepEqual(withTagHidden(renamed, "defect", false), { defect: { name: "Defect", color: "#0e8a16", description: "Broken" } });
 });
 
-test("Given an unreadable hidden-tags preference, then nothing is hidden", () => {
-  assert.deepEqual(parseHiddenTags(""), new Set());
-  assert.deepEqual(parseHiddenTags("not json"), new Set());
-  assert.deepEqual(parseHiddenTags('{"bug":true}'), new Set());
-  assert.deepEqual(parseHiddenTags('["Bug", 3, ""]'), new Set(["bug"]));
+test("Given two tags hidden at once in Azure DevOps, then the saved styles keep both", async () => {
+  // Extension data with slow reads and writes, like the real service: two saves that each read before the
+  // other writes would keep only the last tag.
+  let doc: { tags: TagStyles } | null = null;
+  const later = <T>(value: () => T) => new Promise<T>((resolve) => setTimeout(() => resolve(value()), 5));
+  const data = {
+    getDocument: () => later(() => (doc ? structuredClone(doc) : Promise.reject(Object.assign(new Error("Not found"), { status: 404 })))),
+    setDocument: (_: string, next: { tags: TagStyles }) => later(() => (doc = structuredClone({ tags: next.tags }))),
+  } as unknown as IExtensionDataManager;
+  const store = new AdoTagStore({ hostUrl: "https://dev.azure.com/org/", projectId: "project", token: async () => "", data: async () => data });
+  await Promise.all([store.hide("2.2.0", true), store.hide("2.3.0", true)]);
+  assert.deepEqual(Object.keys(doc!.tags).sort(), ["2.2.0", "2.3.0"]);
+  assert.ok(Object.values(doc!.tags).every((style) => style.hidden));
 });

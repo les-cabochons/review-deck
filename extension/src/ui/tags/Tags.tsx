@@ -4,23 +4,8 @@ import { Icon } from "azure-devops-ui/Icon";
 import { Panel } from "azure-devops-ui/Panel";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
-import {
-  defaultTagColor,
-  parseColor,
-  parseHiddenTags,
-  randomTagColor,
-  serializeHiddenTags,
-  sidebarTags,
-  TAG_COLORS,
-  type TagDef,
-  tagKey,
-  tagNameError,
-  tagPillStyle,
-  tagTextColor,
-  withTagHidden,
-} from "../../data/tags";
+import { defaultTagColor, parseColor, randomTagColor, sidebarTags, TAG_COLORS, type TagDef, tagKey, tagNameError, tagPillStyle, tagTextColor } from "../../data/tags";
 import { usePierreTheme } from "../pierre/theme";
-import { usePreference } from "../usePreference";
 import { cx, plural } from "../util";
 
 interface ProjectTags {
@@ -36,12 +21,10 @@ interface ProjectTags {
   dark: boolean;
   host: AppHost | null;
   /**
-   * Tags you hid from the hub sidebar, by tagKey(name). Yours only, unlike colors and descriptions: saved
-   * with your synced preferences, one list per project. Pull requests still show these tags.
+   * Hides or shows the tag in the hub sidebar for everyone in the project. The list changes at once; a failed
+   * save reloads the tags and rejects with a readable message.
    */
-  hidden: Set<string>;
-  /** Hides or shows `name` in your sidebar. With `previous`, `name` is that tag's new name (data/tags.ts withTagHidden). */
-  setTagHidden: (name: string, hide: boolean, previous?: string) => void;
+  setTagHidden: (name: string, hidden: boolean) => Promise<void>;
 }
 
 const TagContext = React.createContext<ProjectTags>({
@@ -52,8 +35,7 @@ const TagContext = React.createContext<ProjectTags>({
   changed: () => {},
   dark: false,
   host: null,
-  hidden: new Set(),
-  setTagHidden: () => {},
+  setTagHidden: async () => {},
 });
 export const useProjectTags = () => React.useContext(TagContext);
 
@@ -73,25 +55,23 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     setRevision((r) => r + 1);
   }, [reload]);
   const dark = usePierreTheme() === "dark";
-  const [savedHidden, setSavedHidden] = usePreference<string>(`tags.hidden.${host.projectId}`, "");
-  const hidden = React.useMemo(() => parseHiddenTags(savedHidden), [savedHidden]);
-  // Changes build on the latest list, not the one a caller rendered with: a delete awaits the server, and a
-  // Hide clicked meanwhile must survive the delete's own update.
-  const latestHidden = React.useRef(hidden);
-  latestHidden.current = hidden;
   const setTagHidden = React.useCallback(
-    (name: string, hide: boolean, previous?: string) => {
-      const next = withTagHidden(latestHidden.current, name, hide, previous);
-      // No change, no save: deleting a tag you never hid shouldn't write your preferences.
-      if (serializeHiddenTags(next) === serializeHiddenTags(latestHidden.current)) return;
-      latestHidden.current = next;
-      setSavedHidden(serializeHiddenTags(next));
+    async (name: string, hidden: boolean) => {
+      // No reload after a save: the list already shows it, and a reload landing between two quick clicks would
+      // undo the second one on screen until its own save finished.
+      setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden } : t)));
+      try {
+        await host.tags().hide(name, hidden);
+      } catch (e) {
+        reload();
+        throw e;
+      }
     },
-    [setSavedHidden],
+    [host, reload],
   );
   const value = React.useMemo(
-    () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, hidden, setTagHidden }),
-    [tags, reload, revision, changed, dark, host, hidden, setTagHidden],
+    () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),
+    [tags, reload, revision, changed, dark, host, setTagHidden],
   );
   return <TagContext.Provider value={value}>{children}</TagContext.Provider>;
 };
@@ -114,12 +94,12 @@ export const TagPill: React.FC<{ name: string; color?: string; className?: strin
   );
 };
 
-/** Hub sidebar: every tag you haven't hidden, with its open pull request count; a click filters the list. */
+/** Hub sidebar: every tag not hidden, with its open pull request count; a click filters the list. */
 export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string | null; onSelect: (name: string | null) => void }> = ({ counts, active, onSelect }) => {
-  const { tags, hidden } = useProjectTags();
+  const { tags } = useProjectTags();
   const [managing, setManaging] = React.useState(false);
-  const shown = sidebarTags(tags, hidden, active);
-  const hiddenCount = tags.filter((t) => hidden.has(tagKey(t.name))).length;
+  const shown = sidebarTags(tags, active);
+  const hiddenCount = tags.filter((t) => t.hidden).length;
   return (
     <section className="hub-tags" aria-label="Tags">
       <div className="hub-tags-head">
@@ -160,18 +140,18 @@ export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string
 
 /** GitHub's label page as a side panel: every tag, with new, hide, edit and delete. */
 export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () => void }> = ({ counts, onDismiss }) => {
-  const { tags, hidden } = useProjectTags();
+  const { tags } = useProjectTags();
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
   const shown = tags.filter((t) => `${t.name}\n${t.description}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const hiddenShown = shown.filter((t) => hidden.has(tagKey(t.name))).length;
+  const hiddenShown = shown.filter((t) => t.hidden).length;
   return (
     <Panel
       onDismiss={onDismiss}
       size={ContentSize.Large}
       titleProps={{ text: "Tags" }}
-      description="Colors and descriptions are shared with everyone in this project. Hiding a tag hides it from your sidebar only."
+      description="Colors, descriptions and hidden tags are shared with everyone in this project."
       showSeparator
     >
       <div className="tag-manager">
@@ -200,7 +180,7 @@ export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () =
                 <TagForm previous={t} onDone={() => setEditing(null)} />
               </div>
             ) : (
-              <TagRow key={t.name} tag={t} count={counts.get(tagKey(t.name)) ?? 0} isHidden={hidden.has(tagKey(t.name))} onEdit={() => setEditing(t.name)} />
+              <TagRow key={t.name} tag={t} count={counts.get(tagKey(t.name)) ?? 0} onEdit={() => setEditing(t.name)} />
             ),
           )}
         </div>
@@ -209,7 +189,7 @@ export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () =
   );
 };
 
-const TagRow: React.FC<{ tag: TagDef; count: number; isHidden: boolean; onEdit: () => void }> = ({ tag, count, isHidden, onEdit }) => {
+const TagRow: React.FC<{ tag: TagDef; count: number; onEdit: () => void }> = ({ tag, count, onEdit }) => {
   const { host, changed, setTagHidden } = useProjectTags();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -219,29 +199,27 @@ const TagRow: React.FC<{ tag: TagDef; count: number; isHidden: boolean; onEdit: 
     setError(null);
     try {
       await host!.tags().remove(tag.name);
-      // So a new tag with this name later isn't hidden from the start.
-      setTagHidden(tag.name, false);
       changed();
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
     }
   };
+  // Not busy while saving: hiding several tags in a row is the common case, and the store queues the saves.
+  const toggleHidden = () => {
+    setError(null);
+    setTagHidden(tag.name, !tag.hidden).catch((e) => setError((e as Error).message));
+  };
   return (
-    <div role="listitem" className={cx("tag-manager-row", isHidden && "is-hidden")}>
+    <div role="listitem" className={cx("tag-manager-row", tag.hidden && "is-hidden")}>
       <span className="tag-manager-name">
-        <TagPill name={tag.name} color={tag.color} title={isHidden ? "Hidden from your sidebar" : undefined} />
+        <TagPill name={tag.name} color={tag.color} title={tag.hidden ? "Hidden from the sidebar" : undefined} />
       </span>
       <span className="tag-manager-desc muted">{tag.description}</span>
       <span className="tag-manager-uses muted">{count ? plural(count, "open pull request") : ""}</span>
       <span className="tag-manager-actions">
-        <button
-          className="link-button"
-          disabled={busy}
-          aria-label={`${isHidden ? "Show" : "Hide"} the tag ${tag.name} in your sidebar`}
-          onClick={() => setTagHidden(tag.name, !isHidden)}
-        >
-          {isHidden ? "Show" : "Hide"}
+        <button className="link-button" disabled={busy} aria-label={`${tag.hidden ? "Show" : "Hide"} the tag ${tag.name} in the sidebar`} onClick={toggleHidden}>
+          {tag.hidden ? "Show" : "Hide"}
         </button>
         <button className="link-button" disabled={busy} onClick={onEdit}>
           Edit
@@ -261,7 +239,7 @@ const TagRow: React.FC<{ tag: TagDef; count: number; isHidden: boolean; onEdit: 
 
 /** Name, description and color, with a live preview; creates the tag when `previous` is null. */
 const TagForm: React.FC<{ previous: TagDef | null; onDone: () => void }> = ({ previous, onDone }) => {
-  const { host, tags, reload, changed, hidden, setTagHidden } = useProjectTags();
+  const { host, tags, reload, changed } = useProjectTags();
   const [name, setName] = React.useState(previous?.name ?? "");
   const [description, setDescription] = React.useState(previous?.description ?? "");
   const [colorText, setColorText] = React.useState(previous?.color ?? randomTagColor());
@@ -278,11 +256,8 @@ const TagForm: React.FC<{ previous: TagDef | null; onDone: () => void }> = ({ pr
     setError(null);
     try {
       await host!.tags().save(previous?.name ?? null, { name: name.trim(), description, color });
-      if (renaming) {
-        // Your hidden list follows the rename; other people's still name the old tag, so it shows again for them.
-        if (hidden.has(tagKey(previous.name))) setTagHidden(name.trim(), true, previous.name);
-        changed();
-      } else reload();
+      if (renaming) changed();
+      else reload();
       onDone();
     } catch (err) {
       setError((err as Error).message);

@@ -1,23 +1,30 @@
 /**
  * Project tags, managed like GitHub labels. Azure DevOps tags (pull request labels) have only a name,
- * so the color and description live with the extension, keyed by the lowercased name (tags are
- * case-insensitive in Azure DevOps).
+ * so the color, description and hidden flag live with the extension, keyed by the lowercased name (tags
+ * are case-insensitive in Azure DevOps). All of it is shared by everyone in the project.
  */
 export interface TagDef {
   name: string;
   /** "#rrggbb" */
   color: string;
   description: string;
+  /** Left out of the hub sidebar's tag list. Pull requests still show the tag. */
+  hidden: boolean;
 }
 
+/** What the tag form edits. Saving keeps the tag's hidden flag. */
+export type TagFields = Omit<TagDef, "hidden">;
+
 /** What's stored per tag, keyed by tagKey(name). `name` keeps the spelling. */
-export type TagStyles = Record<string, { name?: string; color: string; description?: string }>;
+export type TagStyles = Record<string, { name?: string; color: string; description?: string; hidden?: boolean }>;
 
 /** Reads, creates, edits and deletes this project's tags. */
 export interface TagStore {
   list(): Promise<TagDef[]>;
   /** Creates the tag (previous null) or updates it; a new name renames it everywhere it's used. */
-  save(previous: string | null, tag: TagDef): Promise<void>;
+  save(previous: string | null, tag: TagFields): Promise<void>;
+  /** Hides the tag from the hub sidebar, or shows it again, for everyone in the project. */
+  hide(name: string, hidden: boolean): Promise<void>;
   /** Removes the tag from every pull request (and, in Azure DevOps, every work item) in the project. */
   remove(name: string): Promise<void>;
 }
@@ -98,19 +105,40 @@ export function mergeTags(names: Iterable<string>, styles: TagStyles): TagDef[] 
   const add = (name: string, style = styles[tagKey(name)]) => {
     const key = tagKey(name);
     if (!key || byKey.has(key)) return;
-    byKey.set(key, { name: name.trim(), color: parseColor(style?.color ?? "") ?? defaultTagColor(name), description: style?.description ?? "" });
+    byKey.set(key, {
+      name: name.trim(),
+      color: parseColor(style?.color ?? "") ?? defaultTagColor(name),
+      description: style?.description ?? "",
+      hidden: style?.hidden === true,
+    });
   };
   for (const name of names) add(name);
   for (const [key, style] of Object.entries(styles)) add(style.name ?? key, style);
   return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
-/** The stored styles after creating, editing or renaming `tag`. */
-export function withTag(styles: TagStyles, previous: string | null, tag: TagDef): TagStyles {
+/** The stored styles after creating, editing or renaming `tag`. A hidden tag stays hidden, under its new name too. */
+export function withTag(styles: TagStyles, previous: string | null, tag: TagFields): TagStyles {
   const next = { ...styles };
+  const hidden = styles[tagKey(previous ?? tag.name)]?.hidden === true;
   if (previous) delete next[tagKey(previous)];
-  next[tagKey(tag.name)] = { name: tag.name.trim(), color: parseColor(tag.color) ?? defaultTagColor(tag.name), description: tag.description.trim() };
+  next[tagKey(tag.name)] = {
+    name: tag.name.trim(),
+    color: parseColor(tag.color) ?? defaultTagColor(tag.name),
+    description: tag.description.trim(),
+    ...(hidden ? { hidden: true } : {}),
+  };
   return next;
+}
+
+/**
+ * The stored styles after hiding or showing `name`. A tag nobody styled yet gets its default color stored
+ * with the flag, which is the color it already shows.
+ */
+export function withTagHidden(styles: TagStyles, name: string, hidden: boolean): TagStyles {
+  const key = tagKey(name);
+  const { hidden: _, ...style } = styles[key] ?? { name: name.trim(), color: defaultTagColor(name) };
+  return { ...styles, [key]: hidden ? { ...style, hidden: true } : style };
 }
 
 export function withoutTag(styles: TagStyles, name: string): TagStyles {
@@ -119,40 +147,10 @@ export function withoutTag(styles: TagStyles, name: string): TagStyles {
   return next;
 }
 
-/**
- * The tags you hid from the hub sidebar, by tagKey(name), read from your saved preference (a JSON array).
- * Anything unreadable counts as nothing hidden, so a bad value never empties the sidebar.
- */
-export function parseHiddenTags(saved: string): Set<string> {
-  try {
-    const keys: unknown = JSON.parse(saved || "[]");
-    return new Set(Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string").map(tagKey).filter(Boolean) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-/** The preference value for `hidden`: sorted, so the same set always saves the same string. */
-export function serializeHiddenTags(hidden: Set<string>): string {
-  return JSON.stringify([...hidden].sort());
-}
-
-/**
- * The hidden set after hiding or showing `name`. With `previous`, `name` is that tag's new name: the
- * tag stays hidden or shown under it, and the old name is dropped.
- */
-export function withTagHidden(hidden: Set<string>, name: string, hide: boolean, previous?: string): Set<string> {
-  const next = new Set(hidden);
-  if (previous) next.delete(tagKey(previous));
-  if (hide) next.add(tagKey(name));
-  else next.delete(tagKey(name));
-  return next;
-}
-
 /** The tags the hub sidebar lists: all but the hidden ones, except the one filtering the list, so it can be cleared. */
-export function sidebarTags(tags: TagDef[], hidden: Set<string>, active: string | null): TagDef[] {
+export function sidebarTags(tags: TagDef[], active: string | null): TagDef[] {
   const activeKey = active === null ? null : tagKey(active);
-  return tags.filter((t) => !hidden.has(tagKey(t.name)) || tagKey(t.name) === activeKey);
+  return tags.filter((t) => !t.hidden || tagKey(t.name) === activeKey);
 }
 
 /** Why `name` can't be used for a tag (other than `previous`), or null. */

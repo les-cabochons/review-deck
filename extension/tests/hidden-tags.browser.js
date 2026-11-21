@@ -1,17 +1,22 @@
 // Run through playwright-cli run-code --filename=extension/tests/hidden-tags.browser.js, with npm run ext:dev running.
 // Opens the local mock's hub, hides tags in the Tags panel ("Manage"), and checks that they leave the sidebar
-// but stay on pull request rows, that the choice survives a reload, and that a hidden tag filtering the list
-// stays listed until the filter is cleared.
+// but stay on pull request rows, that the choice is saved with the tag styles (it survives a reload), and that a
+// hidden tag filtering the list stays listed until the filter is cleared.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.setViewportSize({ width: 1280, height: 900 });
   const url = 'http://127.0.0.1:5173/dist/review.html?local';
-  // From a blank page, and without hidden tags left over from an earlier run.
+  // From a blank page, and without tags left hidden by an earlier run. The local host keeps tag styles in localStorage.
   await page.goto('about:blank');
   await page.goto(url);
-  await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('semantic-review.tags.hidden.')).forEach(k => localStorage.removeItem(k)));
+  await page.evaluate(() => {
+    const key = 'review-deck.local.tagStyles';
+    const styles = JSON.parse(localStorage.getItem(key) ?? '{}');
+    for (const style of Object.values(styles)) delete style.hidden;
+    localStorage.setItem(key, JSON.stringify(styles));
+  });
   await page.reload();
 
   const sidebar = page.locator('.hub-tags');
@@ -33,7 +38,7 @@ async page => {
     await page.keyboard.press('Escape');
     await panel.waitFor({ state: 'detached' });
   };
-  const toggle = (verb, name) => panel.getByRole('button', { name: `${verb} the tag ${name} in your sidebar`, exact: true });
+  const toggle = (verb, name) => panel.getByRole('button', { name: `${verb} the tag ${name} in the sidebar`, exact: true });
 
   // Given the Tags panel, Hide fades the row and leaves it listed there.
   await openManager();

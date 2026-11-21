@@ -4164,7 +4164,7 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Hidden from your sidebar: still listed here, faded, so you can show it again. */
+/* Hidden from the sidebar: still listed here, faded, so anyone can show it again. */
 .tag-manager-row.is-hidden .tag-manager-name,
 .tag-manager-row.is-hidden .tag-manager-desc {
   opacity: 0.5;
