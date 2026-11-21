@@ -115,12 +115,19 @@ export interface PairScore {
   weight: number;
 }
 
+/** How closely a concern needs reading (src/analyze/level.ts). An ordinary concern has none. */
+export type ReviewLevel = "must" | "skim" | "skip";
+
 export interface Group {
   id: string;
   kind: "semantic" | "misc" | "mechanical";
   hunkIds: string[];
   title: string;
   rationale: string;
+  /** Absent on an ordinary concern, and in guides saved before levels existed. */
+  level?: ReviewLevel;
+  /** Why it has that level, in one line. Set with `level`. */
+  levelReason?: string;
   /** Who wrote the title and rationale (absent in groupings saved before this was recorded). */
   titleSource?: TitleSource;
 }

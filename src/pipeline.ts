@@ -1,4 +1,5 @@
 import { analyzeHunks } from "./analyze/hunks.js";
+import { reviewLevel } from "./analyze/level.js";
 import { clusterHunks } from "./cluster/louvain.js";
 import { mergeNewSymbolUsers } from "./cluster/refine.js";
 import type { PipelineConfig } from "./core/config.js";
@@ -33,7 +34,7 @@ export interface PipelineProgress {
   total: number;
 }
 
-/** diff text -> grouped, ordered, titled hunks. Browser-safe: all host specifics come in through `deps`. */
+/** diff text -> grouped, ordered, titled hunks, each group with its review level. Browser-safe: all host specifics come in through `deps`. */
 export async function runPipeline(input: PrInput, config: PipelineConfig, deps: PipelineDeps): Promise<ReviewResult> {
   const timings: Record<string, number> = {};
   const warnings: string[] = [];
@@ -78,6 +79,10 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   const titler = deps.titler ?? new HeuristicTitler();
   const storyPositions = await time("title", () => applyTitles(groups, hunks, pairs, titler, input, warnings));
   groups = orderByStory(groups, storyPositions);
+  for (const group of groups) {
+    const level = reviewLevel(group, group.hunkIds.map((id) => hunks.get(id)!));
+    if (level) Object.assign(group, { level: level.level, levelReason: level.reason });
+  }
   const relations = await time("relate", () => relationsOf(groups, hunks));
 
   return {
