@@ -93,3 +93,27 @@ test("Given a link to the current route, then no history entry is added", async 
   router.navigate(pr(9));
   assert.equal(back(), "left the hub");
 });
+
+// The browser extension (browser-extension/) redirects Azure DevOps pull request links to `?pr=<id>`: their URL has the
+// repository's name, and the page needs its id.
+test("Given a link with only the PR id (?pr=), then the PR opens in the repository findRepo names", async () => {
+  const { host, entry } = fakeHost({ query: { pr: "7" } });
+  const asked: number[] = [];
+  const router = await HashRouter.connect(host, () => {}, async (id) => (asked.push(id), "repo-id"));
+  assert.deepEqual(asked, [7]);
+  assert.deepEqual(router.route(), pr(7));
+  assert.deepEqual(entry(), { hash: "pr=7&repo=repo-id", query: {} });
+});
+
+test("Given a link with only the PR id, and findRepo finds nothing, then the hub opens without the id", async () => {
+  const { host, entry } = fakeHost({ query: { pr: "7" } });
+  const router = await HashRouter.connect(host, () => {}, async () => null);
+  assert.deepEqual(router.route(), { view: "hub" });
+  assert.deepEqual(entry(), { hash: "", query: {} });
+});
+
+test("Given a PR in the hash, then a bare ?pr= isn't looked up", async () => {
+  const { host } = fakeHost({ hash: "pr=9&repo=repo-id", query: { pr: "7" } });
+  const router = await HashRouter.connect(host, () => {}, async () => assert.fail("looked up"));
+  assert.deepEqual(router.route(), pr(9));
+});
