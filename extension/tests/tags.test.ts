@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultTagColor, mergeTags, parseColor, tagNameError, tagPillStyle, tagTextColor, withoutTag, withTag } from "../src/data/tags";
+import {
+  defaultTagColor,
+  mergeTags,
+  parseColor,
+  parseHiddenTags,
+  serializeHiddenTags,
+  sidebarTags,
+  tagNameError,
+  tagPillStyle,
+  tagTextColor,
+  withoutTag,
+  withTag,
+  withTagHidden,
+} from "../src/data/tags";
 
 test("Given tag names from Azure DevOps, PRs and saved styles, then each tag appears once with its style", () => {
   const tags = mergeTags(["bug", "Docs", "BUG"], { bug: { color: "#B60205", description: "Broken" }, "needs-design": { name: "Needs design", color: "#5319e7" } });
@@ -39,4 +52,34 @@ test("Given a dark theme, then pills are a tint of the color with text lightened
   assert.equal(blue.color, `hsl(216, 100%, ${40 + (0.6 - (82 * 0.7152 + 204 * 0.0722) / 255) * 100}%)`);
   // Already light: kept as is.
   assert.equal(tagPillStyle("#fef2c0", true).color, "hsl(48, 97%, 87%)");
+});
+
+test("Given hidden tags, then the sidebar lists the others, plus the hidden one filtering the list", () => {
+  const tags = mergeTags(["2.2.0", "bug", "PROD"], {});
+  const hidden = parseHiddenTags(serializeHiddenTags(withTagHidden(withTagHidden(new Set(), "2.2.0", true), "Prod", true)));
+  assert.deepEqual(
+    sidebarTags(tags, hidden, null).map((t) => t.name),
+    ["bug"],
+  );
+  // Hiding the tag that filters the list keeps it listed, so the filter can still be cleared.
+  assert.deepEqual(
+    sidebarTags(tags, hidden, "prod").map((t) => t.name),
+    ["bug", "PROD"],
+  );
+  assert.deepEqual(
+    sidebarTags(tags, withTagHidden(hidden, "PROD", false), null).map((t) => t.name),
+    ["bug", "PROD"],
+  );
+});
+
+test("Given a hidden tag renamed, then it stays hidden under its new name only", () => {
+  const hidden = withTagHidden(new Set(["prod", "2.2.0"]), "Production", true, "PROD");
+  assert.deepEqual([...hidden].sort(), ["2.2.0", "production"]);
+});
+
+test("Given an unreadable hidden-tags preference, then nothing is hidden", () => {
+  assert.deepEqual(parseHiddenTags(""), new Set());
+  assert.deepEqual(parseHiddenTags("not json"), new Set());
+  assert.deepEqual(parseHiddenTags('{"bug":true}'), new Set());
+  assert.deepEqual(parseHiddenTags('["Bug", 3, ""]'), new Set(["bug"]));
 });

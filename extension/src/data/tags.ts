@@ -119,6 +119,42 @@ export function withoutTag(styles: TagStyles, name: string): TagStyles {
   return next;
 }
 
+/**
+ * The tags you hid from the hub sidebar, by tagKey(name), read from your saved preference (a JSON array).
+ * Anything unreadable counts as nothing hidden, so a bad value never empties the sidebar.
+ */
+export function parseHiddenTags(saved: string): Set<string> {
+  try {
+    const keys: unknown = JSON.parse(saved || "[]");
+    return new Set(Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string").map(tagKey).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** The preference value for `hidden`: sorted, so the same set always saves the same string. */
+export function serializeHiddenTags(hidden: Set<string>): string {
+  return JSON.stringify([...hidden].sort());
+}
+
+/**
+ * The hidden set after hiding or showing `name`. With `previous`, `name` is that tag's new name: the
+ * tag stays hidden or shown under it, and the old name is dropped.
+ */
+export function withTagHidden(hidden: Set<string>, name: string, hide: boolean, previous?: string): Set<string> {
+  const next = new Set(hidden);
+  if (previous) next.delete(tagKey(previous));
+  if (hide) next.add(tagKey(name));
+  else next.delete(tagKey(name));
+  return next;
+}
+
+/** The tags the hub sidebar lists: all but the hidden ones, except the one filtering the list, so it can be cleared. */
+export function sidebarTags(tags: TagDef[], hidden: Set<string>, active: string | null): TagDef[] {
+  const activeKey = active === null ? null : tagKey(active);
+  return tags.filter((t) => !hidden.has(tagKey(t.name)) || tagKey(t.name) === activeKey);
+}
+
 /** Why `name` can't be used for a tag (other than `previous`), or null. */
 export function tagNameError(name: string, tags: TagDef[], previous: string | null): string | null {
   const key = tagKey(name);
