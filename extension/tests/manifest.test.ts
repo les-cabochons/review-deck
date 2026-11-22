@@ -6,7 +6,7 @@ import { GRAMMARS } from "../../src/parse/grammars";
 
 interface Contribution {
   id: string;
-  properties?: { supportsMobile?: boolean; icon?: unknown };
+  properties?: { supportsMobile?: boolean; icon?: unknown; order?: number };
 }
 
 const manifest = JSON.parse(readFileSync("extension/vss-extension.json", "utf8")) as {
@@ -39,4 +39,11 @@ test("every grammar the build copies is packaged as WebAssembly", () => {
     const file = manifest.files.find((f) => f.path === `assets/${grammar.file}`);
     assert.deepEqual(file, { path: `assets/${grammar.file}`, addressable: true, contentType: "application/wasm" }, grammar.file);
   }
+});
+
+// The Deck sits right above Pull requests in the Repos menu, to be the review page people pick. Built-in orders, read
+// from a project's contribution data in November 2026: Tags 35, Pull requests 40, Advanced Security 45.
+test("the Deck hub sits between Tags and Pull requests in the Repos menu", () => {
+  const order = manifest.contributions.find((c) => c.id === "review-hub")?.properties?.order ?? 0;
+  assert.ok(order > 35 && order < 40, `order ${order}`);
 });
