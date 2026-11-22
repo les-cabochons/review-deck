@@ -276,3 +276,94 @@ resource "azurerm_storage_queue" "jobs" {
   assert.equal(added.status, "added");
   assert.equal(added.risk, null);
 });
+
+test("Renames preserve each side's Terraform path and module", () => {
+  const [source] = reader.diff([{ path: "infra/main.tf.disabled", oldPath: "infra/main.tf", old: ACCOUNT, new: ACCOUNT }]);
+  assert.equal(source.dir, "infra");
+  const removed = block(source, "azurerm_storage_account.this");
+  assert.equal(removed.file, "infra/main.tf");
+  assert.equal(removed.risk?.kind, "destroy");
+
+  const [destination, origin] = reader.diff([{ path: "dev/main.tf", oldPath: "prod/main.tf", old: ACCOUNT, new: ACCOUNT }]);
+  assert.equal(destination.dir, "dev");
+  assert.equal(block(destination, "azurerm_storage_account.this").status, "added");
+  assert.equal(origin.dir, "prod");
+  assert.equal(block(origin, "azurerm_storage_account.this").status, "removed");
+
+  const [sameDir] = reader.diff([{ path: "infra/renamed.tofu", oldPath: "infra/main.tf", old: ACCOUNT, new: ACCOUNT }]);
+  assert.equal(block(sameDir, "azurerm_storage_account.this").status, "same");
+});
+
+test("Changes to literal string and heredoc whitespace are visible", () => {
+  const before = [
+    'resource "terraform_data" "this" {',
+    '  input = ["  two  spaces ", "  key ${var.name} ", <<EOF',
+    'line one',
+    '',
+    'line two',
+    'EOF',
+    '  ]',
+    '}',
+  ].join("\n");
+  for (const [oldText, newText] of [["two  spaces", "two spaces"], ["  key ", " key "], ["one\n\nline", "one\nline"]]) {
+    const module = diff(before, before.replace(oldText, newText));
+    assert.deepEqual(module.parseErrors, []);
+    const [{ before: oldValue, after: newValue }] = block(module, "terraform_data.this").changes;
+    assert.ok(oldValue?.includes(oldText));
+    assert.ok(newValue?.includes(newText));
+  }
+});
+
+test("For collections and computed map keys keep their resource references", () => {
+  const module = diff(null, `
+resource "terraform_data" "this" {
+  input = {
+    (terraform_data.keys.output) = [for terraform_data in terraform_data.collection.output : terraform_data.value]
+  }
+}`);
+  assert.deepEqual(module.parseErrors, []);
+  assert.deepEqual(module.edges.map((edge) => edge.from).sort(), ["terraform_data.collection", "terraform_data.keys"]);
+});
+
+test("Indexing a local or changing an existing resource instance can change a force-new value", () => {
+  const assignment = (scope: string) => `
+resource "azurerm_role_assignment" "titles" {
+  scope = ${scope}
+  role_definition_name = "Reader"
+}`;
+  for (const [before, after] of [
+    ["local.scope", "local.scope[0]"],
+    ["azurerm_cognitive_account.openai[1].id", "azurerm_cognitive_account.openai[0].id"],
+    ["azurerm_cognitive_account.openai.id", "azurerm_cognitive_account.openai[0].id"],
+  ]) {
+    const { risk } = block(diff(assignment(before), assignment(after)), "azurerm_role_assignment.titles");
+    assert.equal(risk?.kind, "replace");
+    assert.equal(risk?.certainty, "possible");
+  }
+});
+
+test("Moving one instance of a removed resource leaves a possible destroy for its siblings", () => {
+  const module = diff(ACCOUNT.replace('name                     = "stapp"', 'count = 2\n  name = "stapp"'), `
+moved {
+  from = azurerm_storage_account.this[0]
+  to = azurerm_storage_account.main
+}`);
+  const { risk } = block(module, "azurerm_storage_account.this");
+  assert.equal(risk?.kind, "destroy");
+  assert.equal(risk?.certainty, "possible");
+  assert.match(risk.reason, /Other instances may be destroyed/);
+});
+
+test("A moved resource can still be replaced when a force-new argument changes", () => {
+  const renamed = ACCOUNT.replace('"azurerm_storage_account" "this"', '"azurerm_storage_account" "main"').replace('"Standard"', '"Premium"');
+  const module = diff(ACCOUNT, `${renamed}
+moved {
+  from = azurerm_storage_account.this
+  to = azurerm_storage_account.main
+}
+`);
+  assert.equal(block(module, "azurerm_storage_account.this").risk, null);
+  const moved = block(module, "azurerm_storage_account.main");
+  assert.equal(moved.risk?.kind, "replace");
+  assert.deepEqual(moved.changes, [{ path: "account_tier", before: '"Standard"', after: '"Premium"' }]);
+});

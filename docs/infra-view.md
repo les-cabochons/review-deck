@@ -21,12 +21,12 @@ The code alone can't say what the provider will do, so a destroy or a replace is
 
 | Reading | When | Certainty |
 | --- | --- | --- |
-| **Destroy** | A `resource` or `module` block is gone, and no `moved` block or `removed` block with `destroy = false` covers it. | likely |
-| **Replace** | An argument changed that the provider's documentation marks "forces a new resource". | likely if a literal value changed. possible if only an expression changed (its value may be the same), if the argument is newly set or unset, or if the documentation states an exception, which the reason then quotes. |
+| **Destroy** | A `resource` or `module` block is gone, and no `moved` block or `removed` block with `destroy = false` covers it. | likely, or possible if a move covers only one instance. |
+| **Replace** | An argument changed, including during a same-type rename with a `moved` block, that the provider's documentation marks "forces a new resource". | likely if a literal value changed. possible if only an expression changed (its value may be the same), if the argument is newly set or unset, or if the documentation states an exception, which the reason then quotes. |
 | **Replace** | `for_each` was added or removed without a `moved` block. | possible |
 | **May follow** | A resource uses one that may be destroyed or replaced. One hop only. A resource the pull request adds is left out. | possible |
 
-Notes cover what isn't a risk of its own: `count` added (Terraform moves the object to `[0]` itself), `count` removed, `prevent_destroy` dropped, a rename without a `moved` block, a provider version constraint, a variable's default.
+Notes cover what isn't a risk of its own: `count` added (Terraform normally moves the object to `[0]` if the count is positive), `count` removed, `prevent_destroy` dropped, a rename without a `moved` block, a provider version constraint, a variable's default.
 
 ### The list of arguments that force a new resource
 
@@ -43,7 +43,7 @@ The current list is from 5.14.0: 1,097 resources and 5,332 arguments. The reason
 It never pushes to `main`. A person merges the pull request, and `main` then publishes the extension with the new list.
 
 - The repository needs **Allow GitHub Actions to create and approve pull requests** (Settings > Actions > General).
-- A pull request opened with the workflow's own token doesn't start the Extension workflow. Close and reopen it to run the full checks.
+- A pull request opened with the workflow's own token doesn't start the Extension workflow. If the Extension workflow is enabled, close and reopen the list pull request to run its checks.
 - The script refuses a list that lost more than a tenth of its arguments, and the run fails. The docs' wording has then probably changed, and the script's patterns need a look.
 
 To rebuild it by hand, with git and network access:

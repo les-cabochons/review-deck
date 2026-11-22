@@ -186,7 +186,7 @@ function flattenDynamic(body: Node, path: string, label: string, block: ParsedBl
 function flattenValue(expression: Node, path: string, block: ParsedBlock, source: string, bound: string[], depth: number): void {
   const object = depth < MAX_OBJECT_DEPTH ? objectLiteral(expression) : null;
   const elements = object ? childrenOf(object, "object_elem") : [];
-  if (!object || elements.length === 0) {
+  if (elements.length === 0 || elements.some((element) => !staticObjectKey(childrenOf(element, "expression")[0]))) {
     block.attributes.set(path, textOf(expression, source));
     for (const reference of referencesIn(expression, bound)) {
       let paths = block.references.get(reference);
@@ -201,6 +201,12 @@ function flattenValue(expression: Node, path: string, block: ParsedBlock, source
   }
 }
 
+/** Unquoted identifiers and plain quoted strings are literal object keys. */
+function staticObjectKey(key: Node | undefined): boolean {
+  const nodes = key ? named(key) : [];
+  return nodes.length === 1 && (nodes[0].type === "variable_expr" || childrenOf(nodes[0], "string_lit").length > 0);
+}
+
 /** The object literal an expression is, if it is nothing else (not `merge(...)`, not a conditional). */
 function objectLiteral(expression: Node): Node | null {
   const children = named(expression);
@@ -212,17 +218,25 @@ function objectLiteral(expression: Node): Node | null {
 function textOf(node: Node, source: string): string {
   let text = "";
   let at = node.startIndex;
+  let outside = "";
+  const normalize = (part: string) => part.replace(/\s+/g, " ");
   const walk = (n: Node) => {
     if (n.type === "comment") {
-      text += source.slice(at, n.startIndex);
+      outside += source.slice(at, n.startIndex) + " ";
+      at = n.endIndex;
+      return;
+    }
+    // Gaps between template tokens can contain literal spaces and newlines.
+    if (n.type === "string_lit" || n.type === "quoted_template" || n.type === "heredoc_template") {
+      text += normalize(outside + source.slice(at, n.startIndex)) + n.text;
+      outside = "";
       at = n.endIndex;
       return;
     }
     for (const child of n.children) if (child) walk(child);
   };
   walk(node);
-  text += source.slice(at, node.endIndex);
-  return text.replace(/\s+/g, " ").trim();
+  return (text + normalize(outside + source.slice(at, node.endIndex))).trim();
 }
 
 /**
@@ -250,6 +264,6 @@ function referencesIn(node: Node, bound: readonly string[], found = new Set<stri
       else if (attributes[0] && RESOURCE_TYPE.test(root)) found.add(`${root}.${attributes[0]}`);
     }
   }
-  for (const child of named(node)) referencesIn(child, scope, found);
+  for (const child of named(node)) referencesIn(child, child.type === "for_intro" ? bound : scope, found);
   return found;
 }

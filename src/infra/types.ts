@@ -84,6 +84,8 @@ export interface InfraModule {
 export interface TerraformFile {
   /** Repository path at the head side (the base side's for a deleted file). */
   path: string;
+  /** Repository path at the base side, if the file was renamed. */
+  oldPath?: string;
   /** `null`: absent on that side. */
   old: string | null;
   new: string | null;

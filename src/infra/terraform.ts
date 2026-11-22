@@ -34,16 +34,26 @@ export class TerraformReader {
    */
   diff(files: TerraformFile[]): InfraModule[] {
     const byDir = new Map<string, ModuleFile[]>();
-    for (const file of files) {
-      if (!isTerraformPath(file.path)) continue;
-      const dir = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
+    const directory = (path: string) => path.slice(0, Math.max(path.lastIndexOf("/"), 0));
+    const add = (dir: string, file: ModuleFile) => {
       let group = byDir.get(dir);
       if (!group) byDir.set(dir, (group = []));
-      group.push({
-        path: file.path,
-        base: file.old === null ? null : parseTerraform(this.parser, file.path, file.old),
-        head: file.new === null ? null : parseTerraform(this.parser, file.path, file.new),
-      });
+      group.push(file);
+    };
+    for (const file of files) {
+      const oldPath = file.oldPath ?? file.path;
+      const oldDir = directory(oldPath);
+      const newDir = directory(file.path);
+      const readsBase = isTerraformPath(oldPath);
+      const readsHead = isTerraformPath(file.path);
+      const base = readsBase && file.old !== null ? parseTerraform(this.parser, oldPath, file.old) : null;
+      const head = readsHead && file.new !== null ? parseTerraform(this.parser, file.path, file.new) : null;
+      if (readsBase && readsHead && oldDir === newDir) {
+        add(newDir, { path: file.path, base, head });
+      } else {
+        if (readsBase) add(oldDir, { path: oldPath, base, head: null });
+        if (readsHead) add(newDir, { path: file.path, base: null, head });
+      }
     }
     return [...byDir.keys()].sort().map((dir) => assessRisks(diffModule(dir, byDir.get(dir)!)));
   }

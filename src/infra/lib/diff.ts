@@ -85,7 +85,7 @@ function outsideBlock(address: string): InfraBlock {
   return { address, kind, type, name, file: null, line: null, status: "same", docsOnly: false, changes: [], risk: null, notes: [] };
 }
 
-function attributeChanges(before: Map<string, string> | undefined, after: Map<string, string> | undefined): AttributeChange[] {
+export function attributeChanges(before: Map<string, string> | undefined, after: Map<string, string> | undefined): AttributeChange[] {
   const changes: AttributeChange[] = [];
   for (const path of new Set([...(before?.keys() ?? []), ...(after?.keys() ?? [])])) {
     const b = before?.get(path) ?? null;
