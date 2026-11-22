@@ -95,13 +95,17 @@ It works in Chrome, Edge, and Firefox 128 or later. Zen is built on Firefox, so 
      restart. To keep it, sign it as an unlisted add-on with your addons.mozilla.org API key:
      `npx web-ext sign --channel unlisted --source-dir browser-extension/dist --api-key <key> --api-secret <secret>`.
      Then install the `.xpi` it writes from `about:addons`, gear menu, **Install Add-on From File**.
-3. Choose its toolbar icon. If the browser hides it, open `about:addons`, choose **Review Deck links** and open
-   its options. For each organization, open **Repos → Deck**, paste the address bar into the box, and choose
-   **Save**. The link tells it the organization and the Deck's publisher, so private copies work too.
+3. Open **Repos → Deck** once in each organization. The extension learns that organization's Deck from the page's
+   address, for all of its projects, and private copies under another publisher work too. Its toolbar icon shows
+   the learned Decks, and you can paste or remove one there. If the browser hides the icon, open `about:addons`,
+   choose **Review Deck links** and open its options.
 4. Firefox or Zen only: if links still open the classic page, open the add-on in `about:addons` and check that
    it may access `dev.azure.com` and `visualstudio.com`. Without that access it can't redirect.
 
-Pull request links of other organizations keep opening the classic page.
+Pull request links of an organization whose Deck you haven't opened yet keep opening the classic page.
+
+The Deck must be a version that opens `?pr=<id>` without a repository (commit `feat(hub): open a pull request from
+a link that has only its id`). An older Deck shows its pull request list instead of the pull request.
 
 The Deck gets these links as `?pr=<id>`, because the classic URL names the repository, not its id. It finds the
 repository in the PR or hub row the browser kept, or else with one REST call before the PR loads. A link to a

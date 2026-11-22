@@ -22,12 +22,16 @@ const DECK = `${DECK_LINK}?pr=69`;
 const ADO_PAGE = "https://dev.azure.com/cabochons/review-deck/_git/review-deck/pullrequests";
 const DECK_FRAME = "https://cabochonio.gallerycdn.vsassets.io/extensions/cabochonio/review-deck/dist/review.html";
 const CHAT_PAGE = "https://chat.example/channel";
+// A second organization, whose Deck is learned from an in-page navigation, the way Azure DevOps switches hubs.
+const OTHER_ADO_PAGE = "https://dev.azure.com/fabrikam/web/_git/web/pullrequests";
+const OTHER_DECK_PATH = "/fabrikam/web/_apps/hub/WepointCanada.review-deck.review-hub";
 
 const links = `<a id="same" href="${PR}">same tab</a> <a id="new" href="${PR}" target="_blank">new tab</a>`;
 const pages = new Map([
   [ADO_PAGE, `<title>ado</title>${links}<iframe src="${DECK_FRAME}"></iframe>`],
   [DECK_FRAME, `<a id="top" href="${PR}" target="_top">open in Azure DevOps</a>`],
   [CHAT_PAGE, `<title>chat</title>${links}`],
+  [OTHER_ADO_PAGE, "<title>ado</title>"],
 ]);
 
 const userDataDir = mkdtempSync(join(tmpdir(), "review-deck-links-"));
@@ -46,16 +50,38 @@ try {
   });
 
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+
+  // Nothing is pasted: opening each organization's Deck once teaches it. A full page load for the first, an in-page
+  // navigation for the second. The test browses milliseconds after the install, so it first waits for the background
+  // script to run: before that, it has no listener yet and the browser drops the tab events.
+  await worker.evaluate(() => chrome.runtime.id);
+  const browsing = await context.newPage();
+  await browsing.goto(`${DECK_LINK}?pr=12&repo=abc`);
+  await browsing.goto(OTHER_ADO_PAGE);
+  await browsing.evaluate((path) => history.pushState({}, "", path), OTHER_DECK_PATH);
+  const ruleCount = () => worker.evaluate(() => chrome.declarativeNetRequest.getDynamicRules().then((rules) => rules.length));
+  for (let tries = 0; (await ruleCount()) < 4; tries++) {
+    if (tries === 50) throw new Error(`Learned ${await ruleCount()} rules from browsing, expected 4 (2 organizations, 2 domains)`);
+    await browsing.waitForTimeout(100);
+  }
+  await browsing.close();
+
   const options = await context.newPage();
   await options.goto(`chrome-extension://${new URL(worker.url()).host}/options.html`);
-  // A second organization with the longest name Azure DevOps allows (50 characters): Chrome refuses a rule whose
-  // regex compiles over 2 KB, and the save then reports the error instead.
+  const learned = await options.inputValue("#links");
+  const otherDeck = `https://dev.azure.com${OTHER_DECK_PATH}`;
+  if (learned !== `${DECK_LINK}\n${otherDeck}`) throw new Error(`The options page doesn't show the learned Decks: ${learned}`);
+  // A third organization, pasted, with the longest name Azure DevOps allows (50 characters): Chrome refuses a rule
+  // whose regex compiles over 2 KB, and the save then reports the error instead.
   const longest = "x".repeat(50);
-  await options.fill("#links", `${DECK_LINK}\n${DECK_LINK.replace("cabochons", longest)}`);
+  await options.fill("#links", `${learned}\n${DECK_LINK.replace("cabochons", longest)}`);
   await options.click("#save");
-  await options.waitForFunction(() => document.getElementById("status").textContent.startsWith("Could not") || document.getElementById("status").textContent.includes(","));
+  await options.waitForFunction(
+    (name) => document.getElementById("status").textContent.startsWith("Could not") || document.getElementById("status").textContent.includes(name),
+    longest,
+  );
   const saved = await options.textContent("#status");
-  if (saved !== `Pull request links of cabochons, ${longest} open in the Deck.`) throw new Error(`The save failed: ${saved}`);
+  if (saved !== `Pull request links of cabochons, fabrikam, ${longest} open in the Deck.`) throw new Error(`The save failed: ${saved}`);
 
   /** Opens a page, runs `act` on it, and checks where the pull request link landed. */
   async function check(name, expected, act) {
@@ -89,6 +115,10 @@ try {
 
   await check("address bar or another app (no initiator) → Deck", DECK, async (page) => {
     await page.goto(PR);
+    return page.url();
+  });
+  await check("address bar, organization learned from an in-page navigation → its Deck", `${otherDeck}?pr=7`, async (page) => {
+    await page.goto("https://dev.azure.com/fabrikam/web/_git/web/pullrequest/7");
     return page.url();
   });
   await check("chat site, same tab → Deck", DECK, async (page) => {

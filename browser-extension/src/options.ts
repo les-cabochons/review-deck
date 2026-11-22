@@ -10,7 +10,7 @@ function show(decks: Deck[], invalid: string[]): void {
   const lines = [
     decks.length > 0
       ? `Pull request links of ${decks.map((d) => d.organization).join(", ")} open in the Deck.`
-      : "No Deck saved: pull request links open the classic page.",
+      : "No Deck yet: open Repos → Deck once in an organization, and its pull request links open in the Deck.",
   ];
   if (invalid.length > 0) lines.push(`Not a link to a Deck page, skipped: ${invalid.join(", ")}`);
   status.textContent = lines.join("\n");

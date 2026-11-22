@@ -14,7 +14,7 @@ export interface Deck {
   hub: string;
 }
 
-/** The options page's text, in the extension's local storage: links to Deck pages, one per line. */
+/** The options page's text, in the extension's local storage: links to Deck pages, one per line, pasted or learned. */
 export const STORAGE_KEY = "deckLinks";
 
 /**
@@ -66,6 +66,23 @@ export function parseDecks(text: string): { decks: Deck[]; invalid: string[] } {
     else invalid.push(line);
   }
   return { decks: [...byOrganization.values()], invalid };
+}
+
+/** The Deck hub of Review Deck itself. A private copy has its own publisher but keeps the extension id. */
+const REVIEW_DECK_HUB = /\.review-deck\.review-hub$/i;
+
+/**
+ * The saved text with the Deck of the page at `link` added, so the extension learns each organization's Deck from the
+ * pages you open instead of asking for it. Null when `link` isn't a Review Deck page, or its organization is already
+ * saved with that hub. The link replaces the organization's earlier lines, without its query and hash.
+ */
+export function learnDeck(text: string, link: string): string | null {
+  const deck = deckFromLink(link);
+  if (!deck || !REVIEW_DECK_HUB.test(deck.hub)) return null;
+  if (parseDecks(text).decks.some((d) => d.organization === deck.organization && d.hub === deck.hub)) return null;
+  const url = new URL(link.trim());
+  const kept = text.split("\n").filter((line) => line.trim() !== "" && deckFromLink(line)?.organization !== deck.organization);
+  return [...kept, `${url.origin}${url.pathname}`].join("\n");
 }
 
 /**
