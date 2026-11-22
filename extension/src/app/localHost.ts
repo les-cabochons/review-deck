@@ -4,7 +4,7 @@ import { MockPrSource } from "../data/mockSource";
 import type { Identity, PrSource } from "../data/model";
 import { MockReleaseCatalog } from "../data/mockReleases";
 import type { PresenceRecord, PresenceStore } from "../data/presence";
-import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
+import { mergeTags, type TagStore, type TagStyles, withoutTag, withTag, withTagHidden } from "../data/tags";
 import type { BackendService, RestackOutcome } from "../review/backend";
 import { type ReviewKey, type SavedReviews, savedFor, withSaved } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, Listeners, parseRoute, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
@@ -280,6 +280,7 @@ export class LocalHost implements AppHost {
         if (previous && previous !== tag.name) this.list.replaceLabel(previous, tag.name.trim());
         write(withTag(read(), previous, tag));
       },
+      hide: async (name, hidden) => write(withTagHidden(read(), name, hidden)),
       remove: async (name) => {
         this.list.replaceLabel(name, null);
         write(withoutTag(read(), name));

@@ -1,5 +1,5 @@
 import type { IExtensionDataManager } from "azure-devops-extension-api/Common";
-import { mergeTags, type TagDef, type TagStore, type TagStyles, withoutTag, withTag } from "../data/tags";
+import { mergeTags, type TagDef, type TagFields, type TagStore, type TagStyles, withoutTag, withTag, withTagHidden } from "../data/tags";
 
 /** Extension data collection holding one tag-styles document per project, keyed by project ID. */
 const TAGS_COLLECTION = "tag-styles";
@@ -15,13 +15,18 @@ interface Env {
 
 /**
  * Tags are the project's tag definitions (shared by pull requests and work items, `_apis/wit/tags`);
- * colors and descriptions are extension data. Renaming or deleting changes the Azure DevOps tag, so
- * it applies to every pull request and work item that has it.
+ * colors, descriptions and hidden flags are extension data. Renaming or deleting changes the Azure DevOps
+ * tag, so it applies to every pull request and work item that has it.
  */
 export class AdoTagStore implements TagStore {
+  /** The last queued styles write. Each write reads the document first, so they run one at a time (see updateStyles). */
+  private writes: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly env: Env) {}
 
   async list(): Promise<TagDef[]> {
+    // After this page's queued saves, so a reload never shows what a pending Hide is about to change.
+    await this.writes;
     const [names, styles] = await Promise.all([
       this.definitions().then(
         (d) => d.map((t) => t.name),
@@ -35,19 +40,23 @@ export class AdoTagStore implements TagStore {
     return mergeTags(names, styles);
   }
 
-  async save(previous: string | null, tag: TagDef): Promise<void> {
+  async save(previous: string | null, tag: TagFields): Promise<void> {
     if (previous && previous !== tag.name) {
       const existing = (await this.definitions()).find((t) => t.name.toLowerCase() === previous.toLowerCase());
       // A tag created here but never applied has no Azure DevOps definition yet: only its style moves.
       if (existing) await this.call("PATCH", existing.id, { name: tag.name.trim() });
     }
-    await this.writeStyles(withTag(await this.styles(true), previous, tag));
+    await this.updateStyles((styles) => withTag(styles, previous, tag));
+  }
+
+  async hide(name: string, hidden: boolean): Promise<void> {
+    await this.updateStyles((styles) => withTagHidden(styles, name, hidden));
   }
 
   async remove(name: string): Promise<void> {
     const existing = (await this.definitions()).find((t) => t.name.toLowerCase() === name.toLowerCase());
     if (existing) await this.call("DELETE", existing.id);
-    await this.writeStyles(withoutTag(await this.styles(true), name));
+    await this.updateStyles((styles) => withoutTag(styles, name));
   }
 
   private async definitions(): Promise<{ id: string; name: string }[]> {
@@ -83,8 +92,18 @@ export class AdoTagStore implements TagStore {
     }
   }
 
-  private async writeStyles(tags: TagStyles): Promise<void> {
-    // __etag -1: last write wins.
-    await (await this.env.data()).setDocument(TAGS_COLLECTION, { id: this.env.projectId, __etag: -1, tags });
+  /**
+   * Reads the styles, applies `change` and saves. Writes from this page wait for each other: hiding several
+   * tags in a row would otherwise read the same document and keep only the last tag's change.
+   */
+  private updateStyles(change: (styles: TagStyles) => TagStyles): Promise<void> {
+    const write = this.writes.then(async () => {
+      const tags = change(await this.styles(true));
+      // __etag -1: last write wins. Another person's write in between is lost; this page's never are.
+      await (await this.env.data()).setDocument(TAGS_COLLECTION, { id: this.env.projectId, __etag: -1, tags });
+    });
+    // A failed write must not block the next one.
+    this.writes = write.catch(() => {});
+    return write;
   }
 }

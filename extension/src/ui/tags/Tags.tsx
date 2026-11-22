@@ -4,7 +4,7 @@ import { Icon } from "azure-devops-ui/Icon";
 import { Panel } from "azure-devops-ui/Panel";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
-import { defaultTagColor, parseColor, randomTagColor, TAG_COLORS, type TagDef, tagKey, tagNameError, tagPillStyle, tagTextColor } from "../../data/tags";
+import { defaultTagColor, parseColor, randomTagColor, sidebarTags, TAG_COLORS, type TagDef, tagKey, tagNameError, tagPillStyle, tagTextColor } from "../../data/tags";
 import { usePierreTheme } from "../pierre/theme";
 import { cx, plural } from "../util";
 
@@ -20,19 +20,47 @@ interface ProjectTags {
   /** The host's theme is dark: pills use GitHub's dark-mode tints. */
   dark: boolean;
   host: AppHost | null;
+  /**
+   * Hides or shows the tag in the hub sidebar for everyone in the project. The list changes at once; a failed
+   * save reloads the tags and rejects with a readable message.
+   */
+  setTagHidden: (name: string, hidden: boolean) => Promise<void>;
 }
 
-const TagContext = React.createContext<ProjectTags>({ tags: [], byKey: new Map(), reload: () => {}, revision: 0, changed: () => {}, dark: false, host: null });
+const TagContext = React.createContext<ProjectTags>({
+  tags: [],
+  byKey: new Map(),
+  reload: () => {},
+  revision: 0,
+  changed: () => {},
+  dark: false,
+  host: null,
+  setTagHidden: async () => {},
+});
 export const useProjectTags = () => React.useContext(TagContext);
 
 /** Loads the project's tags once for both pages; editors call reload() after a change. */
 export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.ReactNode }> = ({ host, children }) => {
   const [tags, setTags] = React.useState<TagDef[]>([]);
+  /**
+   * Hide and Show clicks so far, and the count at each tag's last click. A reload keeps the on-screen flag of a
+   * tag clicked after it started, since it may have read the styles before that click's save.
+   */
+  const clicks = React.useRef({ count: 0, last: new Map<string, number>() });
   const reload = React.useCallback(() => {
+    const before = clicks.current.count;
     host
       .tags()
       .list()
-      .then(setTags, (e) => console.warn("[review-deck] tags unavailable:", e));
+      .then(
+        (next) =>
+          setTags((shown) => {
+            const hidden = new Map(shown.map((t) => [tagKey(t.name), t.hidden]));
+            const clickedAfter = (key: string) => (clicks.current.last.get(key) ?? 0) > before;
+            return next.map((t) => (clickedAfter(tagKey(t.name)) ? { ...t, hidden: hidden.get(tagKey(t.name)) ?? t.hidden } : t));
+          }),
+        (e) => console.warn("[review-deck] tags unavailable:", e),
+      );
   }, [host]);
   React.useEffect(reload, [reload]);
   const [revision, setRevision] = React.useState(0);
@@ -41,9 +69,25 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     setRevision((r) => r + 1);
   }, [reload]);
   const dark = usePierreTheme() === "dark";
+  const setTagHidden = React.useCallback(
+    async (name: string, hidden: boolean) => {
+      // No reload after a save: the list already shows it, and a reload landing between two quick clicks would
+      // undo the second one on screen until its own save finished.
+      clicks.current.last.set(tagKey(name), ++clicks.current.count);
+      setTags((all) => all.map((t) => (tagKey(t.name) === tagKey(name) ? { ...t, hidden } : t)));
+      try {
+        await host.tags().hide(name, hidden);
+      } catch (e) {
+        // The store lists after its queued saves, so this shows what they stored, other clicks included.
+        reload();
+        throw e;
+      }
+    },
+    [host, reload],
+  );
   const value = React.useMemo(
-    () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host }),
-    [tags, reload, revision, changed, dark, host],
+    () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),
+    [tags, reload, revision, changed, dark, host, setTagHidden],
   );
   return <TagContext.Provider value={value}>{children}</TagContext.Provider>;
 };
@@ -66,10 +110,12 @@ export const TagPill: React.FC<{ name: string; color?: string; className?: strin
   );
 };
 
-/** Hub sidebar: every tag with its open pull request count; a click filters the list. */
+/** Hub sidebar: every tag not hidden, with its open pull request count; a click filters the list. */
 export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string | null; onSelect: (name: string | null) => void }> = ({ counts, active, onSelect }) => {
   const { tags } = useProjectTags();
   const [managing, setManaging] = React.useState(false);
+  const shown = sidebarTags(tags, active);
+  const hiddenCount = tags.filter((t) => t.hidden).length;
   return (
     <section className="hub-tags" aria-label="Tags">
       <div className="hub-tags-head">
@@ -82,7 +128,7 @@ export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string
         <p className="hub-sidebar-note muted">No tags yet.</p>
       ) : (
         <ul className="hub-tag-list">
-          {tags.map((t) => {
+          {shown.map((t) => {
             const isActive = active !== null && tagKey(active) === tagKey(t.name);
             return (
               <li key={t.name}>
@@ -96,20 +142,34 @@ export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string
           })}
         </ul>
       )}
+      {hiddenCount > 0 && (
+        <p className="hub-sidebar-note muted">
+          <button className="link-button" onClick={() => setManaging(true)} title="Show or hide tags in Manage">
+            {plural(hiddenCount, "hidden tag")}
+          </button>
+        </p>
+      )}
       {managing && <TagManager counts={counts} onDismiss={() => setManaging(false)} />}
     </section>
   );
 };
 
-/** GitHub's label page as a side panel: every tag, with new, edit and delete. */
+/** GitHub's label page as a side panel: every tag, with new, hide, edit and delete. */
 export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () => void }> = ({ counts, onDismiss }) => {
   const { tags } = useProjectTags();
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
   const shown = tags.filter((t) => `${t.name}\n${t.description}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const hiddenShown = shown.filter((t) => t.hidden).length;
   return (
-    <Panel onDismiss={onDismiss} size={ContentSize.Large} titleProps={{ text: "Tags" }} description="Colors and descriptions are shared with everyone in this project." showSeparator>
+    <Panel
+      onDismiss={onDismiss}
+      size={ContentSize.Large}
+      titleProps={{ text: "Tags" }}
+      description="Colors, descriptions and hidden tags are shared with everyone in this project."
+      showSeparator
+    >
       <div className="tag-manager">
         <div className="tag-manager-toolbar">
           <div className="search-box">
@@ -125,7 +185,10 @@ export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () =
           </div>
         )}
         <div className="tag-manager-list" role="list">
-          <div className="tag-manager-count">{plural(shown.length, "tag")}</div>
+          <div className="tag-manager-count">
+            {plural(shown.length, "tag")}
+            {hiddenShown > 0 && <span className="muted"> · {hiddenShown} hidden</span>}
+          </div>
           {shown.length === 0 && <p className="muted tag-manager-empty">{query ? "No tags match." : "No tags yet. Create one, or add one to a pull request."}</p>}
           {shown.map((t) =>
             editing === t.name ? (
@@ -143,7 +206,7 @@ export const TagManager: React.FC<{ counts: Map<string, number>; onDismiss: () =
 };
 
 const TagRow: React.FC<{ tag: TagDef; count: number; onEdit: () => void }> = ({ tag, count, onEdit }) => {
-  const { host, changed } = useProjectTags();
+  const { host, changed, setTagHidden } = useProjectTags();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const remove = async () => {
@@ -158,14 +221,22 @@ const TagRow: React.FC<{ tag: TagDef; count: number; onEdit: () => void }> = ({ 
       setBusy(false);
     }
   };
+  // Not busy while saving: hiding several tags in a row is the common case, and the store queues the saves.
+  const toggleHidden = () => {
+    setError(null);
+    setTagHidden(tag.name, !tag.hidden).catch((e) => setError((e as Error).message));
+  };
   return (
-    <div role="listitem" className="tag-manager-row">
+    <div role="listitem" className={cx("tag-manager-row", tag.hidden && "is-hidden")}>
       <span className="tag-manager-name">
-        <TagPill name={tag.name} color={tag.color} />
+        <TagPill name={tag.name} color={tag.color} title={tag.hidden ? "Hidden from the sidebar" : undefined} />
       </span>
       <span className="tag-manager-desc muted">{tag.description}</span>
       <span className="tag-manager-uses muted">{count ? plural(count, "open pull request") : ""}</span>
       <span className="tag-manager-actions">
+        <button className="link-button" disabled={busy} aria-label={`${tag.hidden ? "Show" : "Hide"} the tag ${tag.name} in the sidebar`} onClick={toggleHidden}>
+          {tag.hidden ? "Show" : "Hide"}
+        </button>
         <button className="link-button" disabled={busy} onClick={onEdit}>
           Edit
         </button>
