@@ -84,17 +84,22 @@ you also run a backend, add that origin to `allowed_origins` in `infra/variables
 The browser extension in `browser-extension/` opens Azure DevOps pull request links in the Deck when you open them
 from outside Azure DevOps: chat, email, another site, or the address bar. Links you click inside Azure DevOps, and
 the Deck's link back to the Azure DevOps page, still open the classic pull request page, and so does reloading it.
-It works in Chrome, Edge and Firefox 128 or later.
+It works in Chrome, Edge, and Firefox 128 or later. Zen is built on Firefox, so it works there too.
 
 1. Build it: `npm run browser:build` writes `browser-extension/dist`.
 2. Load it:
    - Chrome or Edge: open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked** and pick
      `browser-extension/dist`.
-   - Firefox: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and pick
-     `browser-extension/dist/manifest.json`. Firefox drops it when it restarts. To keep it, sign it as an unlisted
-     add-on on addons.mozilla.org, for example with `npx web-ext sign --channel unlisted`.
-3. Choose its toolbar icon. For each organization, open **Repos → Deck**, paste the address bar into the box,
-   and choose **Save**. The link tells it the organization and the Deck's publisher, so private copies work too.
+   - Firefox or Zen: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and pick
+     `browser-extension/dist/manifest.json`. The browser drops it when it restarts, so load it again after each
+     restart. To keep it, sign it as an unlisted add-on with your addons.mozilla.org API key:
+     `npx web-ext sign --channel unlisted --source-dir browser-extension/dist --api-key <key> --api-secret <secret>`.
+     Then install the `.xpi` it writes from `about:addons`, gear menu, **Install Add-on From File**.
+3. Choose its toolbar icon. If the browser hides it, open `about:addons`, choose **Review Deck links** and open
+   its options. For each organization, open **Repos → Deck**, paste the address bar into the box, and choose
+   **Save**. The link tells it the organization and the Deck's publisher, so private copies work too.
+4. Firefox or Zen only: if links still open the classic page, open the add-on in `about:addons` and check that
+   it may access `dev.azure.com` and `visualstudio.com`. Without that access it can't redirect.
 
 Pull request links of other organizations keep opening the classic page.
 
