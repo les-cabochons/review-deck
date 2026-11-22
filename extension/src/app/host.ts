@@ -144,8 +144,8 @@ export interface AppHost {
   restack(pr: PrSummary): Promise<RestackOutcome[]>;
   /** Finished groupings, so reopening a pull request shows them without re-running the analysis. */
   savedReviews(): SavedReviews;
-  /** The records of who has this pull request open or a review in progress on it (data/presence.ts). */
-  presence(route: Extract<Route, { view: "pr" }>): PresenceStore;
+  /** The records of who has the project's pull requests open, or a review in progress on them (data/presence.ts). */
+  presence(projectId: string): PresenceStore;
   /** This project's tags, with their colors and descriptions. */
   tags(): TagStore;
   /** Your starred repositories, kept per user across projects. */

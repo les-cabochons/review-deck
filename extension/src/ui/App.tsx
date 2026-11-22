@@ -273,7 +273,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const people = React.useMemo(() => knownPeople(data, source.currentUser), [data, source.currentUser]);
   /** Where this browser keeps your drafts: the pending review, and the review in progress others see. */
   const draftsKey = `${route.repo}.${route.pr}.${source.currentUser.id}`;
-  const presence = React.useMemo(() => host.presence(route), [host, route.pr]);
+  // A PR page always opens in its own project's hub (AdoHost.navigate), so the host's project is the PR's.
+  const presence = React.useMemo(() => host.presence(host.projectId), [host]);
   const names = React.useMemo(() => new Map(people.map((p) => [p.id, p.displayName])), [people]);
   const native = host.nativePrUrl(route);
   const links = React.useMemo(
@@ -310,7 +311,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     <IdentityNames.Provider value={names}>
       <ReviewActionsProvider source={source} onData={loaded} stale={stale}>
         <PendingReviewProvider storageKey={draftsKey}>
-          <PresenceProvider store={presence} me={source.currentUser} tab={tab} draftsKey={draftsKey} active={loadedOnce}>
+          <PresenceProvider store={presence} pr={route.pr} me={source.currentUser} tab={tab} draftsKey={draftsKey} active={loadedOnce}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
               <div className="review-page" ref={setPage}>

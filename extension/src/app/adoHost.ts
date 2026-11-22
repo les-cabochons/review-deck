@@ -27,7 +27,7 @@ const SETTINGS_COLLECTION = "project-settings";
 const REVIEWS_COLLECTION = "saved-reviews";
 /** User-scoped extension data value holding your starred repository ids. */
 const FAVORITES_KEY = "favorite-repos";
-/** Prefix of the extension data collections holding who is on each pull request, one collection per PR (data/presence.ts). */
+/** Prefix of the extension data collections holding who is on each pull request, one collection per project (data/presence.ts). */
 const PRESENCE_COLLECTION = "presence";
 /** The "Project" security namespace and its GENERIC_WRITE bit ("Edit project-level information"), held by Project Administrators. */
 const PROJECT_NAMESPACE = "52d39943-cb85-4d7f-8fa8-c6baac873819";
@@ -372,12 +372,12 @@ export class AdoHost implements AppHost {
   }
 
   /**
-   * In extension data shared by the organization: one collection per pull request, one document per browser, so each
-   * page writes only its own and never conflicts with another's. Keyed by the project and the PR's id rather than the
-   * route's repository, which may be its id or its name.
+   * In extension data shared by the organization: one collection per project, so the hub reads its rows' people in
+   * one call, and one document per pull request and browser, so each page writes only its own and never conflicts
+   * with another's.
    */
-  presence(route: Extract<Route, { view: "pr" }>): PresenceStore {
-    const collection = [PRESENCE_COLLECTION, this.project.id, route.pr].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
+  presence(projectId: string): PresenceStore {
+    const collection = [PRESENCE_COLLECTION, projectId].join(".").replace(/[^A-Za-z0-9.-]/g, "_");
     return {
       // __etag -1: last write wins, and creates the document the first time.
       save: async (record) => void (await (await this.data()).setDocument(collection, { ...record, __etag: -1 })),
@@ -386,7 +386,7 @@ export class AdoHost implements AppHost {
         try {
           return await (await this.data()).getDocuments(collection);
         } catch (e) {
-          // No one has opened the PR since presence shipped.
+          // No one has opened a PR of the project since presence shipped.
           if ((e as { status?: number }).status === 404) return [];
           throw e;
         }

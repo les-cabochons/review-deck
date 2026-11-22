@@ -1,12 +1,10 @@
 import * as React from "react";
 import type { Identity } from "../../data/model";
-import { CHECK_IN_MS, type Presence, type PresenceRecord, type PresenceStore, type PresenceTab, whoIsOn } from "../../data/presence";
+import { CHECK_IN_MS, type Presence, type PresenceRecord, type PresenceStore, type PresenceTab, sweep, whoIsOn } from "../../data/presence";
 import { readLocal, writeLocal } from "../preferences";
 import { storedDrafts } from "../review/PendingReview";
 import { ago, Avatar, cx, plural } from "../util";
 
-/** Faces in the header's stack before "+N". */
-const MAX_FACES = 4;
 const TAB_NAMES: Record<PresenceTab, string> = { overview: "Overview", files: "Files", commits: "Commits" };
 
 const Context = React.createContext<Presence[]>([]);
@@ -23,21 +21,24 @@ export function usePresence(): Presence[] {
  * left so the review in progress still shows.
  */
 export const PresenceProvider: React.FC<{
+  /** The store of the PR's project. */
   store: PresenceStore;
+  pr: number;
   me: Identity;
   tab: PresenceTab;
   /** PendingReviewProvider's storageKey: the drafts saved under it are this browser's review in progress. */
   draftsKey: string;
   /** False until the PR's first full load, so check-ins never compete with the page's own first REST calls. */
   active: boolean;
-}> = ({ store, me, tab, draftsKey, active, children }) => {
+}> = ({ store, pr, me, tab, draftsKey, active, children }) => {
   const [people, setPeople] = React.useState<Presence[]>([]);
-  const [id] = React.useState(browserId);
+  const [browser] = React.useState(browserId);
   const tabNow = React.useRef(tab);
   tabNow.current = tab;
 
   React.useEffect(() => {
     if (!active) return;
+    const id = `${pr}.${browser}`;
     let stopped = false;
     let busy = false;
     let warned = false;
@@ -54,6 +55,7 @@ export const PresenceProvider: React.FC<{
       const since = Math.min(...drafts.map((d) => d.created).filter(Number.isFinite));
       return {
         id,
+        pr,
         user: { id: me.id, displayName: me.displayName, ...(me.imageUrl ? { imageUrl: me.imageUrl } : {}) },
         seenAt: Date.now(),
         tab: tabNow.current,
@@ -72,7 +74,8 @@ export const PresenceProvider: React.FC<{
       }
       try {
         const records = await store.list();
-        if (!stopped) setPeople(whoIsOn(records, me.id, Date.now()));
+        if (!stopped) setPeople(whoIsOn(records, me.id, Date.now()).get(pr) ?? []);
+        void sweep(store, records, Date.now());
       } catch (e) {
         warn("read", e);
       }
@@ -99,12 +102,12 @@ export const PresenceProvider: React.FC<{
       window.removeEventListener("pagehide", leave);
       leave();
     };
-  }, [active, store, id, me, draftsKey]);
+  }, [active, store, pr, browser, me, draftsKey]);
 
   return <Context.Provider value={people}>{children}</Context.Provider>;
 };
 
-/** This browser's id, kept in local storage so each visit replaces its record instead of adding one. */
+/** This browser's id, kept in local storage so each visit to a PR replaces its record instead of adding one. */
 function browserId(): string {
   const saved = readLocal("presence.browser");
   if (saved) return saved;
@@ -142,34 +145,49 @@ export const PresenceStatus: React.FC<{ presence: Presence }> = ({ presence }) =
   <span className={cx("presence-status", presence.here && "here", presence.drafts > 0 && "reviewing")}>{presenceStatus(presence)}</span>
 );
 
-/** The faces of the people on the page now, and who does what on hover or focus. Nothing when you're alone. */
-export const PresenceStack: React.FC<{ size?: number; label?: boolean }> = ({ size = 24, label = false }) => {
-  const here = usePresence().filter((p) => p.here);
-  if (!here.length) return null;
-  const doing = (p: Presence) => (p.drafts ? `Reviewing · ${plural(p.drafts, "draft comment")}` : "Viewing");
+/**
+ * The faces of `people`, and what each does on hover or focus. Nothing for no one. The PR header shows those here now,
+ * a hub row everyone, the reviews in progress of people away included. `focusable` false leaves the keyboard to the
+ * hub's rows (j/k), which the faces sit in.
+ */
+export const PresenceFaces: React.FC<{ people: Presence[]; size?: number; max?: number; label?: string; focusable?: boolean }> = ({
+  people,
+  size = 24,
+  max = 4,
+  label,
+  focusable = true,
+}) => {
+  if (!people.length) return null;
+  const summary = people.map((p) => `${p.who.displayName}, ${presenceStatus(p).toLowerCase()}`).join("; ");
   return (
-    <div className="presence-stack" tabIndex={0} aria-label={`Here now: ${here.map((p) => `${p.who.displayName}, ${doing(p).toLowerCase()}`).join("; ")}`}>
+    <div className="presence-stack" {...(focusable ? { tabIndex: 0 } : { role: "img" })} aria-label={summary}>
       <span className="presence-faces">
-        {here.slice(0, MAX_FACES).map((p) => (
+        {people.slice(0, max).map((p) => (
           <PresenceAvatar key={p.who.id} who={p.who} presence={p} size={size} tooltip={false} />
         ))}
-        {here.length > MAX_FACES && <span className="presence-more">+{here.length - MAX_FACES}</span>}
+        {people.length > max && <span className="presence-more">+{people.length - max}</span>}
       </span>
-      {label && <span className="presence-label">{here.length} here</span>}
+      {label && <span className="presence-label">{label}</span>}
       <div className="presence-card" aria-hidden="true">
-        {here.map((p) => (
+        {people.map((p) => (
           <div key={p.who.id} className="presence-person">
             <Avatar who={p.who} size={20} tooltip={false} />
             <div>
               <strong>{p.who.displayName}</strong>
-              <div className={cx(p.drafts > 0 && "presence-doing-review")}>{doing(p)}</div>
-              {p.tab && <div className="muted">On {TAB_NAMES[p.tab]}</div>}
+              <PresenceStatus presence={p} />
+              {p.here && p.tab && <div className="muted">On {TAB_NAMES[p.tab]}</div>}
             </div>
           </div>
         ))}
       </div>
     </div>
   );
+};
+
+/** The faces of the people on the PR page now, for its headers. Nothing when you're alone. */
+export const PresenceStack: React.FC<{ size?: number; label?: boolean }> = ({ size, label = false }) => {
+  const here = usePresence().filter((p) => p.here);
+  return <PresenceFaces people={here} size={size} label={label ? `${here.length} here` : undefined} />;
 };
 
 /** People on the PR who aren't its reviewers: here now, or away with a review in progress. Nothing when there are none. */
