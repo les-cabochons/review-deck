@@ -11,6 +11,9 @@ thing end up together, ordered so definitions come before their uses and code co
 - **A review page:** Overview, Files and Commits. Files opens in the **Guided** view, grouped by concern,
   with a Files A–Z toggle and inline or side-by-side diffs.
 - **GitHub-style reviews:** draft comments, then submit them all with a verdict.
+- **An Infra view:** a pull request that changes Terraform or OpenTofu files gets a diagram of the resources it adds,
+  changes or removes, and a list of what may be destroyed or replaced. It is read from the files, not from a plan,
+  and says so. See [docs/infra-view.md](docs/infra-view.md).
 - **Who's on the PR:** the faces of the others who have it open, on its page and on its hub row, and who is
   reviewing now or has unsent drafts. Each open PR page saves your name, picture, tab and number of drafts
   (never their text) in the organization's extension data every 30 seconds, so anyone in the organization can
@@ -302,12 +305,12 @@ The weights were tuned on everything except #17826, so treat these as a smoke te
 
 | Path | What's there |
 |---|---|
-| `src/` | The grouping pipeline. Everything except `src/node/` runs in the browser. |
+| `src/` | The grouping pipeline, and `src/infra` for the Infra view. Everything except `src/node/` runs in the browser. |
 | `extension/` | The Azure DevOps extension: `src/app` (Azure DevOps and local hosts), `src/data` (REST adapters and mocks), `src/review` (worker, engine, backend client), `src/ui` (React with `azure-devops-ui`, `@pierre/diffs` and `@pierre/trees`). |
 | `backend/` | The optional Azure Function: embeddings, titles, spending caps, auto-restack. |
 | `infra/` | Terraform for the backend. |
-| `fixtures/` | Synthetic and real PRs with hand-written truth. `npm run fixtures` regenerates and validates them. |
-| `docs/` | Backend, stacks, startup and milestone notes. |
+| `fixtures/` | Synthetic and real PRs with hand-written truth. `npm run fixtures` regenerates and validates them. `fixtures/demo` holds demo-only PRs. |
+| `docs/` | Backend, stacks, the Infra view, startup and milestone notes. |
 
 **CI:** `.github/workflows/extension.yml` runs the typechecks, the tests and a build on every push and pull
 request. On `main` it also publishes the extension, as version `major.minor.<run number>` (major.minor
