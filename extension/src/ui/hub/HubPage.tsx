@@ -66,6 +66,10 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [listLoading, setListLoading] = React.useState(false);
   /** A list landed in this visit. Who is on the rows is read only then, behind the hub's own first REST calls. */
   const [listedNow, setListedNow] = React.useState(false);
+  // A PR page covering the hub ends the visit: coming back, the hub waits for its new list again.
+  React.useEffect(() => {
+    if (!active) setListedNow(false);
+  }, [active]);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   // The saved choice, or on a first visit the Repos breadcrumb's repository. Null until the list source loads.
@@ -265,10 +269,9 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft),
     rows,
   );
-  // Only open PRs: no one reviews a completed one.
   const presence = useHubPresence(
     host,
-    rows.filter((p) => p.status === "active").map((p) => p.repository.projectId),
+    rows.map((p) => p.repository.projectId),
     active && listedNow,
   );
 
@@ -464,7 +467,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             stack={stacks.get(pr.id)}
-                            presence={pr.status === "active" ? presence.get(pr.id) : undefined}
+                            presence={presence.get(pr.id)}
                             selected={index === selected}
                             onOpen={() => open(pr)}
                             onStack={() => showStack(pr)}
