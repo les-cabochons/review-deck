@@ -15,8 +15,8 @@ export function useHubPresence(host: AppHost, projectIds: string[], active: bool
   const key = [...new Set(projectIds)].sort().join(",");
 
   React.useEffect(() => {
-    if (!active || !key) return;
-    setPeople(new Map());
+    // Cleared on stopping rather than on starting, so the first render of the next visit has no one to show.
+    if (!active || !key) return void setPeople(new Map());
     let stopped = false;
     let busy = false;
     let warned = false;
