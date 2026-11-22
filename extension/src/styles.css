@@ -1591,8 +1591,7 @@ kbd {
   border-radius: 50%;
   background: var(--ok);
 }
-.presence-status.here.reviewing,
-.presence-doing-review {
+.presence-status.here.reviewing {
   color: var(--link);
 }
 .presence-stack {
@@ -1668,6 +1667,18 @@ kbd {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+}
+/* Hub rows (ui/hub/hubPresence.ts): the card may reach past its section, which otherwise clips to its rounded corners. */
+.pr-presence {
+  display: flex;
+  min-width: 0;
+}
+.pr-row .presence-stack {
+  --presence-ring: var(--callout-background-color, var(--surface));
+  padding: 0;
+}
+.inbox-section:has(.pr-presence .presence-stack:hover) {
+  overflow: visible;
 }
 .reviewer-picker {
   padding: 10px;
@@ -3872,7 +3883,7 @@ kbd {
 @media (min-width: 701px) {
   /* Two rows: the title beside the columns, then the request line under it across the whole row. */
   .pr-row {
-    grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 36px 96px 116px;
+    grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 60px 36px 96px 116px;
     gap: 3px 16px;
     min-height: 60px;
     padding: 10px 20px;
@@ -3923,7 +3934,17 @@ kbd {
     grid-template-columns: 32px minmax(0, 1fr) 120px;
   }
   .pr-row .pr-checks,
+  .pr-row .pr-presence,
   .pr-row .pr-comments {
+    display: none;
+  }
+}
+/* Who is on the PR needs 76 px more: below 1200 px, rows keep the columns they had, so titles get no narrower. */
+@media (min-width: 1101px) and (max-width: 1199px) {
+  .pr-row {
+    grid-template-columns: 32px minmax(0, 1fr) 116px 84px 20px 36px 96px 116px;
+  }
+  .pr-row .pr-presence {
     display: none;
   }
 }

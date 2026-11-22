@@ -22,6 +22,9 @@ import { type CatalogRepo, CURRENT_REPO, type CurrentContext, type ListScope, pa
 import { tagKey } from "../../data/tags";
 import { SidebarTags, TagPill, useProjectTags } from "../tags/Tags";
 import { RepoPicker } from "./RepoPicker";
+import type { Presence } from "../../data/presence";
+import { PresenceFaces } from "../presence/Presence";
+import { useHubPresence } from "./hubPresence";
 import { useRowDetails } from "./rowDetails";
 import { useSectionFlash } from "./sectionFlash";
 import { ago, Avatar, cx, plural, voteInfo } from "../util";
@@ -61,6 +64,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   // The repository choice `prs` was listed for, and when.
   const [listed, setListed] = React.useState(cached && { selection: cached.selection, at: cached.listedAt });
   const [listLoading, setListLoading] = React.useState(false);
+  /** A list landed in this visit. Who is on the rows is read only then, behind the hub's own first REST calls. */
+  const [listedNow, setListedNow] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   // The saved choice, or on a first visit the Repos breadcrumb's repository. Null until the list source loads.
@@ -179,6 +184,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
         listLoaded(rows, everything);
         setPrs(rows);
         setListed({ selection: selectionKey, at: requestedAt });
+        setListedNow(true);
       })
       .catch((e: Error) => load === latestLoad.current && setError(e.message))
       .finally(() => load === latestLoad.current && setListLoading(false));
@@ -258,6 +264,12 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   want(
     visible.filter((p) => p.createdBy.id === me.id && p.status === "active" && !p.isDraft),
     rows,
+  );
+  // Only open PRs: no one reviews a completed one.
+  const presence = useHubPresence(
+    host,
+    rows.filter((p) => p.status === "active").map((p) => p.repository.projectId),
+    active && listedNow,
   );
 
   const refreshing = listLoading || detailsLoading;
@@ -452,6 +464,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
                             me={me.id}
                             via={requestedVia(pr, groupIds).filter(() => !pr.reviewers.some((r) => r.id === me.id && r.vote !== 0))}
                             stack={stacks.get(pr.id)}
+                            presence={pr.status === "active" ? presence.get(pr.id) : undefined}
                             selected={index === selected}
                             onOpen={() => open(pr)}
                             onStack={() => showStack(pr)}
@@ -506,6 +519,8 @@ const PrRow: React.FC<{
   via: PrSummary["reviewers"];
   /** Position in a stack ("2 of 4"), if the PR is stacked. */
   stack?: { index: number; size: number; bottomId: number };
+  /** Who else is on the PR: here now, or away with a review in progress. */
+  presence?: Presence[];
   selected: boolean;
   onOpen: () => void;
   /** Show the whole stack, from the stack chip. */
@@ -514,7 +529,7 @@ const PrRow: React.FC<{
   /** Start loading the PR after `delay` ms (the pointer resting on the row) or at once (pressed). */
   onPrefetch: (delay?: number) => void;
   onLeave: () => void;
-}> = ({ pr, section, me, via, stack, selected, onOpen, onStack, onHover, onPrefetch, onLeave }) => {
+}> = ({ pr, section, me, via, stack, presence, selected, onOpen, onStack, onHover, onPrefetch, onLeave }) => {
   const state = STATE_ICON[pr.isDraft && pr.status === "active" ? "draft" : pr.status];
   const review = reviewState(pr);
   const checks = pr.checks ? CHECKS[pr.checks] : null;
@@ -610,6 +625,7 @@ const PrRow: React.FC<{
       <span className={cx("pr-checks", checks && `tone-${checks.tone}`)} title={checks?.label ?? "Loading checks…"}>
         {checks ? <Icon iconName={checks.icon} /> : <span className="dot-loading" />}
       </span>
+      <span className="pr-presence">{presence && <PresenceFaces people={presence} size={20} max={3} focusable={false} />}</span>
       <span className="pr-comments" title={pr.comments === undefined ? "" : `${plural(pr.comments, "active comment")}`}>
         {pr.comments ? (
           <>

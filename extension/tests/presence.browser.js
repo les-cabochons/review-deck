@@ -1,17 +1,22 @@
 // Run through playwright-cli run-code --filename=extension/tests/presence.browser.js.
-// Uses the demo data (`npm run ext:demo`) and the dev host's made-up people (`presence=demo`, app/localHost.ts): the
-// PR's first reviewer reviewing now with 3 drafts, its second away with 2 drafts, and Samuel Côté here, who isn't a
-// reviewer. The headers show the faces of those here, the reviewers list says what each does, and leaving the PR
-// removes your own record.
+// Uses the demo data (`npm run ext:demo`) and the dev host's made-up people (`presence=demo`, app/localHost.ts): on
+// !482, its first reviewer reviewing now with 3 drafts, its second away with 2 drafts, and Samuel Côté here, who isn't
+// a reviewer. The headers show the faces of those here, the reviewers list says what each does, leaving the PR removes
+// your own record, and the hub's row shows all three.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const size = page.viewportSize();
-  await page.setViewportSize({ width: 1280, height: 800 });
+  // Wide enough for the hub's presence column: the frame, beside the dev shell's navigation, must pass 1100 px.
+  await page.setViewportSize({ width: 1440, height: 800 });
   const f = page.frameLocator('#frame');
+  // The dev host keeps your records, one store per project; the made-up people are never stored.
   const ownRecords = () => f.locator('body').evaluate(() =>
-    Object.values(JSON.parse(localStorage.getItem('review-deck.local.presence.482') ?? '{}')).filter(r => !String(r.id).startsWith('demo-')));
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('review-deck.local.presence.'))
+      .flatMap(k => Object.values(JSON.parse(localStorage.getItem(k) ?? '{}')))
+      .filter(r => r.pr === 482));
   const result = {};
 
   // Given no one else on the PR, the header shows no faces.
@@ -37,8 +42,8 @@ async page => {
   await stack.hover();
   await card.waitFor();
   const cardText = await card.innerText();
-  assert(/Reviewing · 3 draft comments/.test(cardText) && /On Files/.test(cardText), `The card does not say who reviews where: ${cardText}`);
-  assert(/Samuel Côté/.test(cardText) && /Viewing/.test(cardText), `The card misses the viewer: ${cardText}`);
+  assert(/Reviewing now · 3 drafts/.test(cardText) && /On Files/.test(cardText), `The card does not say who reviews where: ${cardText}`);
+  assert(/Samuel Côté\s*Here now/.test(cardText), `The card misses the viewer: ${cardText}`);
   result.card = cardText.split('\n');
 
   // The reviewers list says what each reviewer does, the one away included, and lists the others below.
@@ -63,6 +68,20 @@ async page => {
   await f.locator('.pr-row').first().waitFor();
   await page.waitForTimeout(300);
   assert((await ownRecords()).length === 0, 'Your record stayed after leaving without drafts');
+
+  // Back on the hub, !482's row shows all three, the review away included, and its card isn't cut by the section.
+  const row = f.locator('.pr-row[data-pr="482"]');
+  const faces = row.locator('.pr-presence .presence-stack');
+  await faces.waitFor();
+  assert(await faces.locator('.presence-faces .presence-avatar').count() === 3, 'The row shows another number of faces');
+  assert(await faces.locator('.presence-badge.reviewing.away').count() === 1, 'The row misses the review started by someone away');
+  await faces.hover();
+  const rowCard = faces.locator('.presence-card');
+  await rowCard.waitFor();
+  assert(/Review started 1 day ago · 2 drafts not sent/.test(await rowCard.innerText()), 'The row card misses the review started');
+  const clipped = await row.evaluate(el => getComputedStyle(el.closest('.inbox-section')).overflow);
+  assert(clipped === 'visible', `The row's section clips its card (overflow: ${clipped})`);
+  result.row = (await rowCard.innerText()).split('\n');
 
   if (size) await page.setViewportSize(size);
   assert(errors.length === 0, `Page errors: ${errors.join('; ')}`);
