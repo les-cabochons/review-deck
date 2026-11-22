@@ -192,11 +192,10 @@ export class LocalHost implements AppHost {
 
   /**
    * In localStorage, shared by the dev tabs. They all run as the same user, who is never listed, so
-   * `?presence=demo` adds made-up people: the PR's first reviewer reviewing now, its second away with drafts, and
-   * someone who isn't a reviewer.
+   * `?presence=demo` adds made-up people to the project's active pull requests (`demoPresence`).
    */
-  presence(route: Extract<Route, { view: "pr" }>): PresenceStore {
-    const key = `${PRESENCE_KEY}.${route.pr}`;
+  presence(projectId: string): PresenceStore {
+    const key = `${PRESENCE_KEY}.${projectId}`;
     const read = (): Record<string, unknown> => {
       try {
         return JSON.parse(localStorage.getItem(key) ?? "{}") ?? {};
@@ -211,21 +210,30 @@ export class LocalHost implements AppHost {
         const { [id]: _, ...others } = read();
         localStorage.setItem(key, JSON.stringify(others));
       },
-      list: async () => [...Object.values(read()), ...(demo ? await this.demoPresence(route) : [])],
+      list: async () => [...Object.values(read()), ...(demo ? await this.demoPresence(projectId) : [])],
     };
   }
 
-  private async demoPresence(route: Extract<Route, { view: "pr" }>): Promise<PresenceRecord[]> {
+  /**
+   * Made-up people, so the hub has some variety: on PRs whose id leaves 2 when divided by 3 (!482 among them), the
+   * first other reviewer reviews now, the second is away with drafts and Samuel Côté is here. On those leaving 0,
+   * only Samuel is here. Teams (names in brackets) are never people on a page.
+   */
+  private async demoPresence(projectId: string): Promise<PresenceRecord[]> {
     const now = Date.now();
-    const { reviewers } = (await (await this.prSource(route)).load()).pr;
-    const [first, second] = reviewers.filter((r) => r.id !== this.currentUser.id);
-    const records: PresenceRecord[] = [
-      { id: "demo-other", user: { id: "demo-samuel", displayName: "Samuel Côté" }, seenAt: now, tab: "overview", drafts: 0 },
-    ];
     const user = (r: Identity) => ({ id: r.id, displayName: r.displayName, imageUrl: r.imageUrl });
-    if (first) records.push({ id: "demo-first", user: user(first), seenAt: now, tab: "files", drafts: 3, draftsSince: now - 20 * 60_000 });
-    if (second) records.push({ id: "demo-second", user: user(second), seenAt: now - 86_400_000, left: true, tab: "files", drafts: 2, draftsSince: now - 86_400_000 });
-    return records;
+    const samuel = { id: "demo-samuel", displayName: "Samuel Côté" };
+    const rows = (await this.list.list({ projects: [projectId], repos: [] })).filter((p) => p.status === "active");
+    return rows.flatMap((p): PresenceRecord[] => {
+      if (p.id % 3 === 1) return [];
+      const records: PresenceRecord[] = [{ id: `${p.id}.demo-other`, pr: p.id, user: samuel, seenAt: now, tab: "overview", drafts: 0 }];
+      if (p.id % 3 === 0) return records;
+      const [first, second] = p.reviewers.filter((r) => r.id !== this.currentUser.id && !r.displayName.startsWith("["));
+      if (first) records.push({ id: `${p.id}.demo-first`, pr: p.id, user: user(first), seenAt: now, tab: "files", drafts: 3, draftsSince: now - 20 * 60_000 });
+      if (second)
+        records.push({ id: `${p.id}.demo-second`, pr: p.id, user: user(second), seenAt: now - 86_400_000, left: true, tab: "files", drafts: 2, draftsSince: now - 86_400_000 });
+      return records;
+    });
   }
 
   /** Kept in localStorage; the local user may change them. */
