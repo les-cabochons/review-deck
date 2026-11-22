@@ -9,7 +9,7 @@ Everything is read in the browser from the files the review already holds. Revie
 `src/infra` parses both sides of every changed Terraform file with [tree-sitter-hcl](https://github.com/tree-sitter-grammars/tree-sitter-hcl) and compares their blocks by address (`azurerm_storage_account.uploads`, `module.network`, `var.location`). The address is the same on both sides, so a block is added, removed, or changed in the attributes listed.
 
 - An attribute is compared as its expression's text, without comments or alignment. Realigning a block changes nothing.
-- A nested block's attributes carry its name (`site_config.application_stack.node_version`). An object literal is compared key by key, so one added app setting is one change (`app_settings.API_KEY`).
+- A nested block's attributes carry its name (`site_config.application_stack.node_version`), labels included (`backend.s3.bucket`). An object literal is compared key by key, so one added app setting is one change (`app_settings.API_KEY`).
 - References between blocks (`azurerm_resource_group.this.name`) are the diagram's arrows. An arrow is coloured when the reference was added, removed, or sits on a changed line.
 - Each directory is one module, as for Terraform. Two directories with the same addresses don't mix.
 

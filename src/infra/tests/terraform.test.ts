@@ -367,3 +367,10 @@ moved {
   assert.equal(moved.risk?.kind, "replace");
   assert.deepEqual(moved.changes, [{ path: "account_tier", before: '"Standard"', after: '"Premium"' }]);
 });
+
+test("Given a nested block that changes only its label, such as the backend, then the change is visible", () => {
+  const module = diff('terraform {\n  backend "local" {}\n}\n', 'terraform {\n  backend "s3" {}\n}\n');
+  const settings = block(module, "terraform");
+  assert.equal(settings.status, "changed");
+  assert.deepEqual(settings.changes.map((c) => c.path).sort(), ["backend.local", "backend.s3"]);
+});

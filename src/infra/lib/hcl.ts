@@ -130,6 +130,7 @@ function aliasOf(body: Node | undefined): string {
 /**
  * Flattens a block body into `block.attributes` and `block.references`.
  * - A nested block's attributes get its name as a prefix: `site_config.application_stack.node_version`.
+ * - A nested block's labels are part of its name, so changing one is a change: `backend.s3.bucket`.
  * - Repeated nested blocks get an index: `notification[1].threshold`.
  * - An object literal is flattened per key, so one added app setting is one change: `app_settings.API_KEY`.
  * - A `dynamic "x"` block reads as the block `x` it generates.
@@ -138,8 +139,9 @@ function aliasOf(body: Node | undefined): string {
 function flattenBody(body: Node, prefix: string, block: ParsedBlock, source: string, bound: string[]): void {
   const nested = childrenOf(body, "block");
   const nameOf = (b: Node) => {
-    const [type, label] = named(b);
-    return type?.text === "dynamic" && label ? unquote(label.text) : (type?.text ?? "");
+    const [type, ...rest] = named(b);
+    const labels = rest.filter((c) => c.type === "string_lit" || c.type === "identifier").map((c) => unquote(c.text));
+    return type?.text === "dynamic" && labels[0] ? labels[0] : [type?.text ?? "", ...labels].join(".");
   };
   const total = new Map<string, number>();
   for (const b of nested) total.set(nameOf(b), (total.get(nameOf(b)) ?? 0) + 1);
