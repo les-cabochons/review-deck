@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { TERRAFORM_GRAMMAR } from "../../src/infra/grammar";
+import { GRAMMARS } from "../../src/parse/grammars";
 
 interface Contribution {
   id: string;
   properties?: { supportsMobile?: boolean; icon?: unknown };
 }
 
-const manifest = JSON.parse(readFileSync("extension/vss-extension.json", "utf8")) as { contributions: Contribution[] };
+const manifest = JSON.parse(readFileSync("extension/vss-extension.json", "utf8")) as {
+  contributions: Contribution[];
+  files: { path: string; addressable?: boolean; contentType?: string }[];
+};
 
 // Azure DevOps sets the page's viewport to `width=device-width` only when the shown hub has supportsMobile. Without it,
 // it empties the viewport tag and a phone lays the page out 980 px wide, zoomed out, so the phone layouts never apply.
@@ -24,4 +29,14 @@ test("Open in Review Deck has the Deck hub's icon, for each theme", () => {
   const icon = (id: string) => manifest.contributions.find((c) => c.id === id)?.properties?.icon;
   assert.deepEqual(icon("open-review-action"), icon("review-hub"));
   assert.deepEqual(icon("open-review-action"), { light: "images/deck-light.png", dark: "images/deck-dark.png" });
+});
+
+// The package holds only the files the manifest lists, and Azure DevOps serves a .wasm as WebAssembly only with this
+// content type. A grammar the build copies to assets/ but the manifest leaves out works in local dev and fails once
+// installed: its language is then grouped by path only, or, for Terraform, the Infra view can't load.
+test("every grammar the build copies is packaged as WebAssembly", () => {
+  for (const grammar of [...Object.values(GRAMMARS), TERRAFORM_GRAMMAR]) {
+    const file = manifest.files.find((f) => f.path === `assets/${grammar.file}`);
+    assert.deepEqual(file, { path: `assets/${grammar.file}`, addressable: true, contentType: "application/wasm" }, grammar.file);
+  }
 });
