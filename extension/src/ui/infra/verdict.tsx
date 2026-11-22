@@ -11,7 +11,7 @@ export type Tone = "destroy" | "replace" | "follows" | "changed" | "added" | "re
  */
 export function verdict(block: InfraBlock): { tone: Tone; symbol: string; label: string } {
   const { risk } = block;
-  if (risk?.kind === "destroy") return { tone: "destroy", symbol: "−", label: "destroy likely" };
+  if (risk?.kind === "destroy") return { tone: "destroy", symbol: "−", label: `destroy ${risk.certainty}` };
   if (risk?.kind === "replace") return { tone: "replace", symbol: "−/+", label: `replace ${risk.certainty}` };
   if (risk?.kind === "follows") return { tone: "follows", symbol: "−/+?", label: "may follow" };
   if (block.docsOnly) return { tone: "docs", symbol: "", label: "description only" };
