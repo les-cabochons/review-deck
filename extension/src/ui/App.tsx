@@ -14,6 +14,8 @@ import type { DiffMode } from "./DiffHunk";
 import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
 import { GroupingStatus } from "./GroupingStatus";
+import { useInfra } from "./infra/useInfra";
+import { riskCount } from "./infra/riskCount";
 import { OverviewTab } from "./OverviewTab";
 import { PrSkeleton } from "./PrSkeleton";
 import { PrMenu, type PrMenuLinks } from "./PrMenu";
@@ -27,7 +29,8 @@ import { CompletionButton, CompletionNotice } from "./review/CompletionControls"
 import { EMPTY_REVIEW_FORM, ReviewButton, type ReviewForm, VoteButton } from "./review/ReviewControls";
 import { ago, Avatar, cx, IdentityNames, plural, Time } from "./util";
 
-type TabId = "overview" | "files" | "commits";
+type TabId = "overview" | "files" | "commits" | "infra";
+const TAB_IDS: readonly string[] = ["overview", "files", "commits", "infra"] satisfies TabId[];
 /** Announce finished grouping only if the A–Z preview was up this long; small PRs group almost instantly. */
 const ANNOUNCE_AFTER_MS = 2000;
 /** Scrolled further than this into the preview, finishing doesn't swap the view under the reader. */
@@ -40,6 +43,8 @@ interface ToastSpec {
 }
 
 const FilesTab = React.lazy(() => import("./FilesTab").then(module => ({ default: module.FilesTab })));
+/** Loaded for pull requests that change Terraform files only. */
+const InfraTab = React.lazy(() => import("./infra/InfraTab").then((module) => ({ default: module.InfraTab })));
 
 /** Links that depend on where the page runs (native ADO page, comment permalinks). */
 export const HostLinks = React.createContext<{
@@ -70,12 +75,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const dataNow = React.useRef(data);
   dataNow.current = data;
   const [tab, setTab] = React.useState<TabId>(() =>
-    ["overview", "files", "commits"].includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
+    TAB_IDS.includes(location.hash.slice(1)) ? (location.hash.slice(1) as TabId) : "overview",
   );
   const [selection, setSelection] = React.useState(() => latestComparison(data));
   /** The comparison the page last picked on its own, which a later load may move on from (`followLatest`). */
   const picked = React.useRef(selection);
   const [review, setReview] = React.useState<ReviewModel | null>(null);
+  /** The comparison's Terraform changes, if it has any: the Infra tab and the Overview's Infrastructure card. */
+  const infra = useInfra(review);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = React.useState(false);
   const [fileThreads, setFileThreads] = React.useState<Thread[]>([]);
@@ -345,12 +352,16 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                   <Tab id="overview" name="Overview" />
                   <Tab id="files" name="Files" badgeCount={review?.result.files.length} />
                   <Tab id="commits" name="Commits" badgeCount={data.commits.length || undefined} />
+                  {/* Only for a comparison that changes Terraform files, or a link straight to the tab. The badge counts what may be destroyed or replaced. */}
+                  {(infra.present || tab === "infra") && <Tab id="infra" name="Infra" badgeCount={infra.reading ? riskCount(infra.reading.modules) || undefined : undefined} />}
                 </TabBar>
                 <main className={cx("tab-content", `tab-${tab}`)}>
                   {tab === "overview" && (
                     <OverviewTab
                       data={data}
                       review={review}
+                      infra={infra}
+                      onOpenInfra={() => selectTab("infra")}
                       building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
                       onOpenFiles={() => selectTab("files")}
@@ -389,6 +400,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                     </React.Suspense>
                   )}
                   {tab === "commits" && <CommitsTab data={data} />}
+                  {tab === "infra" &&
+                    (review || reviewError ? (
+                      <React.Suspense fallback={<div className="loading">Loading the Infra view…</div>}>
+                        <InfraTab infra={infra} />
+                      </React.Suspense>
+                    ) : (
+                      <div className="loading">Loading the changed files…</div>
+                    ))}
                 </main>
                 {toast && <TimedToast key={toast.message} spec={toast} onDone={() => setToast(null)} />}
               </div>

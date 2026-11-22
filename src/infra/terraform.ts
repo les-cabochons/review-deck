@@ -3,7 +3,7 @@ import { isTerraformPath } from "./grammar.js";
 import { diffModule, type ModuleFile } from "./lib/diff.js";
 import { parseTerraform } from "./lib/hcl.js";
 import { assessRisks, FORCE_NEW_SOURCES } from "./lib/risk.js";
-import type { InfraBlock, InfraModule, InfraSummary, TerraformFile } from "./types.js";
+import type { InfraModule, TerraformFile } from "./types.js";
 
 export type WasmSource = string | URL | Uint8Array;
 
@@ -47,34 +47,4 @@ export class TerraformReader {
     }
     return [...byDir.keys()].sort().map((dir) => assessRisks(diffModule(dir, byDir.get(dir)!)));
   }
-}
-
-/** Drawn as a box: what Terraform creates, reads or calls. Variables, locals and outputs are the wiring between them. */
-export const isInfrastructure = (block: InfraBlock) => block.kind === "resource" || block.kind === "data" || block.kind === "module";
-
-/** The code of the block changed, beyond its description. */
-export const isChanged = (block: InfraBlock) => block.status !== "same" && !block.docsOnly;
-
-/** Worth a reviewer's look: changed, or unchanged in the code but at risk because of what it uses. */
-export const needsLook = (block: InfraBlock) => isChanged(block) || block.risk !== null;
-
-/** Riskiest first: destroy, replace (likely, then possible), follows, changed, added, removed without a risk, description only. */
-export function riskRank(block: InfraBlock): number {
-  if (block.risk?.kind === "destroy") return 0;
-  if (block.risk?.kind === "replace") return block.risk.certainty === "likely" ? 1 : 2;
-  if (block.risk?.kind === "follows") return 3;
-  if (block.docsOnly) return 8;
-  return { changed: 4, added: 5, removed: 6, same: 7 }[block.status];
-}
-
-/** Counts resources, data sources and modules, each once, by the worst that may happen to it. */
-export function summarize(modules: InfraModule[]): InfraSummary {
-  const summary: InfraSummary = { destroy: 0, replace: 0, follows: 0, changed: 0, added: 0 };
-  for (const block of modules.flatMap((m) => m.blocks)) {
-    if (!isInfrastructure(block) || !needsLook(block)) continue;
-    if (block.risk) summary[block.risk.kind]++;
-    else if (block.status === "changed") summary.changed++;
-    else if (block.status === "added") summary.added++;
-  }
-  return summary;
 }

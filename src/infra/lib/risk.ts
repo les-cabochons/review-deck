@@ -57,9 +57,18 @@ const isException = (condition: string) => /^(?:except|unless)\b/i.test(conditio
 const code = (text: string) => `\`${text}\``;
 const list = (items: string[]) => (items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
 
+/**
+ * `azurerm_x.y.id` became `azurerm_x.y[0].id`, or the reverse: what a reference looks like once the resource it
+ * names gains or loses `count`. Terraform moves that object to index 0 itself, so the value is the same.
+ */
+const onlyGainedIndex = ({ before, after }: AttributeChange) => before !== null && after !== null && before.replace(/\[0\]/g, "") === after.replace(/\[0\]/g, "");
+
 function replaceRisk(block: InfraBlock): Risk | null {
   if (block.kind !== "resource" || block.status !== "changed" || !block.type) return null;
-  const hits = block.changes.map((c) => forceNew(block.type!, c)).filter((h): h is ForceNewHit => h !== null);
+  const hits = block.changes
+    .filter((c) => !onlyGainedIndex(c))
+    .map((c) => forceNew(block.type!, c))
+    .filter((h): h is ForceNewHit => h !== null);
   if (hits.length === 0) return null;
 
   // The value itself changed, and the docs give no exception: little room for doubt.
@@ -158,7 +167,8 @@ export function assessRisks({ module, sides }: ModuleDiff): InfraModule {
   for (const edge of module.edges) {
     const cause = causes.get(edge.from);
     const user = byAddress.get(edge.to);
-    if (!cause || !user || edge.status === "removed" || !isManaged(user) || user.status === "removed" || user.risk) continue;
+    // A resource this pull request adds is created after the replacement: it has nothing to lose.
+    if (!cause || !user || edge.status === "removed" || !isManaged(user) || user.status === "removed" || user.status === "added" || user.risk) continue;
     const fate = cause.kind === "destroy" ? "destroyed" : "replaced";
     user.risk = {
       kind: "follows",

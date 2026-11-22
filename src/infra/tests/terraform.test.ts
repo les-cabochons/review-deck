@@ -4,7 +4,8 @@ import { dirname, join } from "node:path";
 import { before, test } from "node:test";
 import { layoutDiagram } from "../diagram.js";
 import { TERRAFORM_GRAMMAR } from "../grammar.js";
-import { summarize, TerraformReader } from "../terraform.js";
+import { summarize } from "../blocks.js";
+import { TerraformReader } from "../terraform.js";
 import type { InfraBlock, InfraModule } from "../types.js";
 
 const require = createRequire(import.meta.url);
@@ -244,4 +245,34 @@ resource "random_password" "key" {
   assert.equal(diagram.nodes.find((n) => n.block.address === "azurerm_storage_account.this")?.title, "Storage account");
   assert.deepEqual(diagram.edges.map((e) => [e.edge.status, e.label?.text]), [["added", "tags.key"]]);
   for (const node of diagram.nodes) assert.ok(node.x >= 0 && node.y >= 0 && node.x + node.width <= diagram.width && node.y + node.height <= diagram.height);
+});
+
+test("Given a reference that only gains [0] because its target gained count, then that alone is no replace", () => {
+  const assignment = (count: string, index: string) => `
+resource "azurerm_cognitive_account" "openai" {${count}
+  name = "oai-app"
+}
+
+resource "azurerm_role_assignment" "titles" {
+  scope                = azurerm_cognitive_account.openai${index}.id
+  role_definition_name = "Cognitive Services User"
+}`;
+  const module = diff(assignment("", ""), assignment("\n  count = var.enabled ? 1 : 0", "[0]"));
+  const titles = block(module, "azurerm_role_assignment.titles");
+  assert.equal(titles.status, "changed");
+  assert.equal(titles.risk, null);
+});
+
+test("Given a resource added by the same pull request that uses one likely to be replaced, then it is just added", () => {
+  const queue = `
+resource "azurerm_storage_queue" "jobs" {
+  name               = "jobs"
+  storage_account_id = azurerm_storage_account.this.id
+}
+`;
+  const module = diff(ACCOUNT, ACCOUNT.replace('"Standard"', '"Premium"') + queue);
+  assert.equal(block(module, "azurerm_storage_account.this").risk?.kind, "replace");
+  const added = block(module, "azurerm_storage_queue.jobs");
+  assert.equal(added.status, "added");
+  assert.equal(added.risk, null);
 });

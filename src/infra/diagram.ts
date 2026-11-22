@@ -1,5 +1,5 @@
 import { Graph, layout } from "@dagrejs/dagre";
-import { isChanged, isInfrastructure } from "./terraform.js";
+import { blockTitle, isChanged, isInfrastructure } from "./blocks.js";
 import type { InfraBlock, InfraEdge, InfraModule } from "./types.js";
 
 export interface DiagramNode {
@@ -32,19 +32,6 @@ export interface Diagram {
 }
 
 const isWiring = (block: InfraBlock) => block.kind === "variable" || block.kind === "local" || block.kind === "output";
-
-/** `azurerm_windows_function_app` reads as "Windows function app": the provider prefix says little in a diagram. */
-function typeTitle(type: string): string {
-  const words = type.split("_").slice(1).join(" ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function titles(block: InfraBlock): { title: string; subtitle: string | null } {
-  if (block.kind === "resource" && block.type) return { title: typeTitle(block.type), subtitle: block.address };
-  if (block.kind === "data" && block.type) return { title: `${typeTitle(block.type)} (data)`, subtitle: block.address };
-  if (block.kind === "module") return { title: `Module ${block.name}`, subtitle: block.address };
-  return { title: block.address, subtitle: null };
-}
 
 /**
  * What the diagram draws: every changed resource, data source and module, plus what the change involves around
@@ -91,7 +78,7 @@ function lay(blocks: InfraBlock[], edges: InfraEdge[], rankdir: "LR" | "TB"): Di
   graph.setDefaultEdgeLabel(() => ({}));
   const nodes = new Map<string, Omit<DiagramNode, "x" | "y">>();
   for (const block of blocks) {
-    const { title, subtitle } = titles(block);
+    const { title, subtitle } = blockTitle(block);
     const shape = isWiring(block) ? "chip" : "box";
     const width = shape === "chip" ? chipWidth(title) : boxWidth(title, subtitle ?? "");
     const height = shape === "chip" ? CHIP_HEIGHT : BOX_HEIGHT;
