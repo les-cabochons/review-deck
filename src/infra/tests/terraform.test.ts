@@ -374,3 +374,18 @@ test("Given a nested block that changes only its label, such as the backend, the
   assert.equal(settings.status, "changed");
   assert.deepEqual(settings.changes.map((c) => c.path).sort(), ["backend.local", "backend.s3"]);
 });
+
+test("Given one instance moved to a new address while a force-new argument changes, then the replace is still found", () => {
+  const counted = ACCOUNT.replace('name                     = "stapp"', 'count = 2\n  name = "stapp"');
+  const renamed = ACCOUNT.replace('"azurerm_storage_account" "this"', '"azurerm_storage_account" "main"').replace('"Standard"', '"Premium"');
+  const module = diff(counted, `${renamed}
+moved {
+  from = azurerm_storage_account.this[0]
+  to = azurerm_storage_account.main
+}
+`);
+  const moved = block(module, "azurerm_storage_account.main");
+  assert.equal(moved.risk?.kind, "replace");
+  // The instance address already accounts for count, so losing it isn't listed as a change.
+  assert.deepEqual(moved.changes, [{ path: "account_tier", before: '"Standard"', after: '"Premium"' }]);
+});

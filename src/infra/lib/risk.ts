@@ -111,6 +111,9 @@ function refactorings(sides: Map<string, BlockSides>) {
   };
 }
 
+/** `azurerm_x.y[0]` and `azurerm_x.y["key"]` are instances of the block `azurerm_x.y`. */
+const declaringBlock = (address: string) => address.replace(/\[(?:\d+|"[^"]*")\]$/, "");
+
 const isManaged = (block: InfraBlock) => block.kind === "resource" || block.kind === "module";
 
 /** Fills in `risk` and `notes` on the module's blocks. */
@@ -137,10 +140,13 @@ export function assessRisks({ module, sides }: ModuleDiff): InfraModule {
       const twin = removedResources.find((r) => r.type === block.type);
       if (move) {
         block.notes.push({ level: "info", text: `A moved block says this is ${code(move.from)} renamed, which can preserve the object through the address change.` });
-        const source = sides.get(move.from)?.base;
+        // A move may name one instance (`azurerm_x.old[0]`): compare the block that declares it.
+        const source = sides.get(declaringBlock(move.from))?.base;
         const destination = sides.get(block.address)?.head;
         if (source && destination && source.type === destination.type) {
-          block.changes = attributeChanges(source.attributes, destination.attributes);
+          // An instance address already accounts for count and for_each, so they aren't changes to the object.
+          const instance = declaringBlock(move.from) !== move.from || declaringBlock(move.to) !== move.to;
+          block.changes = attributeChanges(source.attributes, destination.attributes).filter((c) => !instance || (c.path !== "count" && c.path !== "for_each"));
           block.risk = replaceRisk(block, countMove);
         }
       } else if (twin) block.notes.push({ level: "warn", text: `Same type as the removed ${code(twin.address)}. If this is a rename, a moved block keeps the object; without one, Terraform may destroy it and create a new one.` });
