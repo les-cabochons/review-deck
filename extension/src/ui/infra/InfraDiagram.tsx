@@ -52,7 +52,7 @@ const InfraDiagram: React.FC<Props> = ({ module, compact, onSelect }) => {
           viewBox={`0 0 ${diagram.width} ${diagram.height}`}
           width={Math.ceil(diagram.width * scale)}
           height={Math.ceil(diagram.height * scale)}
-          role="img"
+          role={compact ? undefined : "group"}
           aria-label={`Diagram of the Terraform changes in ${module.dir || "the repository root"}`}
           aria-hidden={compact || undefined}
         >

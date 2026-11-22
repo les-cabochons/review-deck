@@ -15,7 +15,6 @@ import { MentionContext } from "./editor/MarkdownEditor";
 import type { FileView } from "./FilesTab";
 import { GroupingStatus } from "./GroupingStatus";
 import { useInfra } from "./infra/useInfra";
-import { riskCount } from "./infra/riskCount";
 import { OverviewTab } from "./OverviewTab";
 import { PrSkeleton } from "./PrSkeleton";
 import { PrMenu, type PrMenuLinks } from "./PrMenu";
@@ -353,7 +352,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                   <Tab id="files" name="Files" badgeCount={review?.result.files.length} />
                   <Tab id="commits" name="Commits" badgeCount={data.commits.length || undefined} />
                   {/* Only for a comparison that changes Terraform files, or a link straight to the tab. The badge counts what may be destroyed or replaced. */}
-                  {(infra.present || tab === "infra") && <Tab id="infra" name="Infra" badgeCount={infra.reading ? riskCount(infra.reading.modules) || undefined : undefined} />}
+                  {(infra.present || tab === "infra") && <Tab id="infra" name="Infra" badgeCount={infra.reading?.riskCount || undefined} />}
                 </TabBar>
                 <main className={cx("tab-content", `tab-${tab}`)}>
                   {tab === "overview" && (

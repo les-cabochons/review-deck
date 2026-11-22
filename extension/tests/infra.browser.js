@@ -1,7 +1,7 @@
 // Run through playwright-cli run-code --filename=extension/tests/infra.browser.js, with npm run ext:dev running, the
 // demo data built (npm run ext:demo) and the write harness built (npm run ext:test:browser). Opens demo PR !472,
 // which changes Terraform, and checks the Infrastructure card in Overview, the Infra tab it opens (its banner, the
-// diagram, the list riskiest first, a click on a box) and that a pull request without Terraform shows neither.
+// diagram, the list riskiest first, keyboard activation of a box) and that a pull request without Terraform shows neither.
 async page => {
   await page.addInitScript(() => {
     const wait = async (condition, message) => {
@@ -59,8 +59,14 @@ async page => {
     const drawn = [...document.querySelectorAll('.infra-tab .infra-node')].map(n => n.querySelector('title').textContent);
     assert(drawn.some(t => t.startsWith('azurerm_storage_account.uploads: replace likely')), `The replaced account is not drawn: ${drawn}`);
     assert(!drawn.some(t => t.startsWith('azurerm_resource_group.this')), 'An unrelated neighbour is drawn');
-    document.querySelector('.infra-tab .infra-node.tone-replace').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await wait(() => document.querySelector('.infra-row.flash')?.id === 'infra-0-azurerm_storage_account.uploads', 'A click on a box did not point at its row');
+  });
+
+  await page.getByRole('button', { name: 'azurerm_storage_account.uploads, replace likely. Show details.' }).press('Enter');
+  await page.evaluate(async () => {
+    const { wait, assert, text } = check;
+    const row = 'infra-0-azurerm_storage_account.uploads';
+    await wait(() => document.querySelector('.infra-row.flash')?.id === row, 'Activating a box did not point at its row');
+    assert(document.activeElement?.id === row, 'Activating a box did not move keyboard focus to its row');
 
     document.querySelector('.infra-source .link-button').click();
     await wait(() => document.querySelectorAll('.infra-source li').length > 0, 'How this works did not open');
@@ -75,7 +81,8 @@ async page => {
     await wait(() => document.querySelector('.summary-groups'), 'The pull request without Terraform did not load');
     assert(!document.querySelector('.infra-card'), 'A pull request without Terraform shows the Infrastructure card');
     assert(!tabs().some(t => t.startsWith('Infra')), `A pull request without Terraform has an Infra tab: ${tabs()}`);
-    assert(!performance.getEntriesByType('resource').some(r => r.name.includes('tree-sitter-hcl')), 'The Terraform grammar loaded for a pull request without Terraform');
-    return 'infra view: card, tab, risk order, sources, diagram click, and no view without Terraform checked';
+    const infraAssets = performance.getEntriesByType('resource').filter(r => /\/(?:InfraCard-|InfraDiagram-|InfraTab-|infra-|terraform-|tree-sitter-hcl)/.test(new URL(r.name).pathname));
+    assert(infraAssets.length === 0, `Infra assets loaded for a pull request without Terraform: ${infraAssets.map(r => r.name)}`);
+    return 'infra view: card, tab, risk order, sources, diagram keyboard activation, and no Infra download without Terraform checked';
   });
 }

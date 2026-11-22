@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { ReviewModel } from "../../review/engine";
-import { type InfraReading, readInfra, touchesTerraform } from "../../review/infra";
+import { isTerraformPath } from "../../../../src/infra/grammar";
+import type { InfraReading } from "../../review/infra";
 
 export interface InfraState {
   /** The comparison changes Terraform files: the page shows the Infra tab and the Overview card. */
@@ -18,13 +19,13 @@ export function useInfra(review: ReviewModel | null): InfraState {
   const contents = review?.contents;
   const [state, setState] = React.useState<InfraState>(ABSENT);
   React.useEffect(() => {
-    if (!changes || !contents || !touchesTerraform(changes)) {
+    if (!contents || !changes?.some(({ path, originalPath }) => isTerraformPath(path) || (originalPath && isTerraformPath(originalPath)))) {
       setState(ABSENT);
       return;
     }
     let cancelled = false;
     setState({ present: true, reading: null, error: null });
-    readInfra(changes, contents).then(
+    import("../../review/infra").then(({ readInfra }) => readInfra(changes, contents)).then(
       (reading) => !cancelled && setState({ present: true, reading, error: null }),
       (e: Error) => {
         console.warn("[review-deck] could not read the Terraform changes", e);

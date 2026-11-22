@@ -74,7 +74,9 @@ const ModuleSection: React.FC<{ module: InfraModule; index: number }> = ({ modul
   const rowId = (address: string) => `infra-${index}-${address}`;
   const [flash, setFlash] = React.useState<string | null>(null);
   const select = (address: string) => {
-    document.getElementById(rowId(address))?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const row = document.getElementById(rowId(address));
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: "center" });
     setFlash(address);
   };
   React.useEffect(() => {
@@ -150,7 +152,7 @@ const BlockRow: React.FC<{ block: InfraBlock; id: string; flash: boolean }> = ({
   const statement = block.kind === "moved" || block.kind === "removed" || block.kind === "import";
   const shown = all ? block.changes : block.changes.slice(0, MAX_ATTRIBUTES);
   return (
-    <li id={id} className={cx("infra-row", `tone-${tone}`, flash && "flash")}>
+    <li id={id} tabIndex={-1} className={cx("infra-row", `tone-${tone}`, flash && "flash")}>
       <div className="infra-row-head">
         <span className="infra-symbol" aria-hidden="true">
           {symbol}
