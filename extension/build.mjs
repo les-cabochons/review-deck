@@ -26,7 +26,9 @@ const assets = join(here, "assets");
 mkdirSync(assets, { recursive: true });
 cpSync(require.resolve("web-tree-sitter/web-tree-sitter.wasm"), join(assets, "web-tree-sitter.wasm"));
 const { GRAMMARS } = await import("../src/parse/grammars.ts");
-for (const g of Object.values(GRAMMARS)) {
+// The Infra view's Terraform grammar ships the same way (src/infra/grammar.ts).
+const { TERRAFORM_GRAMMAR } = await import("../src/infra/grammar.ts");
+for (const g of [...Object.values(GRAMMARS), TERRAFORM_GRAMMAR]) {
   const pkg = dirname(require.resolve(`${g.package}/package.json`));
   cpSync(join(pkg, g.file), join(assets, g.file));
 }

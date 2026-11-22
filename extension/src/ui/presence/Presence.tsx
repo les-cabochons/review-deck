@@ -5,7 +5,7 @@ import { readLocal, writeLocal } from "../preferences";
 import { storedDrafts } from "../review/PendingReview";
 import { ago, Avatar, cx, plural } from "../util";
 
-const TAB_NAMES: Record<PresenceTab, string> = { overview: "Overview", files: "Files", commits: "Commits" };
+const TAB_NAMES: Record<PresenceTab, string> = { overview: "Overview", files: "Files", commits: "Commits", infra: "Infra" };
 
 const Context = React.createContext<Presence[]>([]);
 

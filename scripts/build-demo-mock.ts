@@ -12,7 +12,8 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { createTwoFilesPatch } from "diff";
 import type { PrListSnapshot, PrSummaryJson } from "../extension/src/data/listSnapshot.js";
 import type { IdentityJson, PrSnapshot, ThreadJson } from "../extension/src/data/snapshot.js";
 import { FIXTURES, ROOT } from "../src/node/fixtures.js";
@@ -44,6 +45,7 @@ const TEAM_REVIEWER = { id: TEAM.id, displayName: `[Storefront]\\${TEAM.name}`, 
 
 /** A demo PR backed by a fixture, so it can be opened. */
 interface Openable {
+  /** A folder of fixtures/prs, or `demo/<name>` for a demo-only pull request in fixtures/demo. */
   fixture: string;
   id: number;
   title: string;
@@ -102,6 +104,37 @@ const OPENABLE: Openable[] = [
         at: at("src/http/client.ts", "baseUrl must be an http(s) URL"),
       },
       { by: MARCUS, text: "Nice, the kill-switch is exactly what we asked for in the last incident review. Approving with one suggestion above." },
+    ],
+  },
+  {
+    fixture: "demo/infra-pr",
+    id: 472,
+    title: "Resize avatars from a queue, on premium storage",
+    description: [
+      "## Problem",
+      "",
+      "Avatars are served as uploaded, so a 6 MB photo is downloaded for a 64 px thumbnail. Reads from the uploads account also slow down at peak.",
+      "",
+      "## Change",
+      "",
+      "- **Resize queue.** Each upload puts a message on a new `avatar-resize` queue, and the function app resizes it to the widths in `avatar_sizes`.",
+      "- **Premium storage.** The uploads account moves to the Premium tier.",
+      "- **Audit table.** Removed: the audit trail now goes to the platform team's log workspace.",
+      "- Node 22 for the function app.",
+    ].join("\n"),
+    author: DANIEL,
+    source: "daniel/avatar-resize",
+    target: "main",
+    reviewers: [r(ME, 0, true), r(SOFIA, 0)],
+    labels: ["infra", "size:M"],
+    hours: 2,
+    checks: "passing",
+    threads: (at) => [
+      {
+        by: SOFIA,
+        text: "Does the tier change keep the avatars that are already there?",
+        at: at("infra/main.tf", 'account_tier             = "Premium"'),
+      },
     ],
   },
   {
@@ -246,8 +279,26 @@ function fixtureFiles(fixture: string) {
   return { paths: [...paths], before, after, renames: Object.fromEntries(spec.renames.map((x) => [`/${x.to}`, `/${x.from}`])), diff };
 }
 
+/**
+ * A demo-only pull request (fixtures/demo/<name>): `base/` and `head/` hold both sides of the files it changes.
+ * It is not a grouping fixture, so it has no pr.json, patch or truth.
+ */
+function demoFiles(name: string): ReturnType<typeof fixtureFiles> {
+  const dir = join(FIXTURES, "demo", name);
+  const read = (p: string) => (existsSync(p) ? readFileSync(p, "utf8") : null);
+  const before = (p: string) => read(join(dir, "base", p));
+  const after = (p: string) => read(join(dir, "head", p));
+  const list = (side: string) =>
+    (readdirSync(join(dir, side), { recursive: true, withFileTypes: true }) as import("node:fs").Dirent[])
+      .filter((entry) => entry.isFile())
+      .map((entry) => relative(join(dir, side), join(entry.parentPath, entry.name)).replaceAll("\\", "/"));
+  const paths = [...new Set([...list("base"), ...list("head")])].sort();
+  const diff = paths.map((p) => createTwoFilesPatch(`a/${p}`, `b/${p}`, before(p) ?? "", after(p) ?? "")).join("");
+  return { paths, before, after, renames: {}, diff };
+}
+
 function snapshot(pr: Openable): { snap: PrSnapshot; size: PrSummaryJson["size"]; comments: number } {
-  const files = fixtureFiles(pr.fixture);
+  const files = pr.fixture.startsWith("demo/") ? demoFiles(pr.fixture.slice("demo/".length)) : fixtureFiles(pr.fixture);
   const blobs: Record<string, string> = {};
   const tree = (read: (p: string) => string | null) => {
     const out: Record<string, string> = {};

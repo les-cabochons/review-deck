@@ -52,3 +52,18 @@ A guide another app wrote for Review Deck to show, today only Ajour (`madeWith.a
 **Summary**:
 What a published guide says above the guide: the problem the pull request fixes, its kinds of change, breaking changes, risky areas, test coverage and leftovers.
 _Avoid_: Description (that's the author's text on the pull request)
+
+### Infrastructure
+
+**Infra view**:
+The Infra tab and the Overview's Infrastructure card: what a pull request comparison changes in Terraform or OpenTofu, read from its changed files. Never from a plan or the state.
+
+**Block**:
+One addressable piece of Terraform configuration: a resource, data source, module, variable, local or output. Compared across the two sides of a comparison by its address (`azurerm_storage_account.uploads`).
+
+**Risk**:
+What the Infra view says may happen to a resource beyond an update in place: a **destroy**, a **replace** (destroyed and created again), or **may follow** (it uses a resource that may be destroyed or replaced). It is a reading of the code, with a certainty (likely or possible) and a reason.
+_Avoid_: Plan, action (those are what `terraform plan` reports, which the Infra view doesn't have)
+
+**Neighbour**:
+An unchanged resource drawn next to a changed one because the change involves it. One declared in a file the pull request doesn't change is known by its address alone.

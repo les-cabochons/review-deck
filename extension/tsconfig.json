@@ -8,8 +8,9 @@
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "noEmit": true,
     "types": []
   },
-  "include": ["src", "../src/stack", "../src/core", "../src/diff", "../src/parse", "../src/analyze", "../src/score", "../src/cluster", "../src/order", "../src/title", "../src/pipeline.ts"]
+  "include": ["src", "../src/stack", "../src/core", "../src/diff", "../src/parse", "../src/analyze", "../src/score", "../src/cluster", "../src/order", "../src/title", "../src/infra/*.ts", "../src/infra/lib", "../src/pipeline.ts"]
 }

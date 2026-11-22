@@ -20,7 +20,7 @@ export const DRAFTS_KEPT_MS = 30 * 86_400_000;
 /** Records one read deletes at most, so a backlog of leftovers is cleared over a few reads, not in a burst of calls. */
 export const SWEEP_MAX = 10;
 
-export type PresenceTab = "overview" | "files" | "commits";
+export type PresenceTab = "overview" | "files" | "commits" | "infra";
 
 /** One browser's record for one pull request, as its page saves it. */
 export interface PresenceRecord {
@@ -67,7 +67,7 @@ export interface PresenceStore {
   list(): Promise<unknown[]>;
 }
 
-const TABS: readonly string[] = ["overview", "files", "commits"] satisfies PresenceTab[];
+const TABS: readonly string[] = ["overview", "files", "commits", "infra"] satisfies PresenceTab[];
 
 /**
  * The people on each pull request besides `me`, by PR id: those here now, and those away with a review in progress.

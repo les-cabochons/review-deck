@@ -24,6 +24,10 @@ evaluate *args:
 package:
     npm run ext:package
 
+# Regenerates the Infra view's list of azurerm arguments that force a new resource, from the provider's latest release docs.
+force-new-list *version:
+    npx tsx scripts/build-force-new.ts {{version}}
+
 # Backend function (backend/: titles + embeddings) on Azure, via infra/. Needs infra/terraform.tfvars and `az login`.
 deploy-backend:
     npm run backend:build

@@ -1,0 +1,94 @@
+# Keeps the Infra view's list of azurerm arguments that force a new resource current (docs/infra-view.md).
+# Every week, it rebuilds the list from the documentation of the provider's latest release and, if anything
+# changed, opens a pull request, or updates the one still open. It never pushes to main: main publishes the extension.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" (Settings > Actions > General).
+# A pull request opened with the workflow's own token doesn't start the Extension workflow, so this one runs the
+# tests itself first. If the Extension workflow is enabled, close and reopen the pull request to run its checks.
+name: Force-new list
+
+on:
+  schedule:
+    # Mondays at 09:00 UTC.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  LIST: src/infra/lib/forceNew/azurerm.json
+  BRANCH: chore/azurerm-force-new-list
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # A manual run during the scheduled one would push the same branch twice.
+    concurrency: force-new-list
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Fails, and leaves the list as it is, if the new one lost more than a tenth of its arguments: the docs'
+      # wording has probably changed, and the script needs a look.
+      - name: Rebuild the list from the latest release
+        # Not piped into tee: a step's shell has no pipefail, and the pipe would hide the script's failure.
+        run: |
+          npx tsx scripts/build-force-new.ts > "$RUNNER_TEMP/summary.txt"
+          cat "$RUNNER_TEMP/summary.txt"
+      - name: See if it changed
+        id: list
+        run: |
+          if git diff --quiet -- "$LIST"; then
+            echo "The list is current."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$(node -p "require('./$LIST').version")" >> "$GITHUB_OUTPUT"
+          fi
+      # The risk rules' tests read the real list: an argument they rely on that the new docs dropped fails here,
+      # before a pull request exists.
+      - name: Test the risk rules against the new list
+        if: steps.list.outputs.changed == 'true'
+        run: npm test
+      - name: Open or update the pull request
+        if: steps.list.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.list.outputs.version }}
+        run: |
+          title="chore(infra): update the azurerm force-new list to $VERSION"
+          {
+            echo "Rebuilt by the Force-new list workflow from the azurerm $VERSION documentation (\`scripts/build-force-new.ts\`)."
+            echo "The Infra view uses this list to say a resource may be replaced."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/summary.txt"
+            echo '```'
+            echo
+            echo "The workflow ran \`npm test\` on it. If the Extension workflow is enabled, close and reopen this pull request to run its checks."
+          } > "$RUNNER_TEMP/body.md"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if git fetch --quiet origin "$BRANCH" 2>/dev/null && git diff --quiet FETCH_HEAD -- "$LIST"; then
+            if [ -n "$pr" ]; then
+              echo "The open pull request already has this list."
+              exit 0
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$BRANCH"
+            git commit -m "$title" -- "$LIST"
+            # One bot-owned branch, replaced when the generated list changes.
+            git push --force origin "$BRANCH"
+          fi
+          # The list may already be on the branch after an earlier PR creation failed.
+          if [ -z "$pr" ]; then
+            gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          fi

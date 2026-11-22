@@ -4,6 +4,7 @@ import { isLineAnchor, type PrOverview, type Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 import { groupColor } from "./groupColors";
 import { GuideSummaryCard } from "./GuideSummary";
+import type { InfraState } from "./infra/useInfra";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
@@ -11,9 +12,14 @@ import { OthersOnPr } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
 import { Avatar, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 
+const InfraCard = React.lazy(() => import("./infra/InfraCard").then(({ InfraCard }) => ({ default: InfraCard })));
+
 interface Props {
   data: PrOverview;
   review: ReviewModel | null;
+  /** The comparison's Terraform changes, summarized under the description. */
+  infra: InfraState;
+  onOpenInfra: () => void;
   /** The analysis is running; until then the files load, and a saved guided view needs nothing more. */
   building: boolean;
   onOpenGroup: (groupId: string) => void;
@@ -22,13 +28,18 @@ interface Props {
   sidebarTop?: React.ReactNode;
 }
 
-export const OverviewTab: React.FC<Props> = ({ data, review, building, onOpenGroup, onOpenFiles, sidebarTop }) => {
+export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra, building, onOpenGroup, onOpenFiles, sidebarTop }) => {
   const { actions } = useReviewActions();
   return (
     <div className="overview">
       <div className="overview-main">
         {review?.analyzed && <GuideSummaryCard review={review} onOpenGroup={onOpenGroup} />}
         <DescriptionCard data={data} />
+        {infra.present && (
+          <React.Suspense fallback={null}>
+            <InfraCard infra={infra} onOpen={onOpenInfra} />
+          </React.Suspense>
+        )}
         <Timeline data={data} onOpenFiles={onOpenFiles} />
         <CommentComposer label="Add a comment" onSave={(content) => actions.createThread({ content })} />
       </div>

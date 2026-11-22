@@ -271,6 +271,11 @@
       "path": "assets/tree-sitter-cpp.wasm",
       "addressable": true,
       "contentType": "application/wasm"
+    },
+    {
+      "path": "assets/tree-sitter-hcl.wasm",
+      "addressable": true,
+      "contentType": "application/wasm"
     }
   ]
 }

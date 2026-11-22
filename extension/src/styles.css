@@ -4650,3 +4650,486 @@ span.artifact-toggle {
 .feature-projects .bolt-toggle-button-container {
   padding: 0;
 }
+
+/* ---------- infra view: the Overview's Infrastructure card and the Infra tab (src/ui/infra) ---------- */
+/* Each state sets --tone. Text takes it mixed with the text colour, which keeps it readable on a tint in both themes. */
+.tone-destroy,
+.tone-replace,
+.tone-follows {
+  --tone: var(--err);
+}
+.tone-changed {
+  --tone: var(--warn);
+}
+.tone-added {
+  --tone: var(--ok);
+}
+.tone-removed,
+.tone-docs,
+.tone-same {
+  --tone: var(--fg2);
+}
+/* Set where --tone is: a custom property is computed on the element that declares it, then inherited as a value. */
+.infra-card [class*="tone-"],
+.infra-tab [class*="tone-"] {
+  --tone-text: color-mix(in srgb, var(--tone, var(--fg2)) 62%, var(--fg));
+  --tone-tint: color-mix(in srgb, var(--tone, var(--fg2)) 12%, transparent);
+}
+.infra-badge {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--tone, var(--fg2)) 62%, var(--fg));
+  background: color-mix(in srgb, var(--tone, var(--fg2)) 12%, transparent);
+}
+/* A guess about a dependent: outlined, not filled. */
+.infra-badge.tone-follows {
+  background: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 55%, transparent);
+}
+.infra-badge.source {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  color: var(--fg2);
+  font-weight: 400;
+  cursor: help;
+}
+.infra-summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* The card in Overview */
+.infra-card {
+  margin: 12px 0 4px;
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+}
+.infra-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.infra-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.infra-card-head .link-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.infra-card-note {
+  margin: 0;
+  padding: 10px 14px;
+}
+.infra-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 14px;
+  align-items: start;
+}
+.infra-card-thumb {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+  min-height: 60px;
+}
+.infra-card-thumb:hover {
+  border-color: var(--line-strong);
+}
+.infra-card-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.infra-card-rows li {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  overflow-wrap: anywhere;
+}
+.infra-card-rows .infra-badge {
+  justify-self: start;
+}
+.infra-card-rows code,
+.infra-row-name code {
+  font-size: 12px;
+  color: var(--fg2);
+}
+.infra-card-why {
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.infra-card-foot {
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+
+/* The tab */
+.infra-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 13px;
+}
+.infra-source {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card-bg, var(--surface)));
+}
+.infra-source-line {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.infra-source-line .link-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.infra-source ul {
+  margin: 8px 0 2px;
+  padding-left: 18px;
+}
+.infra-source li {
+  margin: 4px 0;
+}
+.infra-source p {
+  margin: 6px 0 0;
+}
+.infra-module {
+  padding: 12px 16px 16px;
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+  box-shadow: var(--shadow-card);
+}
+.infra-module-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.infra-module-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.infra-parse-error {
+  margin: 0 0 8px;
+}
+
+/* The diagram */
+.infra-diagram {
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  --diagram-bg: var(--surface-2);
+}
+.infra-diagram.compact {
+  overflow: hidden;
+  border: 0;
+  background: none;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.infra-diagram svg {
+  display: block;
+}
+.infra-diagram-empty {
+  margin: 0;
+  padding: 12px;
+}
+.infra-node rect {
+  fill: var(--card-bg, var(--surface));
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.infra-node-title {
+  fill: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.infra-node.chip .infra-node-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.infra-node-address {
+  fill: var(--fg2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+.infra-node.tone-same .infra-node-title {
+  fill: var(--fg2);
+  font-weight: 400;
+}
+.infra-node:not(.tone-same) rect {
+  fill: color-mix(in srgb, var(--tone) 12%, var(--card-bg, var(--surface)));
+  stroke: var(--tone);
+  stroke-width: 2;
+}
+/* Going away: dashed. Replaced: the heaviest line. A guess about a dependent: dotted. */
+.infra-node.tone-destroy rect,
+.infra-node.tone-removed rect {
+  stroke-dasharray: 7 4;
+}
+.infra-node.tone-replace rect {
+  stroke-width: 3;
+}
+.infra-node.tone-follows rect {
+  stroke-dasharray: 2 3;
+}
+.infra-node.selectable {
+  cursor: pointer;
+}
+.infra-node.selectable:focus {
+  outline: none;
+}
+.infra-node.selectable:focus-visible rect {
+  stroke: var(--focus-border-color, var(--accent));
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.infra-edge path {
+  fill: none;
+  stroke: var(--fg3);
+  stroke-width: 1.2;
+}
+.infra-edge.added path {
+  stroke: var(--ok);
+  stroke-width: 2;
+}
+.infra-edge.removed path {
+  stroke: var(--err);
+  stroke-width: 2;
+  stroke-dasharray: 7 4;
+}
+.infra-edge.touched path {
+  stroke: var(--warn);
+  stroke-width: 2;
+}
+.infra-arrowhead {
+  fill: var(--fg3);
+}
+.infra-arrowhead.added {
+  fill: var(--ok);
+}
+.infra-arrowhead.removed {
+  fill: var(--err);
+}
+.infra-arrowhead.touched {
+  fill: var(--warn);
+}
+.infra-edge text {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--fg);
+  paint-order: stroke;
+  stroke: var(--diagram-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.infra-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+/* The list */
+.infra-list h4 {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg2);
+}
+.infra-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.infra-row {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--tone, var(--line-strong));
+  border-radius: var(--radius);
+  scroll-margin-top: calc(var(--pr-tabs-h, 48px) + 60px);
+}
+.infra-row.tone-docs {
+  opacity: 0.75;
+}
+.infra-row.flash {
+  box-shadow: 0 0 0 2px var(--focus-border-color, var(--accent));
+}
+.infra-row-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.infra-symbol {
+  flex: none;
+  min-width: 30px;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--tone-text);
+}
+.infra-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.infra-row-name code.strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.infra-row-file {
+  margin-left: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.infra-row-badges {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.infra-reason,
+.infra-note {
+  margin: 6px 0 0 38px;
+  padding: 5px 9px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+.infra-reason {
+  background: var(--tone-tint);
+  color: var(--tone-text);
+}
+.infra-note.warn {
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  color: color-mix(in srgb, var(--warn) 62%, var(--fg));
+}
+.infra-note.info {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.infra-attributes {
+  width: calc(100% - 38px);
+  margin: 6px 0 0 38px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.infra-attributes th {
+  padding: 2px 8px 2px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--fg2);
+}
+.infra-attributes th:first-child {
+  width: 30%;
+}
+.infra-attributes td {
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.infra-attributes tr:last-child td {
+  border-bottom: 0;
+}
+.infra-attributes td.before {
+  color: color-mix(in srgb, var(--err) 62%, var(--fg));
+}
+.infra-attributes td.after {
+  color: color-mix(in srgb, var(--ok) 62%, var(--fg));
+}
+.infra-attributes td.none {
+  color: var(--fg3);
+  font-family: "Segoe UI", sans-serif;
+  font-style: italic;
+}
+/* The attributes a replace reading rests on. */
+.infra-attributes tr.at-risk td:first-child {
+  font-weight: 700;
+  color: var(--tone-text);
+}
+.infra-more {
+  margin: 6px 0 0 38px;
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .infra-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .infra-card-rows li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .infra-source-line,
+  .infra-row-head {
+    flex-wrap: wrap;
+  }
+  .infra-row-file {
+    display: block;
+    margin-left: 0;
+    white-space: normal;
+  }
+  /* The name takes the row's first line, and the badges go under it. */
+  .infra-row-name {
+    flex-basis: calc(100% - 46px);
+  }
+  .infra-row-badges {
+    flex-wrap: wrap;
+  }
+  .infra-reason,
+  .infra-note,
+  .infra-more {
+    margin-left: 0;
+  }
+  .infra-attributes {
+    width: 100%;
+    margin-left: 0;
+  }
+  .infra-module {
+    padding: 10px 12px 12px;
+  }
+}
