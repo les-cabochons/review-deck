@@ -2,19 +2,20 @@ import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { CHECK_IN_MS, type Presence, sweep, whoIsOn } from "../../data/presence";
 
+const NO_ONE: ReadonlyMap<number, Presence[]> = new Map();
+
 /**
  * Who is on each listed pull request, by PR id, for the hub's rows. One read per project of `projectIds` (each holds
  * all its PRs' records, data/presence.ts), every CHECK_IN_MS while `active` and the tab is visible. The hub only
- * reads: it isn't on any PR. A project whose read fails shows no one until a read succeeds, and becoming active
- * again starts from no one.
+ * reads: it isn't on any PR. A project whose read fails shows no one until a read succeeds. Not active, it shows no
+ * one, and becoming active again starts from no one: those of an earlier visit may have left meanwhile.
  */
-export function useHubPresence(host: AppHost, projectIds: string[], active: boolean): Map<number, Presence[]> {
+export function useHubPresence(host: AppHost, projectIds: string[], active: boolean): ReadonlyMap<number, Presence[]> {
   const [people, setPeople] = React.useState(() => new Map<number, Presence[]>());
   const key = [...new Set(projectIds)].sort().join(",");
 
   React.useEffect(() => {
     if (!active || !key) return;
-    // Not the people of an earlier visit: they may have left meanwhile.
     setPeople(new Map());
     let stopped = false;
     let busy = false;
@@ -55,5 +56,5 @@ export function useHubPresence(host: AppHost, projectIds: string[], active: bool
     };
   }, [host, key, active]);
 
-  return people;
+  return active ? people : NO_ONE;
 }

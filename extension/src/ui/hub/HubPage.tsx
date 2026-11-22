@@ -66,10 +66,13 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   const [listLoading, setListLoading] = React.useState(false);
   /** A list landed in this visit. Who is on the rows is read only then, behind the hub's own first REST calls. */
   const [listedNow, setListedNow] = React.useState(false);
-  // A PR page covering the hub ends the visit: coming back, the hub waits for its new list again.
+  // A PR page covering the hub ends the visit: coming back, the hub waits for its new list again. A list landing while
+  // covered doesn't count (`activeNow`): the one asked for on coming back does.
   React.useEffect(() => {
     if (!active) setListedNow(false);
   }, [active]);
+  const activeNow = React.useRef(active);
+  activeNow.current = active;
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   // The saved choice, or on a first visit the Repos breadcrumb's repository. Null until the list source loads.
@@ -188,7 +191,7 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
         listLoaded(rows, everything);
         setPrs(rows);
         setListed({ selection: selectionKey, at: requestedAt });
-        setListedNow(true);
+        if (activeNow.current) setListedNow(true);
       })
       .catch((e: Error) => load === latestLoad.current && setError(e.message))
       .finally(() => load === latestLoad.current && setListLoading(false));
