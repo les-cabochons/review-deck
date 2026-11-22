@@ -4,7 +4,7 @@
 #
 # Needs "Allow GitHub Actions to create and approve pull requests" (Settings > Actions > General).
 # A pull request opened with the workflow's own token doesn't start the Extension workflow, so this one runs the
-# tests itself first. To get the full checks on it, close and reopen the pull request.
+# tests itself first. If the Extension workflow is enabled, close and reopen the pull request to run its checks.
 name: Force-new list
 
 on:
@@ -70,21 +70,25 @@ jobs:
             cat "$RUNNER_TEMP/summary.txt"
             echo '```'
             echo
-            echo "The workflow ran \`npm test\` on it. Close and reopen this pull request to run the full checks."
+            echo "The workflow ran \`npm test\` on it. If the Extension workflow is enabled, close and reopen this pull request to run its checks."
           } > "$RUNNER_TEMP/body.md"
-          # Still open from an earlier run with this very list: nothing to push.
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if git fetch --quiet origin "$BRANCH" 2>/dev/null && git diff --quiet FETCH_HEAD -- "$LIST"; then
-            echo "The open pull request already has this list."
-            exit 0
+            if [ -n "$pr" ]; then
+              echo "The open pull request already has this list."
+              exit 0
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$BRANCH"
+            git commit -m "$title" -- "$LIST"
+            # One bot-owned branch, replaced when the generated list changes.
+            git push --force origin "$BRANCH"
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$BRANCH"
-          git commit -m "$title" -- "$LIST"
-          # One branch, replaced on every run: a newer release updates the open pull request instead of adding one.
-          git push --force origin "$BRANCH"
-          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
+          # The list may already be on the branch after an earlier PR creation failed.
+          if [ -z "$pr" ]; then
             gh pr create --head "$BRANCH" --base "${{ github.event.repository.default_branch }}" --title "$title" --body-file "$RUNNER_TEMP/body.md"
           else
-            gh pr edit "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body.md"
           fi
