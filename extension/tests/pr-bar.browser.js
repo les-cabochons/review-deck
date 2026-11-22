@@ -1,7 +1,7 @@
 // Run through playwright-cli run-code --filename=extension/tests/pr-bar.browser.js.
 // Uses the demo data (`npm run ext:demo`). Scrolled down, the compact PR header stays at the top with the title and
-// the review controls, and nothing else that sticks (tab bar, files toolbar, navigator) or a concern a jump lands on
-// hides under it. Its Review button edits the same review as the full header's.
+// the review controls, and nothing else that sticks (the tab row with the files toolbar in it, the navigator) or a
+// concern a jump lands on hides under it. Its Review button edits the same review as the full header's.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -43,14 +43,35 @@ async page => {
   assert(await f.locator('.pr-bar .review-button button').isVisible(), 'Review is missing from the compact header');
   assert(await f.locator('.pr-bar .vote-button').isVisible(), 'Approve is missing from the compact header');
 
-  // Nothing else that sticks hides under it.
+  // Nothing else that sticks hides under it. The files toolbar sits in the tab row, so one row sticks there.
+  const tabRow = await box('.pr-tabs');
+  assert(tabRow.top >= bar.bottom - 1, `The tab row (${tabRow.top}px) sticks under the compact header (${bar.bottom}px)`);
   const toolbar = await box('.files-toolbar');
-  assert(toolbar.top >= bar.bottom, `The files toolbar (${toolbar.top}px) sticks under the compact header (${bar.bottom}px)`);
+  assert(toolbar.top >= tabRow.top && toolbar.bottom <= tabRow.bottom, `The files toolbar (${toolbar.top}px to ${toolbar.bottom}px) is not in the tab row (${tabRow.top}px to ${tabRow.bottom}px)`);
   const navigator = await box('.navigator');
-  assert(navigator.top >= toolbar.bottom - 1, `The navigator (${navigator.top}px) sticks under the files toolbar (${toolbar.bottom}px)`);
-  result.stuck = { bar: bar.bottom, toolbar: toolbar.bottom, navigator: navigator.top };
+  assert(navigator.top >= tabRow.bottom - 1, `The navigator (${navigator.top}px) sticks under the tab row (${tabRow.bottom}px)`);
+  result.stuck = { bar: bar.bottom, tabRow: tabRow.bottom, navigator: navigator.top };
 
-  // A jump to a concern lands below the toolbar, not behind the two bars.
+  // The tab row's bottom border is its edge from one side of the page to the other: it used to show only in the
+  // page's side padding, with the toolbar over the rest of it. The tabs stay in reach on the Files tab.
+  const onEdge = await f.locator('.pr-tabs').evaluate(row => {
+    const y = row.getBoundingClientRect().bottom - 0.75; // inside the 1px border
+    return [4, innerWidth / 2, innerWidth - 4].map(x => document.elementFromPoint(x, y) === row);
+  });
+  assert(onEdge.every(Boolean), `Something covers the tab row's bottom border (left, middle, right): ${onEdge}`);
+  const tabInReach = await f.getByRole('tab', { name: 'Overview' }).evaluate(tab => {
+    const r = tab.getBoundingClientRect();
+    return tab.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  });
+  assert(tabInReach, 'Something covers the Overview tab while the Files tab is scrolled');
+  const barEdge = await f.locator('.pr-bar').evaluate(el => {
+    const s = getComputedStyle(el);
+    return { shadow: s.boxShadow, border: s.borderBottomColor };
+  });
+  assert(barEdge.shadow === 'none', `The compact header casts a shadow on the tab row: ${barEdge.shadow}`);
+  assert(/, 0\)$/.test(barEdge.border), `The compact header draws a line between itself and the tab row: ${barEdge.border}`);
+
+  // A jump to a concern lands below the tab row, not behind the two bars.
   await scrollTo(0);
   await pause();
   // The second concern: the last one may sit lower only because the page ends.
@@ -58,10 +79,30 @@ async page => {
   await page.waitForTimeout(600);
   const id = await f.locator('.group-section').nth(1).getAttribute('id');
   const landed = await box(`[id="${id}"]`);
-  const toolbarNow = await box('.files-toolbar');
-  assert(landed.top >= toolbarNow.bottom - 1, `The concern a jump landed on (${landed.top}px) is behind the toolbar (${toolbarNow.bottom}px)`);
-  assert(landed.top <= toolbarNow.bottom + 16, `The jump stopped short: the concern is at ${landed.top}px, the toolbar ends at ${toolbarNow.bottom}px`);
-  result.jump = { concern: landed.top, toolbar: toolbarNow.bottom };
+  const tabRowNow = await box('.pr-tabs');
+  assert(landed.top >= tabRowNow.bottom - 1, `The concern a jump landed on (${landed.top}px) is behind the tab row (${tabRowNow.bottom}px)`);
+  assert(landed.top <= tabRowNow.bottom + 16, `The jump stopped short: the concern is at ${landed.top}px, the tab row ends at ${tabRowNow.bottom}px`);
+  result.jump = { concern: landed.top, tabRow: tabRowNow.bottom };
+
+  // The dev shell's navigation leaves the page 1040px of this 1280px window: too narrow for the tabs and the
+  // toolbar on one line, so the toolbar has the tab row's second line, and the navigator above was measured under
+  // both. Given a window wide enough, the toolbar is beside the tabs and the row is as tall as the tabs alone.
+  await scrollTo(1500);
+  await pause();
+  const tabs = await box('.pr-tabs .bolt-tabbar-tabs');
+  const lowerToolbar = await box('.files-toolbar');
+  assert(lowerToolbar.top >= tabs.bottom - 1, `In a 1040px page the toolbar (${lowerToolbar.top}px) is not under the tabs (${tabs.bottom}px)`);
+  await page.setViewportSize({ width: 1600, height: 720 });
+  await scrollTo(1500);
+  await pause();
+  const oneLine = await box('.pr-tabs');
+  const wideTabs = await box('.pr-tabs .bolt-tabbar-tabs');
+  const besideToolbar = await box('.files-toolbar');
+  assert(besideToolbar.top < wideTabs.bottom && oneLine.bottom <= wideTabs.bottom + 1, `In a 1360px page the toolbar (${besideToolbar.top}px) is not beside the tabs (row ${oneLine.top}px to ${oneLine.bottom}px)`);
+  const wideNavigator = await box('.navigator');
+  assert(wideNavigator.top >= oneLine.bottom - 1 && wideNavigator.top <= oneLine.bottom + 16, `In a 1360px page the navigator (${wideNavigator.top}px) is not right under the tab row (${oneLine.bottom}px)`);
+  result.oneLine = { tabRow: oneLine.bottom, navigator: wideNavigator.top };
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   // Given a review started in the full header, the compact header's Review opens on the same summary and verdict.
   await scrollTo(0);

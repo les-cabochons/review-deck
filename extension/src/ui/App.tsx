@@ -94,6 +94,12 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   /** Grouping finished while the reader was deep in the A–Z preview: keep it until they ask. */
   const [holdPreview, setHoldPreview] = React.useState(false);
   const [toast, setToast] = React.useState<ToastSpec | null>(null);
+  /** The page's root, and the place in its tab row where the Files tab draws its toolbar. */
+  const [page, setPage] = React.useState<HTMLDivElement | null>(null);
+  const [toolbarSlot, setToolbarSlot] = React.useState<HTMLDivElement | null>(null);
+  /** A zero-height mark just above the tab row: once it is behind the compact header, the tab row is stuck. */
+  const tabsMark = React.useRef<HTMLDivElement>(null);
+  useTabRowHeight(page);
   const live = React.useRef({ tab, view });
   live.current = { tab, view };
 
@@ -307,7 +313,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
           <PresenceProvider store={presence} me={source.currentUser} tab={tab} draftsKey={draftsKey} active={loadedOnce}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
-              <div className="review-page">
+              <div className="review-page" ref={setPage}>
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
                 {refreshError && (
                   <div className="error-box" role="alert">
@@ -324,9 +330,17 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                   refreshing={stale && !refreshError}
                   links={menuLinks}
                   onToast={(message) => setToast({ message })}
+                  tabsMark={tabsMark}
                 />
                 {stack && <StackBar view={stack} onOpen={openLayer} />}
-                <TabBar className="pr-tabs" selectedTabId={tab} onSelectedTabChanged={(id) => selectTab(id as TabId)} tabSize={TabSize.Tall}>
+                <div ref={tabsMark} aria-hidden="true" />
+                <TabBar
+                  className="pr-tabs"
+                  selectedTabId={tab}
+                  onSelectedTabChanged={(id) => selectTab(id as TabId)}
+                  tabSize={TabSize.Tall}
+                  renderAdditionalContent={() => <div className="tab-row-controls" ref={setToolbarSlot} />}
+                >
                   <Tab id="overview" name="Overview" />
                   <Tab id="files" name="Files" badgeCount={review?.result.files.length} />
                   <Tab id="commits" name="Commits" badgeCount={data.commits.length || undefined} />
@@ -369,6 +383,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       groupingStale={groupingStale}
                       onPublish={publishNow}
                       publishing={publishing}
+                      toolbarSlot={toolbarSlot}
                     />
                     </React.Suspense>
                   )}
@@ -435,7 +450,9 @@ const PrHeader: React.FC<{
   refreshing: boolean;
   links: PrMenuLinks;
   onToast: (message: string) => void;
-}> = ({ data, review, progress, refreshing, links, onToast }) => {
+  /** The mark just above the tab row (see PrPage). */
+  tabsMark: React.RefObject<HTMLElement>;
+}> = ({ data, review, progress, refreshing, links, onToast, tabsMark }) => {
   const { pr } = data;
   const { currentUser } = useReviewActions();
   const vote = pr.reviewers.find((r) => r.id === currentUser.id)?.vote ?? 0;
@@ -445,6 +462,8 @@ const PrHeader: React.FC<{
   const header = React.useRef<HTMLElement>(null);
   const bar = React.useRef<HTMLDivElement>(null);
   const pinned = useScrolledBehind(header, bar);
+  /** The tab row is stuck under the compact header, which then drops its own bottom border. */
+  const overTabs = useScrolledBehind(tabsMark, bar);
   /** One review for both Review buttons: a summary started in one is there when the other opens. */
   const [reviewForm, setReviewForm] = React.useState<ReviewForm>(EMPTY_REVIEW_FORM);
   const statusPill = (
@@ -497,7 +516,7 @@ const PrHeader: React.FC<{
       {/* GitHub's compact header: once the full one scrolls away, the state and the review controls stay in sight.
           Its Review button edits the same summary and verdict as the header's. No ⋯ menu: it loads the follow and
           favorite state, and the header's copy already does. */}
-      <div className={cx("pr-bar", pinned && "pinned")} ref={bar}>
+      <div className={cx("pr-bar", pinned && "pinned", overTabs && "over-tabs")} ref={bar}>
         {statusPill}
         <span className="pr-bar-title" title={pr.title}>
           {pr.title} <span className="pr-id">!{pr.id}</span>
@@ -525,14 +544,34 @@ function useScrolledBehind(target: React.RefObject<HTMLElement>, bar: React.RefO
   const [behind, setBehind] = React.useState(false);
   React.useEffect(() => {
     if (!target.current || !bar.current) return;
-    const observer = new IntersectionObserver((entries) => setBehind(!entries[entries.length - 1].isIntersecting), {
+    const height = bar.current.offsetHeight;
+    // Out of sight above the bar's bottom edge, not below the window.
+    const above = (entry: IntersectionObserverEntry) => !entry.isIntersecting && entry.boundingClientRect.top < height;
+    const observer = new IntersectionObserver((entries) => setBehind(above(entries[entries.length - 1])), {
       root: document,
-      rootMargin: `-${bar.current.offsetHeight}px 0px 0px 0px`,
+      rootMargin: `-${height}px 0px 0px 0px`,
     });
     observer.observe(target.current);
     return () => observer.disconnect();
   }, [target, bar]);
   return behind;
+}
+
+/**
+ * Keeps `--pr-tabs-h` on the page at the height of its tab row. The row also holds the Files tab's toolbar and
+ * grows to two lines when the two don't fit on one. What sticks under the row (the file tree, a concern a jump
+ * lands on) reads the variable in the stylesheet.
+ */
+function useTabRowHeight(page: HTMLElement | null) {
+  React.useLayoutEffect(() => {
+    const row = page?.querySelector<HTMLElement>(".pr-tabs");
+    if (!page || !row) return;
+    const measure = () => page.style.setProperty("--pr-tabs-h", `${row.offsetHeight}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [page]);
 }
 
 function diffStats(review: ReviewModel) {
