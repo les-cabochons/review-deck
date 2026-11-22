@@ -32,13 +32,28 @@ Notes cover what isn't a risk of its own: `count` added (Terraform moves the obj
 
 `src/infra/lib/forceNew/azurerm.json` is generated from the azurerm provider's documentation, where such an argument reads "Changing this forces a new resource to be created". The provider's schema would be the exact source, but `terraform providers schema -json` doesn't export it.
 
+The current list is from 5.14.0: 1,097 resources and 5,332 arguments. The reason shown for a replace names that version. Other providers have no list, so their replaces aren't flagged. To add one, generate its list the same way and add it to `FORCE_NEW` in `src/infra/lib/risk.ts`.
+
+**It updates itself by pull request.** `.github/workflows/force-new-list.yml` runs every Monday at 09:00 UTC, and on demand from the Actions tab:
+
+1. It rebuilds the list from the documentation of the provider's latest stable release (`scripts/build-force-new.ts`).
+2. If the list or its version changed, it runs `npm test`, whose risk-rule tests read the real list.
+3. It opens a pull request from `chore/azurerm-force-new-list`, with what was added and removed. If that pull request is still open from an earlier release, it updates it instead.
+
+It never pushes to `main`. A person merges the pull request, and `main` then publishes the extension with the new list.
+
+- The repository needs **Allow GitHub Actions to create and approve pull requests** (Settings > Actions > General).
+- A pull request opened with the workflow's own token doesn't start the Extension workflow. Close and reopen it to run the full checks.
+- The script refuses a list that lost more than a tenth of its arguments, and the run fails. The docs' wording has then probably changed, and the script's patterns need a look.
+
+To rebuild it by hand, with git and network access:
+
 ```sh
-git clone --depth 1 --filter=blob:none --sparse https://github.com/hashicorp/terraform-provider-azurerm.git
-git -C terraform-provider-azurerm sparse-checkout set website/docs/r
-npx tsx scripts/build-force-new.ts terraform-provider-azurerm 5.14.0
+just force-new-list           # the latest stable release
+just force-new-list 5.14.0    # that release
 ```
 
-The current list is from 5.14.0: 1,100 resources and 5,339 arguments. The reason shown for a replace names that version. Other providers have no list, so their replaces aren't flagged. To add one, generate its list the same way and add it to `FORCE_NEW` in `src/infra/lib/risk.ts`.
+The pages are kept in `.cache/providers` and read as text. Nothing in the provider's repository is executed.
 
 ## What it can't know
 
