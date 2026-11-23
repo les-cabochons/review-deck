@@ -91,6 +91,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [focusGroup, setFocusGroup] = React.useState<string | null>(null);
   /** A comment the Overview asked the Files tab to show (thread id). The Files tab clears it once shown. */
   const [focusThread, setFocusThread] = React.useState<number | null>(null);
+  /** That comment was shown on the A–Z preview: grouping finishing then keeps the preview, so it stays in sight. */
+  const commentOnPreview = React.useRef(false);
   const [view, setView] = usePreference<FileView>("fileView", "grouped");
   const [mode, setMode] = usePreference<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
@@ -208,7 +210,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         setReview(r);
         setGroupedWith({ title: r.result.title, description: r.result.description });
         setProgress(null);
-        if (previewAt !== null && Date.now() - previewAt >= ANNOUNCE_AFTER_MS) announceGrouped(r);
+        const keepPlace = commentOnPreview.current;
+        commentOnPreview.current = false;
+        if (previewAt !== null && (keepPlace || Date.now() - previewAt >= ANNOUNCE_AFTER_MS)) announceGrouped(r, keepPlace);
       })
       .catch((e: Error) => !cancelled && setReviewError(`Could not analyze changes: ${e.message}`))
       .finally(() => !cancelled && setReviewLoading(false));
@@ -269,12 +273,13 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     document.querySelector(".files-tab")?.scrollIntoView({ block: "start" });
   };
 
-  function announceGrouped(r: ReviewModel) {
+  /** `keepPlace`: the reader was sent to a comment on the preview, so it stays whatever the scroll. */
+  function announceGrouped(r: ReviewModel, keepPlace = false) {
     const concerns = r.result.groups.filter((g) => g.kind === "semantic").length;
     const message = `Grouped ${plural(r.result.files.length, "file")} into ${plural(concerns, "concern")}.`;
     const { tab, view } = live.current;
     if (tab !== "files") setToast({ message, callToAction: "View files", onCallToAction: () => selectTab("files") });
-    else if (view === "grouped" && window.scrollY > KEEP_PREVIEW_SCROLL) {
+    else if (view === "grouped" && (keepPlace || window.scrollY > KEEP_PREVIEW_SCROLL)) {
       setHoldPreview(true);
       setToast({ message, callToAction: "Show guided", onCallToAction: showGrouped });
     } else setToast({ message });
@@ -378,6 +383,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onOpenUpdate={(id) => {
                         // What that update pushed: its head against the update before it (the base for update 1).
                         setFocusThread(null);
+                        commentOnPreview.current = false;
                         setSelection({ iteration: id, compareTo: id - 1 });
                         selectTab("files");
                       }}
@@ -401,6 +407,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onSelection={(s) => {
                         // Picking another comparison drops a comment request the last one never showed.
                         setFocusThread(null);
+                        commentOnPreview.current = false;
                         setSelection(s);
                       }}
                       view={view}
@@ -409,7 +416,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onMode={setMode}
                       focusGroup={focusGroup}
                       focusThread={focusThread}
-                      onThreadFocused={() => setFocusThread(null)}
+                      onThreadFocused={(onPreview) => {
+                        commentOnPreview.current = onPreview;
+                        setFocusThread(null);
+                      }}
                       progress={progress}
                       holdPreview={holdPreview}
                       onShowGrouped={showGrouped}

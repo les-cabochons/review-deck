@@ -42,7 +42,8 @@ interface Props {
   focusGroup?: string | null;
   /** A comment the Overview asked to show (thread id), until `onThreadFocused` says it was. */
   focusThread?: number | null;
-  onThreadFocused?: () => void;
+  /** `onPreview`: shown on the A–Z preview that grouping replaces when it finishes. */
+  onThreadFocused?: (onPreview: boolean) => void;
   /** Grouping progress while the worker runs; null once done. Only the PR header shows it; here it hides Regroup. */
   progress: AnalysisProgress | null;
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
@@ -123,7 +124,7 @@ const FilesContent: React.FC<Props> = (props) => {
     if (!focusThread || !review || !sameComparison(review.comparison, selection)) return;
     const thread = props.threads.find((t) => t.id === focusThread);
     if (!thread?.file) return;
-    onThreadFocused?.();
+    onThreadFocused?.(!review.analyzed);
     const { path } = thread.file;
     if (!shown(path)) return;
     const { result } = review;
@@ -396,14 +397,19 @@ function scrollToId(id: string) {
  */
 function scrollToThread(targets: string[], threadId: number) {
   const started = performance.now();
+  // Only in the Files tab: the Overview, if the reader went back to it meanwhile, shows the same comment.
+  const find = (id: string) => {
+    const element = document.getElementById(id);
+    return element?.closest(".files-tab") ? element : null;
+  };
   const step = () => {
-    const thread = document.getElementById(`thread-${threadId}`);
+    const thread = find(`thread-${threadId}`);
     if (thread) {
       thread.scrollIntoView({ block: "center" });
-      setTimeout(() => document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: "center" }), 300);
+      setTimeout(() => find(`thread-${threadId}`)?.scrollIntoView({ block: "center" }), 300);
       return;
     }
-    targets.map((id) => document.getElementById(id)).find((el) => el)?.scrollIntoView({ block: "start" });
+    targets.map(find).find((el) => el)?.scrollIntoView({ block: "start" });
     if (performance.now() - started < 2000) requestAnimationFrame(step);
   };
   step();
