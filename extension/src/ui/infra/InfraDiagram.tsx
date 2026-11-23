@@ -1,5 +1,5 @@
 import * as React from "react";
-import { blockTitle, needsLook } from "../../../../src/infra/blocks";
+import { blockTitle, needsLook, pairStatus } from "../../../../src/infra/blocks";
 import { diagramContent, edgeName } from "../../../../src/infra/diagram";
 import type { InfraModule } from "../../../../src/infra/types";
 import RelationMap from "../relations/RelationMap";
@@ -59,9 +59,9 @@ const InfraDiagram: React.FC<Props> = ({ module, compact, onSelect }) => {
       onSelect={onSelect}
       edgeInfo={(from, to) => {
         // The layout merges both ways of a pair; an Infra edge points one way.
-        const edge = edges.get(`${from}\u0000${to}`) ?? edges.get(`${to}\u0000${from}`);
+        const status = pairStatus(edges.get(`${from}\u0000${to}`)?.status, edges.get(`${to}\u0000${from}`)?.status);
         // An unchanged reference is drawn, without its names: they say nothing about the change.
-        return edge && { className: edge.status === "same" ? undefined : edge.status, mark: EDGE_MARK[edge.status], quiet: edge.status === "same" };
+        return status && { className: status === "same" ? undefined : status, mark: EDGE_MARK[status], quiet: status === "same" };
       }}
     />
   );

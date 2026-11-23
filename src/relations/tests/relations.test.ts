@@ -102,13 +102,12 @@ function levelRuns(path: string): [number, number, number][] {
   return runs;
 }
 
-test("Given a chain of uses, then each card sits one column right of what it uses, under the two headings", async () => {
+test("Given a chain of uses, then each card sits one column right of what it uses", async () => {
   const { layoutRelations } = await import("../diagram.js");
   const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: "file.ts", adds: 4, dels: 1 }));
   const map = layoutRelations(items, [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }], { width: 700 })!;
   const at = (id: string) => map.nodes.find((n) => n.id === id)!;
   assert.ok(at("a").x + at("a").width < at("b").x && at("b").x + at("b").width < at("c").x);
-  assert.deepEqual(map.headings.map((h) => [h.text, h.x]), [["Defined here", at("a").x], ["Uses them", at("c").x]]);
   assert.deepEqual([at("a").adds, at("a").dels], [4, 1]);
   // Every connector starts on its source's right edge and ends on its user's left edge.
   for (const edge of map.edges) {
@@ -195,4 +194,13 @@ test("Given more boxes than a map can show, then the flow says so instead of dra
   const links = ids.map((to) => ({ from: "src/def.ts#0", to, symbols: ["def"] }));
   const flow = concernFlow(concern("g1", ["src/def.ts#0", ...ids]), { links: [], flows: { g1: links } }, hunks);
   assert.equal(flow.tooMany, true);
+});
+
+test("Given a link without names, then it is drawn without a label, not left out as loose", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = ["a", "b"].map((id) => ({ id, title: id, subtitle: null }));
+  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: [] }], { width: 700 })!;
+  assert.equal(map.edges.length, 1);
+  assert.equal(map.edges[0].label, null);
+  assert.equal(map.apart.length, 0);
 });

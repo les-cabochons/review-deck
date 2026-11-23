@@ -387,3 +387,10 @@ moved {
   // The instance address already accounts for count, so losing it isn't listed as a change.
   assert.deepEqual(moved.changes, [{ path: "account_tier", before: '"Standard"', after: '"Premium"' }]);
 });
+
+test("Given a dependency the pull request reverses, then the connector drawn for both directions is touched, not one side's status", async () => {
+  const { pairStatus } = await import("../blocks.js");
+  assert.equal(pairStatus("removed", "added"), "touched");
+  assert.equal(pairStatus("added", undefined), "added");
+  assert.equal(pairStatus("same", "same"), "same");
+});

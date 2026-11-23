@@ -27,6 +27,7 @@ Every diagram, these and the Infra tab's, sits on a canvas the reader moves like
 - The −, + and Fit buttons zoom around the middle and put it back. With the canvas focused, the arrow keys move it, + and − zoom, and 0 fits it.
 - Tabbing to a card the canvas has moved out of sight brings it back in.
 - It opens fitted to its width, never below 75%. Part of it always stays in sight, however far it is dragged.
+- Expand shows the canvas over the whole page, the diagram fitted whole and centred, for a map too big to explore in its place. Escape or Close puts it back, and so does picking a card or a connector, so the page can show what was picked.
 
 ## Reading and hiding the diagrams
 

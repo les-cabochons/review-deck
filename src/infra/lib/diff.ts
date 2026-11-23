@@ -52,6 +52,7 @@ export function diffModule(dir: string, files: ModuleFile[]): ModuleDiff {
       changes,
       risk: null,
       notes: [],
+      ...(shown.kind === "module" && shown.attributes.has("source") ? { source: unquote(shown.attributes.get("source")!) } : {}),
     });
   }
 
@@ -107,14 +108,30 @@ function edgesOf(sides: Map<string, BlockSides>, blocks: Map<string, InfraBlock>
       const before = base?.references.get(from);
       const after = head?.references.get(from);
       const via = [...(after ?? before)!].sort();
+      // A removed reference is only in the base side's text.
+      const block = (after ? head : base)!;
+      const module = from.startsWith("module.");
       if (!before || !after) {
-        edges.push({ from, to, status: after ? "added" : "removed", via });
+        edges.push({ from, to, status: after ? "added" : "removed", via, ...(module ? { outputs: outputsRead(from, block, via) } : {}) });
         continue;
       }
       const changed = blocks.get(to)!.changes.map((c) => c.path);
       const touched = [...new Set([...before, ...after])].filter((path) => overlaps(path, changed)).sort();
-      edges.push(touched.length > 0 ? { from, to, status: "touched", via: touched } : { from, to, status: "same", via });
+      // The outputs a changed line reads, on either side, come first: they are what a label too short for all of them shows.
+      const outputs = module ? { outputs: [...new Set([...outputsRead(from, head!, touched), ...outputsRead(from, base!, touched), ...outputsRead(from, block, via)])] } : {};
+      edges.push(touched.length > 0 ? { from, to, status: "touched", via: touched, ...outputs } : { from, to, status: "same", via, ...outputs });
     }
   }
   return edges;
 }
+
+/** The outputs of `module` (`module.storage`) that the attributes `via` of `block` read, from their text. */
+function outputsRead(module: string, block: ParsedBlock, via: string[]): string[] {
+  const pattern = new RegExp(`\\b${module.replace(".", "\\.")}(?:\\[[^\\]]*\\])?\\.([A-Za-z_][\\w-]*)`, "g");
+  const found = new Set<string>();
+  for (const path of via) for (const match of (block.attributes.get(path) ?? "").matchAll(pattern)) found.add(match[1]);
+  return [...found].sort();
+}
+
+/** `"./modules/storage"` reads as `./modules/storage`. A source built from an expression stays as written. */
+const unquote = (text: string) => (/^"[^"$]*"$/.test(text) ? text.slice(1, -1) : text);

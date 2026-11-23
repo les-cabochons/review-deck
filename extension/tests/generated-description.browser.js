@@ -119,9 +119,8 @@ async page => {
     const scale = svg.width / hit.ownerSVGElement.viewBox.baseVal.width;
     const found = document.elementFromPoint(svg.left + middle.x * scale + 4 * scale, svg.top + middle.y * scale);
     assert(found?.closest('.relation-edge') === edge, `The pointer 4 px off the line found ${found?.outerHTML.slice(0, 80)}`);
-    // The cards sit in columns under their headings, with their line counts.
-    const headings = [...section.querySelectorAll('.concern-flow .relation-heading')].map(h => h.textContent);
-    assert(headings.join() === 'Defined here,Uses them', `Column headings: ${headings}`);
+    // The cards carry their line counts, and no column headings.
+    assert(!section.querySelector('.concern-flow .relation-heading'), 'The map still has column headings');
     assert(/^\+\d+ −\d+$/.test(section.querySelector('.concern-flow .relation-stats').textContent), 'A card has no line counts');
     // Every box: the function, then its file. No "start here", and no `make` linking two files.
     const subtitles = [...document.querySelectorAll('.concern-flow .relation-node-subtitle')].map(t => t.textContent);

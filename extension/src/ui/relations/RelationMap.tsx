@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { Link } from "../../../../src/core/types";
-import { boxTitle, layoutRelations, type MapEdge, type MapItem, type MapNode } from "../../../../src/relations/diagram";
+import { boxTitle, layoutRelations, type MapEdge, type MapItem, type MapNode, ROW_HEIGHT, ROW_TEXT, ROWS_TOP } from "../../../../src/relations/diagram";
 import { cx } from "../util";
 import { DiagramCanvas } from "./DiagramCanvas";
 
@@ -79,11 +79,6 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
               </marker>
             ))}
           </defs>
-          {map.headings.map((h) => (
-            <text key={h.text} className="relation-heading" x={h.x} y={h.y}>
-              {h.text}
-            </text>
-          ))}
           {map.edges.map((edge) => {
             const info = edgeInfo?.(edge.from, edge.to);
             const head = info?.className && HEADS.includes(info.className) ? `-${info.className}` : "";
@@ -194,9 +189,11 @@ const Card: React.FC<{
   const { x, y, width, height } = node;
   const select = onSelect ? () => onSelect(node.id) : undefined;
   const left = x + (badge ? 34 : 13);
-  // Two lines of text, centred in a card that may be taller for its connectors.
-  const line1 = y + height / 2 - 3;
-  const line2 = y + height / 2 + 13;
+  const rows = node.rows?.length ? node.rows : null;
+  // Two lines of text, centred in a card that may be taller for its connectors. Over a list of rows, at the top.
+  const line1 = rows ? y + 19 : y + height / 2 - 3;
+  const line2 = rows ? y + 34 : y + height / 2 + 13;
+  const subtitle = node.subtitle && (!apart || rows);
   const stats = !apart && node.adds !== undefined && node.dels !== undefined ? { adds: node.adds, dels: node.dels, green: greenSquares(node.adds, node.dels) } : null;
   const subtitleRoom = width - (left - x) - 8 - (stats ? 108 : 0);
   return (
@@ -221,13 +218,30 @@ const Card: React.FC<{
           </text>
         </g>
       )}
-      <text className="relation-node-title" x={left} y={node.subtitle && !apart ? line1 : y + height / 2 + 4}>
+      <text className="relation-node-title" x={left} y={subtitle ? line1 : y + height / 2 + 4}>
         {boxTitle(node.title)}
       </text>
-      {node.subtitle && !apart && (
+      {subtitle && (
         <text className="relation-node-subtitle" x={left} y={line2}>
-          {fitText(node.subtitle, subtitleRoom)}
+          {fitText(node.subtitle!, subtitleRoom)}
         </text>
+      )}
+      {rows && (
+        <>
+          <line className="relation-rows-rule" x1={x + 10} x2={x + width - 10} y1={y + ROWS_TOP - 6} y2={y + ROWS_TOP - 6} />
+          {rows.map((row, i) => {
+            // The card stops growing at the layout's widest: a long name is cut to the room left, whole in the tooltip.
+            const name = row.name && fitName(row.name, width - ROW_TEXT - (row.text.length + 1) * 6.8 - 10);
+            return (
+              <text key={i} className="relation-row" x={x + 13} y={y + ROWS_TOP + 12 + i * ROW_HEIGHT}>
+                {name !== row.name && <title>{`${row.mark} ${row.text} ${row.name}`}</title>}
+                <tspan className={cx("relation-row-mark", row.tone)}>{row.mark}</tspan>
+                <tspan x={x + ROW_TEXT}>{row.text}</tspan>
+                {name && <tspan className="relation-row-name"> {name}</tspan>}
+              </text>
+            );
+          })}
+        </>
       )}
       {stats && (
         <>
@@ -253,8 +267,15 @@ function edgeTooltip(edge: { from: string; to: string; both: boolean; names: str
   const to = titles.get(edge.to) ?? edge.to;
   const used = edge.names.filter((n) => edge.both || n !== to);
   const list = used.length > 1 ? `${used.slice(0, -1).join(", ")} and ${used.at(-1)}` : (used[0] ?? "");
+  if (used.length === 0) return edge.both ? `${from} and ${to} use each other` : `${to} uses ${from}`;
   if (edge.both) return `${from} and ${to} use each other: ${list}`;
   return used.length === 1 && used[0] === from ? `${to} uses ${from}` : `${to} uses ${list} from ${from}`;
+}
+
+/** A name cut to `room` pixels of 10.5 px monospace, keeping its start: a name's start says what it is. */
+function fitName(name: string, room: number): string {
+  const chars = Math.floor(room / 6.4);
+  return name.length <= chars ? name : `${name.slice(0, Math.max(chars - 1, 4))}…`;
 }
 
 /** `text` cut to `room` pixels of 10.5 px monospace, keeping its end (a file name matters more than its folders). */

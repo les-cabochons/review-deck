@@ -4856,12 +4856,6 @@ span.artifact-toggle {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.infra-card-foot {
-  margin: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 12px;
-}
 
 /* The tab */
 .infra-tab {
@@ -4916,6 +4910,78 @@ span.artifact-toggle {
 }
 .infra-parse-error {
   margin: 0 0 8px;
+}
+.infra-module:focus {
+  outline: none;
+}
+.infra-module:focus-visible {
+  box-shadow: var(--shadow-card), 0 0 0 2px var(--accent);
+}
+
+/* The module map (ui/infra/ModuleMap.tsx): a card per changed folder. On a phone, an outline. */
+.infra-module-map {
+  padding: 12px 16px 16px;
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+  box-shadow: var(--shadow-card);
+}
+.infra-module-map h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.infra-outline-module {
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--tone, var(--line));
+  border-radius: 7px;
+}
+.infra-outline-module.tone-same {
+  border-left-color: var(--line);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.infra-outline-module.tone-follows {
+  border-left-style: dashed;
+}
+.infra-outline-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.infra-outline-head .link-button,
+.infra-outline-head code {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.infra-outline-module ul {
+  list-style: none;
+  margin: 5px 0 0;
+  padding: 0;
+}
+.infra-outline-module li {
+  padding: 2px 0 2px 36px;
+  text-indent: -36px;
+}
+.infra-outline-mark {
+  display: inline-block;
+  width: 36px;
+  text-indent: 0;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--tone-text);
+}
+.infra-outline-gets {
+  margin: 5px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  color: var(--fg2);
+}
+.infra-outline-callees {
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--line-strong);
 }
 
 /* The diagram: the relations map (ui/relations/RelationMap.tsx), with each card and connector in its state's colours. */
@@ -5399,6 +5465,48 @@ span.artifact-toggle {
 .diagram-canvas .relation-edge.selectable {
   cursor: pointer;
 }
+/* Expand: the canvas over the whole page, and what stays in its place meanwhile. */
+.diagram-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--canvas);
+  font-size: 13px;
+}
+.diagram-expanded-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+.diagram-expanded-bar button {
+  font: inherit;
+  font-weight: 400;
+  padding: 3px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--card-bg, var(--surface));
+  color: var(--fg);
+  cursor: pointer;
+}
+.diagram-expanded .diagram-canvas {
+  background: var(--card-bg, var(--surface));
+}
+.diagram-canvas-away {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 60px;
+  color: var(--fg2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
 .diagram-canvas-controls {
   position: absolute;
   top: 6px;
@@ -5430,13 +5538,6 @@ span.artifact-toggle {
   color: var(--fg3);
   cursor: default;
 }
-.relation-heading {
-  fill: var(--fg2);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
 .relation-card {
   fill: var(--card-bg, var(--surface));
   stroke: var(--line-strong);
@@ -5451,6 +5552,27 @@ span.artifact-toggle {
   font-weight: 600;
 }
 .relation-node-subtitle {
+  fill: var(--fg2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+/* A card's list of rows (the Infra view's module cards). */
+.relation-rows-rule {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.relation-row {
+  fill: var(--fg);
+  font-size: 11.5px;
+}
+.relation-row-mark {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  fill: color-mix(in srgb, var(--tone, var(--fg2)) 62%, var(--fg));
+}
+.relation-row-name {
   fill: var(--fg2);
   font-family: var(--mono);
   font-size: 10.5px;

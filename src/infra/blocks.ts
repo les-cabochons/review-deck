@@ -1,6 +1,6 @@
 // Small readings of an InfraBlock that the page needs without loading the parser (terraform.ts) or the layout
 // (diagram.ts): what counts as changed, how risky a block is, how to name it.
-import type { InfraBlock, InfraModule, InfraSummary } from "./types.js";
+import type { InfraBlock, InfraEdge, InfraModule, InfraSummary } from "./types.js";
 
 /** Drawn as a box: what Terraform creates, reads or calls. Variables, locals and outputs are the wiring between them. */
 export const isInfrastructure = (block: InfraBlock) => block.kind === "resource" || block.kind === "data" || block.kind === "module";
@@ -10,6 +10,15 @@ export const isChanged = (block: InfraBlock) => block.status !== "same" && !bloc
 
 /** Worth a reviewer's look: changed, or unchanged in the code but at risk because of what it uses. */
 export const needsLook = (block: InfraBlock) => isChanged(block) || block.risk !== null;
+
+/**
+ * The status of a connector drawn for both directions of a pair, as the diagrams' layout merges them: theirs when
+ * they agree, `touched` when they don't (a pull request that reverses a dependency removes one and adds the other).
+ */
+export function pairStatus(a: InfraEdge["status"] | undefined, b: InfraEdge["status"] | undefined): InfraEdge["status"] | undefined {
+  if (!a || !b) return a ?? b;
+  return a === b ? a : "touched";
+}
 
 /** Riskiest first: destroy, replace (likely, then possible), follows, changed, added, removed without a risk, description only. */
 export function riskRank(block: InfraBlock): number {

@@ -1,5 +1,6 @@
 import * as React from "react";
 import { blockTitle, needsLook, riskRank } from "../../../../src/infra/blocks";
+import { showsModuleMap } from "../../../../src/infra/modules";
 import type { AttributeChange, InfraBlock, InfraModule } from "../../../../src/infra/types";
 import { type ValuePart, valueDiff } from "../../../../src/infra/valueDiff";
 import type { InfraReading } from "../../review/infra";
@@ -8,11 +9,14 @@ import type { InfraState } from "./useInfra";
 import { FromCode, Quoted, SummaryBadges, Verdict, verdict } from "./verdict";
 
 const InfraDiagram = React.lazy(() => import("./InfraDiagram"));
+const ModuleMap = React.lazy(() => import("./ModuleMap").then((m) => ({ default: m.ModuleMap })));
+
+const sectionId = (index: number) => `infra-module-${index}`;
 
 /**
- * The Infra tab: per directory with changed Terraform files, a diagram of what changed and a list of every changed
- * block, riskiest first. Everything is read from the files (src/infra), and the tab says so up front, with what
- * that leaves out.
+ * The Infra tab: when the pull request changes more than one folder, a map of the modules and what passes between
+ * them. Then per folder, a diagram of what changed and a list of every changed block, riskiest first. Everything is
+ * read from the files (src/infra), and the tab says so up front, with what that leaves out.
  */
 export const InfraTab: React.FC<{ infra: InfraState }> = ({ infra }) => {
   if (infra.error)
@@ -23,9 +27,19 @@ export const InfraTab: React.FC<{ infra: InfraState }> = ({ infra }) => {
     );
   if (!infra.reading) return <div className="loading">{infra.present ? "Reading the Terraform changes…" : "This comparison changes no Terraform files."}</div>;
   const { reading } = infra;
+  const showSection = (dir: string) => {
+    const section = document.getElementById(sectionId(reading.modules.findIndex((m) => m.dir === dir)));
+    section?.scrollIntoView({ block: "start" });
+    section?.focus({ preventScroll: true });
+  };
   return (
     <div className="infra-tab">
       <HowItWorks reading={reading} />
+      {showsModuleMap(reading.modules) && (
+        <React.Suspense fallback={<div className="loading">Drawing the module map…</div>}>
+          <ModuleMap modules={reading.modules} onSelect={showSection} />
+        </React.Suspense>
+      )}
       {reading.modules.map((module, i) => (
         <ModuleSection key={module.dir} module={module} index={i} />
       ))}
@@ -63,7 +77,11 @@ const HowItWorks: React.FC<{ reading: InfraReading }> = ({ reading }) => {
             <strong>May follow</strong> means the resource uses one that may be destroyed or replaced. What the provider then does to it isn't in the code.
           </li>
           <li>Files the pull request doesn't change aren't read. A resource they declare shows as a grey neighbour, and a resource in them that uses a changed one isn't shown.</li>
-          <li>What is inside a called module, how many instances count or for_each make, and what a variable evaluates to are not known.</li>
+          <li>
+            When the pull request changes more than one folder, a map of the modules comes first. A module is a folder, and an arrow is an output one module gives another, through the folder that
+            calls them both. A call in a file the pull request doesn't change isn't seen, so its arrow is missing.
+          </li>
+          <li>What is inside a called module that the pull request doesn't change, how many instances count or for_each make, and what a variable evaluates to are not known.</li>
         </ul>
       )}
       {reading.skipped.length > 0 && <p className="tone-warning">Not read, because binary or too large: {reading.skipped.join(", ")}</p>}
@@ -93,7 +111,7 @@ const ModuleSection: React.FC<{ module: InfraModule; index: number }> = ({ modul
     ["Description only", listed.filter((b) => b.docsOnly)],
   ];
   return (
-    <section className="infra-module" aria-label={`Terraform changes in ${module.dir || "the repository root"}`}>
+    <section id={sectionId(index)} tabIndex={-1} className="infra-module" aria-label={`Terraform changes in ${module.dir || "the repository root"}`}>
       <header className="infra-module-head">
         <h3>{module.dir || "Repository root"}/</h3>
         <span className="muted">{plural(module.files.length, "changed file")}</span>

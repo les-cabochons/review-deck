@@ -1,17 +1,19 @@
 import * as React from "react";
 import { blockTitle, isInfrastructure, needsLook, riskRank } from "../../../../src/infra/blocks";
+import { showsModuleMap } from "../../../../src/infra/modules";
 import type { InfraBlock } from "../../../../src/infra/types";
 import type { InfraState } from "./useInfra";
 import { Quoted, SummaryBadges, Verdict } from "./verdict";
 
 const InfraDiagram = React.lazy(() => import("./InfraDiagram"));
+const ModuleThumbnail = React.lazy(() => import("./ModuleMap").then((m) => ({ default: m.ModuleThumbnail })));
 /** The card is a summary: the Infra tab has every block. */
 const MAX_ROWS = 4;
 
 /**
  * The Overview's summary of a pull request's Terraform changes: how many resources may be destroyed, replaced
- * or changed, the riskiest of them with the reason, and a thumbnail of the diagram. Says in so many words that it
- * is read from the code and not from a plan.
+ * or changed, the riskiest of them with the reason, and a thumbnail: of the module map when the pull request
+ * changes several folders, of the one folder's diagram otherwise. The Infra tab says it is read from the code.
  */
 export const InfraCard: React.FC<{ infra: InfraState; onOpen: () => void }> = ({ infra, onOpen }) => {
   if (!infra.present) return null;
@@ -37,10 +39,9 @@ export const InfraCard: React.FC<{ infra: InfraState; onOpen: () => void }> = ({
         <>
           {blocks.length > 0 && (
             <div className="infra-card-body">
-              {/* The first module only: a thumbnail per directory would crowd a summary. */}
               <button className="infra-card-thumb" onClick={onOpen} title="Open the diagram" aria-label="Open the diagram in the Infra tab">
                 <React.Suspense fallback={null}>
-                  <InfraDiagram module={reading.modules.find((m) => m.blocks.some((b) => isInfrastructure(b) && needsLook(b))) ?? reading.modules[0]} compact />
+                  {showsModuleMap(reading.modules) ? <ModuleThumbnail modules={reading.modules} /> : <InfraDiagram module={reading.modules[0]} compact />}
                 </React.Suspense>
               </button>
               <ul className="infra-card-rows">
@@ -66,7 +67,6 @@ export const InfraCard: React.FC<{ infra: InfraState; onOpen: () => void }> = ({
               </ul>
             </div>
           )}
-          <p className="infra-card-foot muted">Read from the changed .tf files, not from a terraform plan. Review Deck can't see what the provider will do, so check the plan before you approve a destroy or a replace.</p>
         </>
       )}
     </section>
