@@ -3,6 +3,7 @@
 // the review controls, and nothing else that sticks (the tab row with the files toolbar in it, the navigator) or a
 // concern a jump lands on hides under it. Its Review button edits the same review as the full header's. The files
 // toolbar has a line of its own under the tabs, as wide as the diffs, and the tabs stay in place from tab to tab.
+// Its gear applies two picks in a row.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -108,6 +109,22 @@ async page => {
   await f.locator('.files-toolbar').waitFor();
   result.wide = { ...lefts, overviewTab, tabRow: wideRow.bottom, navigator: wideNavigator.top };
   await page.setViewportSize({ width: 1280, height: 720 });
+
+  // The gear's diff views apply one after the other: a pick closes the menu, so the next click opens it again.
+  const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
+  const diffView = async () => {
+    await gear();
+    const split = await f.getByRole('menuitem', { name: 'Side-by-side', exact: true }).evaluate(el => el.classList.contains('menu-item-selected'));
+    await page.keyboard.press('Escape');
+    return split ? 'Side-by-side' : 'Inline';
+  };
+  const picks = (await diffView()) === 'Inline' ? ['Side-by-side', 'Inline'] : ['Inline', 'Side-by-side'];
+  for (const pick of picks) {
+    await gear();
+    await f.getByRole('menuitem', { name: pick, exact: true }).click();
+    assert((await diffView()) === pick, `The gear did not switch the diff view to ${pick}`);
+  }
+  result.diffPicks = picks;
 
   // Given a review started in the full header, the compact header's Review opens on the same summary and verdict.
   await scrollTo(0);

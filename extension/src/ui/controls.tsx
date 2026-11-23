@@ -11,9 +11,10 @@ export interface MenuOption {
   /** Extra class on the icon, e.g. to draw it as a coloured badge. */
   iconClassName?: string;
   secondaryText?: string;
-  /** A checkbox: azure-devops-ui toggles it and keeps the menu open (and its button expanded). Pickers use `selected`. */
-  checked?: boolean;
-  /** The current value of a picker: a blue marker and highlight instead of a checkmark. */
+  /**
+   * The current value of a picker: a blue marker and highlight. There is no `checked`: azure-devops-ui draws those
+   * items as checkboxes that keep the menu open, and its button stays expanded so the next click only closes it.
+   */
   selected?: boolean;
   disabled?: boolean;
   /** Renders a divider instead of an item. */
@@ -38,7 +39,6 @@ function toItems(options: MenuOption[]): IMenuItem[] {
           text: o.text,
           secondaryText: o.secondaryText,
           iconProps: o.icon ? { iconName: o.icon, className: o.iconClassName } : undefined,
-          checked: o.checked,
           disabled: o.disabled,
           href: o.href,
           target: o.href ? "_top" : undefined,

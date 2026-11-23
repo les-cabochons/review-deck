@@ -317,7 +317,7 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
         text={comparisonLabel(selection, latest)}
         icon="BranchCompare"
         disabled={disabled}
-        ariaLabel="Changes to show"
+        ariaLabel={`Changes to show: ${comparisonLabel(selection, latest)}`}
         options={comparisons}
       />
       <div className="view-toggle" role="group" aria-label="File view">
