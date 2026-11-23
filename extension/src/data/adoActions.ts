@@ -104,9 +104,7 @@ export function toCompletionOptionsJson(options: CompletionOptions, allowBypass:
   return json;
 }
 
-/** The "Require a merge strategy" (Limit merge types) branch policy. */
-export const MERGE_POLICY_TYPE = "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab";
-
+/** A "Require a merge strategy" (Limit merge types) branch policy configuration, type MERGE_POLICY_TYPE. */
 export interface MergePolicy {
   isEnabled: boolean;
   isDeleted?: boolean;

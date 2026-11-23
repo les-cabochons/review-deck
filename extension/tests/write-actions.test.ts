@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isCompleting, mergeProblem } from "../src/data/completion";
+import type { PolicyEvaluationRecord } from "azure-devops-extension-api/Policy";
+import { isCompleting, mergeProblem, unmetPolicies } from "../src/data/completion";
+import { policyStatus } from "../src/data/adoOverview";
 import { allowedStrategies, createAdoActions, type NotificationClient, threadPayload, type WriteClient } from "../src/data/adoActions";
 import { MOCK_USER, MockPrSource } from "../src/data/mockSource";
 import type { CompletionOptions, NewThread, ThreadStatus, Vote } from "../src/data/model";
@@ -502,6 +504,37 @@ test("Given a required policy that hasn't passed, then completing needs an overr
   await source.load();
   ({ pr } = await source.load());
   assert.equal(pr.status, "completed");
+});
+
+// What Azure DevOps answered for PR 56305 on minehunter (2026-11-23): an active PR with no merge type saved yet
+// has its "Require a merge strategy" check rejected. Saving or completing with an allowed type turns it approved.
+const MERGE_TYPE_CHECK = {
+  evaluationId: "merge-type",
+  status: 3,
+  configuration: {
+    isBlocking: true,
+    type: { id: "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab", displayName: "Require a merge strategy" },
+    settings: { allowRebase: true, allowSquash: true, scope: [{ matchKind: "Exact", refName: "refs/heads/main", repositoryId: "repo" }] },
+  },
+} as unknown as PolicyEvaluationRecord;
+const FAILED_BUILD = {
+  evaluationId: "build",
+  status: 3,
+  configuration: { isBlocking: true, type: { id: "0609b952-1397-4640-95ec-e00a01b2c241", displayName: "Build" }, settings: {} },
+} as unknown as PolicyEvaluationRecord;
+
+test("Given a rejected merge type check before a merge type is picked, then it doesn't block completing, and a failed build still does", () => {
+  assert.deepEqual(unmetPolicies([MERGE_TYPE_CHECK].map(policyStatus)), []);
+  assert.deepEqual(unmetPolicies([MERGE_TYPE_CHECK, FAILED_BUILD].map(policyStatus)).map((p) => p.name), ["Build"]);
+});
+
+test("Given a local PR whose merge type check is rejected, when completing with an allowed type, then it merges like Azure DevOps", async () => {
+  const snap = withHead();
+  snap.policies = [{ ...MERGE_TYPE_CHECK, status: "rejected" } as unknown as PrSnapshot["policies"][number]];
+  const source = new MockPrSource(snap);
+  await source.actions.complete({ ...SQUASH, mergeStrategy: "rebase" }, "head");
+  await source.load();
+  assert.equal((await source.load()).pr.status, "completed");
 });
 
 test("Given a local PR, then draft, publish, abandon and reactivate round-trip, and a draft can't be completed", async () => {

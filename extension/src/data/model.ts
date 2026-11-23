@@ -139,12 +139,17 @@ export interface Commit {
 
 export type PolicyState = "approved" | "rejected" | "running" | "queued" | "notApplicable" | "broken";
 
+/** The "Require a merge strategy" (Limit merge types) branch policy's type id. */
+export const MERGE_POLICY_TYPE = "fa4e907d-c16b-4a4c-9dfa-4916e5d171ab";
+
 export interface PolicyStatus {
   id: string;
   name: string;
   detail?: string;
   state: PolicyState;
   blocking: boolean;
+  /** The policy type's id, such as MERGE_POLICY_TYPE. Missing from older local snapshots. */
+  typeId?: string;
 }
 
 export interface WorkItemRef {
