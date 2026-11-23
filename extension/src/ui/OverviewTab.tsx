@@ -1,5 +1,6 @@
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
+import { isMergeTypeCheck } from "../data/completion";
 import { isLineAnchor, type PrOverview, type Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 import { groupColor } from "./groupColors";
@@ -295,6 +296,8 @@ const POLICY_ICON: Record<string, { icon: string; tone: string; label: string }>
   notApplicable: { icon: "CircleRing", tone: "neutral", label: "Not applicable" },
   broken: { icon: "Warning", tone: "warning", label: "Broken" },
 };
+/** A merge type check Azure DevOps rejects only because no merge type is saved yet. Completing sends one. */
+const MERGE_TYPE_PENDING = { icon: "Clock", tone: "neutral", label: "Checked against the merge type picked when completing" };
 
 const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
   if (data.partial)
@@ -307,7 +310,10 @@ const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
   const optional = data.policies.filter((p) => !p.blocking);
   const openThreads = data.threads.filter((t) => t.kind === "comment" && isOpen(t.status)).length;
   const row = (p: PrOverview["policies"][number]) => {
-    const s = POLICY_ICON[p.state];
+    // With auto-complete set, a merge type is saved: a rejection then means auto-complete's type isn't allowed.
+    const waitsForMergeType = isMergeTypeCheck(p) && p.state === "rejected" && !data.pr.autoCompleteSetBy;
+    const s = waitsForMergeType ? MERGE_TYPE_PENDING : POLICY_ICON[p.state];
+    const detail = waitsForMergeType ? "picked when completing" : p.detail;
     return (
       <li key={p.id} title={s.label}>
         <span className={`tone-${s.tone}`}>
@@ -315,7 +321,7 @@ const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
         </span>
         <span className="name">
           {p.name}
-          {p.detail && <span className="muted"> · {p.detail}</span>}
+          {detail && <span className="muted"> · {detail}</span>}
         </span>
       </li>
     );

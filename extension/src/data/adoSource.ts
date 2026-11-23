@@ -5,12 +5,23 @@ import { PolicyRestClient } from "azure-devops-extension-api/Policy";
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
 import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
-import { createAdoActions, MERGE_POLICY_TYPE, type MergePolicy } from "./adoActions";
+import { createAdoActions, type MergePolicy } from "./adoActions";
 import { OverviewLoad, type OverviewReads, toThreads } from "./adoOverview";
 import { openBlobCache } from "./blobCache";
 import { type BlobLoad, BlobLoader } from "./blobs";
 import { FileReads } from "./fileReads";
-import { type ChangeType, type FileChange, type Identity, identityImageUrl, latestIteration, type PrOverview, type PrSource, type PrActions, type Thread } from "./model";
+import {
+  type ChangeType,
+  type FileChange,
+  type Identity,
+  identityImageUrl,
+  latestIteration,
+  MERGE_POLICY_TYPE,
+  type PrOverview,
+  type PrSource,
+  type PrActions,
+  type Thread,
+} from "./model";
 
 // VersionControlChangeType flags
 const ADD = 1;

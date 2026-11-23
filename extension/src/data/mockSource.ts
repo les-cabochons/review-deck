@@ -10,12 +10,14 @@ import {
   type Identity,
   type PrActions,
   type PolicyState,
+  type PolicyStatus,
   type PrOverview,
   type PrSource,
   type Thread,
   threadStatusFromNumber,
 } from "./model";
 import type { CommentJson, IdentityJson, PrSnapshot, ThreadJson } from "./snapshot";
+import { unmetPolicies } from "./completion";
 import {
   fromCompletionOptionsJson,
   PR_STATUS_NUMBER,
@@ -181,8 +183,7 @@ export class MockPrSource implements PrSource {
         if (pr.isDraft) throw new Error("Publish the draft before completing it.");
         if (headCommit !== this.headCommit()) throw new Error("The source branch has new commits. Refresh the pull request and review them first.");
         if (pr.mergeStatus === 2) throw new Error("The pull request has merge conflicts.");
-        const unmet = this.snap.policies.filter((p) => p.configuration.isBlocking && p.status !== "approved" && p.status !== "notApplicable");
-        if (unmet.length && !json.bypassPolicy) throw new Error("Required policies have not passed. Set auto-complete, or override them with a reason.");
+        if (unmetPolicies(this.policies()).length && !json.bypassPolicy) throw new Error("Required policies have not passed. Set auto-complete, or override them with a reason.");
         // Like Azure DevOps, the merge runs in the background: the next read still sees it queued, the one after merged.
         Object.assign(pr, { completionQueueTime: new Date().toISOString(), completionOptions: json, autoCompleteSetBy: undefined });
         this.mergeReads = 1;
@@ -212,6 +213,17 @@ export class MockPrSource implements PrSource {
 
   private headCommit(): string {
     return this.snap.pullRequest.lastMergeSourceCommit?.commitId ?? this.snap.iterations.at(-1)?.sourceRefCommit.commitId ?? "";
+  }
+
+  private policies(): PolicyStatus[] {
+    return this.snap.policies.map((p) => ({
+      id: p.evaluationId,
+      name: p.configuration.type.displayName,
+      detail: typeof p.configuration.settings.displayName === "string" ? p.configuration.settings.displayName : undefined,
+      state: p.status as PolicyState,
+      blocking: p.configuration.isBlocking,
+      typeId: p.configuration.type.id,
+    }));
   }
 
   static async fetch(url: string, currentUser: Identity = MOCK_USER): Promise<MockPrSource> {
@@ -268,13 +280,7 @@ export class MockPrSource implements PrSource {
         authorEmail: c.author.email,
         date: new Date(c.author.date),
       })),
-      policies: this.snap.policies.map((p) => ({
-        id: p.evaluationId,
-        name: p.configuration.type.displayName,
-        detail: typeof p.configuration.settings.displayName === "string" ? p.configuration.settings.displayName : undefined,
-        state: p.status as PolicyState,
-        blocking: p.configuration.isBlocking,
-      })),
+      policies: this.policies(),
       workItems: this.snap.workItems,
     };
   }

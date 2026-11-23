@@ -131,6 +131,7 @@ export function policyStatus(p: PolicyEvaluationRecord): PolicyStatus {
     detail: typeof p.configuration?.settings?.displayName === "string" ? p.configuration.settings.displayName : undefined,
     state: POLICY_STATE[p.status] ?? "queued",
     blocking: !!p.configuration?.isBlocking,
+    typeId: p.configuration?.type?.id,
   };
 }
 

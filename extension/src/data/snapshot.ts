@@ -104,6 +104,6 @@ export interface PrSnapshot {
   policies: {
     evaluationId: string;
     status: string;
-    configuration: { isBlocking: boolean; type: { displayName: string }; settings: Record<string, unknown> };
+    configuration: { isBlocking: boolean; type: { id?: string; displayName: string }; settings: Record<string, unknown> };
   }[];
 }
