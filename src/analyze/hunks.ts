@@ -187,7 +187,8 @@ function analyzeHunk(
     enclosing: [...enclosing],
     defines,
     impacts,
-    affected: affectedDecls(sides, innermostBySide, touched, stop),
+    // An added or deleted file has no unchanged code: every declaration in it is part of the change.
+    affected: file.status === "added" || file.status === "deleted" ? [] : affectedDecls(sides, innermostBySide, touched, stop),
     references,
     tokens,
     fileImports,
@@ -201,7 +202,7 @@ function analyzeHunk(
 
 /**
  * Qualified names of the declarations that any hunk of the file changes a line of, on either side. Empty for added
- * and deleted files, which have no unchanged code to list.
+ * and deleted files, which is why their hunks skip affectedDecls: there, empty would read as "all unchanged".
  */
 function touchedDecls(file: FileDiff, sides: FileSides): Set<string> {
   const touched = new Set<string>();

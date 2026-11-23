@@ -9,14 +9,18 @@ import { analyzeHunks } from "../hunks.js";
 
 const parsers = await createNodeParsers();
 
-/** The analysed hunks of one modified file, in file order, parsed with the real grammar for `path`. */
-async function analyze(path: string, before: string[], after: string[]): Promise<HunkInfo[]> {
+/**
+ * The analysed hunks of one file, in file order, parsed with the real grammar for `path`. Modified by default; an
+ * added or deleted file gets the `/dev/null` side and file mode line git writes.
+ */
+async function analyze(path: string, before: string[], after: string[], status: "modified" | "added" | "deleted" = "modified"): Promise<HunkInfo[]> {
   const [oldText, newText] = [before.join("\n"), after.join("\n")];
   const patch = structuredPatch(path, path, oldText, newText, "", "", { context: 0 });
   const diff = [
     `diff --git a/${path} b/${path}`,
-    `--- a/${path}`,
-    `+++ b/${path}`,
+    ...(status === "added" ? ["new file mode 100644"] : status === "deleted" ? ["deleted file mode 100644"] : []),
+    status === "added" ? "--- /dev/null" : `--- a/${path}`,
+    status === "deleted" ? "+++ /dev/null" : `+++ b/${path}`,
     ...patch.hunks.flatMap((h) => [`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`, ...h.lines]),
     "",
   ].join("\n");
@@ -84,7 +88,12 @@ test("Given a changed top-level function used inside a class, then the method th
   assert.deepEqual(hunk.affected, ["Importer.load"]);
 });
 
-test("Given a new file, then nothing is listed: it has no unchanged code", async () => {
-  const [hunk] = await analyze("src/new.ts", [], ["export function a() { return b(); }", "export function b() { return 1; }"]);
-  assert.deepEqual(hunk.affected, []);
+test("Given an added or a deleted file, then nothing is listed: it has no unchanged code", async () => {
+  const file = ["export function loadUser(id: string) { return parseUser(id); }", "export function parseUser(text: string) { return { text }; }"];
+  const [added] = await analyze("src/new.ts", [], file, "added");
+  const [deleted] = await analyze("src/old.ts", file, [], "deleted");
+  assert.equal(added.file.status, "added");
+  assert.equal(deleted.file.status, "deleted");
+  assert.deepEqual(added.affected, []);
+  assert.deepEqual(deleted.affected, []);
 });
