@@ -1,6 +1,7 @@
 import * as React from "react";
 import { blockTitle, needsLook, riskRank } from "../../../../src/infra/blocks";
 import type { AttributeChange, InfraBlock, InfraModule } from "../../../../src/infra/types";
+import { type ValuePart, valueDiff } from "../../../../src/infra/valueDiff";
 import type { InfraReading } from "../../review/infra";
 import { cx, plural } from "../util";
 import type { InfraState } from "./useInfra";
@@ -206,8 +207,7 @@ const BlockRow: React.FC<{ block: InfraBlock; id: string; flash: boolean }> = ({
                 {shown.map((change) => (
                   <tr key={change.path} className={cx(block.risk?.attributes?.includes(change.path) && "at-risk")}>
                     <td>{change.path}</td>
-                    <Value text={change.before} side="before" />
-                    <Value text={change.after} side="after" />
+                    <Values change={change} />
                   </tr>
                 ))}
               </tbody>
@@ -227,11 +227,38 @@ const BlockRow: React.FC<{ block: InfraBlock; id: string; flash: boolean }> = ({
   );
 };
 
-const Value: React.FC<{ text: AttributeChange["before"]; side: "before" | "after" }> = ({ text, side }) =>
-  text === null ? (
-    <td className="none">not set</td>
-  ) : (
-    <td className={side} title={text.length > MAX_VALUE ? text : undefined}>
-      {text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE)}…` : text}
-    </td>
+/**
+ * An attribute's value before and after, as a word diff: the words that changed are marked on each side, and a long
+ * unchanged stretch keeps only what surrounds a change (src/infra/valueDiff.ts). The cell's tooltip has it whole.
+ */
+const Values: React.FC<{ change: AttributeChange }> = ({ change }) => {
+  const { before, after } = change;
+  const parts = React.useMemo(() => (before !== null && after !== null ? valueDiff(before, after) : null), [before, after]);
+  const cell = (text: string | null, side: "before" | "after", runs: ValuePart[] | null) => {
+    if (text === null) return <td className="none">not set</td>;
+    // A value that is only on one side changed whole: no word in it is marked, and only its length is capped.
+    if (!runs) return <td className={side} title={text.length > MAX_VALUE ? text : undefined}>{text.length > MAX_VALUE ? `${text.slice(0, MAX_VALUE)}…` : text}</td>;
+    const Mark = side === "before" ? "del" : "ins";
+    return (
+      <td className={side} title={runs.some((r) => r.kind === "elided") ? text : undefined}>
+        {runs.map((run, i) =>
+          run.kind === "changed" ? (
+            <Mark key={i}>{run.text}</Mark>
+          ) : run.kind === "elided" ? (
+            <span key={i} className="elided" aria-label="unchanged text left out">
+              …
+            </span>
+          ) : (
+            <React.Fragment key={i}>{run.text}</React.Fragment>
+          ),
+        )}
+      </td>
+    );
+  };
+  return (
+    <>
+      {cell(before, "before", parts?.before ?? null)}
+      {cell(after, "after", parts?.after ?? null)}
+    </>
   );
+};
