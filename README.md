@@ -293,6 +293,7 @@ then runs the pipeline there. The A–Z diff shows first, and the grouping repla
 | `src/parse/` | web-tree-sitter with WASM grammars for TS/TSX/JS, Python, Go, Rust, Java, C#, Ruby, PHP and C/C++, loaded only for the languages a PR touches. Per file: declarations with spans, identifiers (definition or use, plain or member), string literals, comments, imports. |
 | `src/analyze/hunks.ts` | Expands each hunk to its enclosing declaration. Records what it **defines**, what it **references**, and one hop of **impact** (unchanged functions in the same file that use something it changed). The page lists the **affected** code under the hunk: the impact narrowed to declarations no hunk touches that use the changed declaration by name. |
 | `src/analyze/mechanical.ts` | Lockfiles, generated files, pure renames, binary files, whitespace-only hunks and dependency-only `package.json` edits. |
+| `src/analyze/safety.ts` | Fixed rules over added lines: likely secrets, and migrations that can lose data or break a deploy ([below](#safety-rules)). |
 | `src/score/` | Pairwise signals, each 0..1 with evidence (below). |
 | `src/cluster/` | Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. A small community whose new symbols are used by exactly one other community is absorbed into it. Singletons go to **misc**. |
 | `src/order/topo.ts` | Definitions before uses, code before tests. Misc and mechanical come last. |
@@ -311,6 +312,30 @@ Signals (weights in `src/core/config.ts`):
 | path | 0.25 | Same file, same logical directory, or same top directory. Never enough to link on its own. |
 
 Edges below 0.22 are dropped, so one weak coincidence never links two hunks.
+
+### Safety rules
+
+The page shows a finding under the chunk it was found in. The rules run in the browser with the grouping, read
+added lines only, and need no backend. A finding holds the rule and the line, never the matched text.
+
+| Rule | Level | Where |
+|---|---|---|
+| Known key formats: AWS access key, private key block, GitHub, GitLab and Slack tokens, Stripe live key, Google API key, AI API keys, JSON Web Token, Azure `AccountKey=` and `SharedAccessKey=` | high | Any file |
+| A committed env file (`.env`, `.env.production`…) or key file (`.pem`, `.key`, `.pfx`, `id_rsa`…) | high | Added files |
+| `password`, `secret`, `api_key` or `token` set to a quoted literal that holds a digit | medium | Any file |
+| A password in a connection URL (`postgres://user:pass@host`) | medium | Any file |
+| Drops a table or a column, empties a table (`TRUNCATE`), adds a NOT NULL column without a default | high | Migrations |
+| Renames a table or column, changes a column's type or nullability, `UPDATE` or `DELETE` without `WHERE` | medium | Migrations |
+
+- **Secrets are not looked for** in tests, fixtures, docs (`.md`), example files (`.env.example`), lockfiles and
+  generated files. Placeholders (`changeme`, `postgres://app:app@db`) and the Azurite development key pass.
+- **A migration** is a file under a `migrations`, `migrate`, `alembic`, `flyway` or `liquibase` folder, any `.sql`
+  file, or `schema.rb`, `schema.sql` or `schema.prisma`. The rules read raw SQL, EF Core, Rails, Knex, Django and
+  Laravel calls.
+- **Rollback code is skipped,** because it runs only when someone rolls a migration back: a `.down.sql` or Flyway
+  undo file, the down section of a file that holds both directions, and a `Down`, `down` or `downgrade` method.
+- **They are patterns, not proof.** A rule can miss a secret in a format it doesn't know, and it can flag a harmless
+  line. A guide saved before the rules existed shows no finding until the PR is grouped again.
 
 ### Results
 

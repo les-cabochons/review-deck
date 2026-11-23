@@ -25,6 +25,7 @@ function hunk(id: string, path: string, facts: { defines?: string[]; references?
     defines: new Set(facts.defines),
     impacts: new Set(),
     affected: [],
+    findings: [],
     references: new Set(facts.references),
     tokens: new Set(),
     fileImports: new Set(),

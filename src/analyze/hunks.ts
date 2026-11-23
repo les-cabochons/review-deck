@@ -6,6 +6,7 @@ import { LANGUAGES, languageForPath } from "../parse/languages.js";
 import { type Decl, declKey, type FileSymbols, type ImportRef, innermostDecl } from "../parse/symbols.js";
 import type { SyntaxParsers } from "../parse/treesitter.js";
 import { detectMechanical, prHasLockfileChange } from "./mechanical.js";
+import { safetyRules } from "./safety.js";
 
 const IMPACT_KINDS = new Set<Decl["kind"]>(["function", "variable", "class", "interface", "type", "enum"]);
 
@@ -14,7 +15,7 @@ interface FileSides {
   symbols: Record<Side, FileSymbols | null>;
 }
 
-/** Enriches every hunk with symbols, references and mechanical-change flags. */
+/** Enriches every hunk with symbols, references, mechanical-change flags and safety findings. */
 export async function analyzeHunks(
   files: FileDiff[],
   provider: FileProvider,
@@ -52,9 +53,13 @@ export async function analyzeHunks(
     const imports = resolveImports(file, sides, resolveModule);
     const language = languageForPath(file.path);
     const touched = touchedDecls(file, sides);
+    const findSafety = safetyRules(file, sides.content.new, sides.symbols.new?.decls ?? []);
     for (const hunk of file.hunks) {
       const info = analyzeHunk(file, hunk, sides, stopFor(language), imports, language, touched);
       info.mechanical = detectMechanical(file, hunk, { lockfileChanged, head });
+      info.findings = findSafety(hunk, info.mechanical);
+      // A committed key file is binary, and a mechanical hunk is folded away as nothing to read.
+      if (info.findings.length > 0) info.mechanical = null;
       out.set(hunk.id, info);
     }
   }
@@ -196,6 +201,7 @@ function analyzeHunk(
     addedDecls,
     removedDecls,
     mechanical: null,
+    findings: [],
     text: hunkText(file, hunk, symbol),
   };
 }

@@ -1,5 +1,6 @@
+import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
-import type { FileDiff, Hunk } from "../../../src/core/types";
+import type { FileDiff, Hunk, SafetyFinding } from "../../../src/core/types";
 import { isLineAnchor, type Thread } from "../data/model";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
@@ -25,7 +26,23 @@ interface Props {
   symbol?: string | null;
   /** HunkInfo.affected: unchanged code in the file that uses what this chunk changes. */
   affected?: readonly string[];
+  /** HunkInfo.findings: what the safety rules found on this chunk's added lines. */
+  findings?: readonly SafetyFinding[];
 }
+
+/** One line per safety finding under a chunk's header: the rule, where it hit, and why it matters. */
+const FindingNotes: React.FC<{ findings: readonly SafetyFinding[] }> = ({ findings }) => (
+  <ul className="hunk-findings" aria-label="Safety findings">
+    {findings.map((f, i) => (
+      <li key={i} className={`hunk-finding severity-${f.severity}`}>
+        <Icon iconName="Warning" />
+        <strong>{f.rule}</strong>
+        {f.line !== null && <span className="finding-line">line {f.line}</span>}
+        <span className="finding-message">{f.message}</span>
+      </li>
+    ))}
+  </ul>
+);
 
 /** Names listed before the rest fold into "and N more" (the tooltip has them all). */
 const AFFECTED_SHOWN = 5;
@@ -53,9 +70,14 @@ export const DiffHunk: React.FC<Props> = (props) => {
   // The id is a scroll target: the diff below mounts only near the viewport (FilesTab scrollToThread).
   const header = <>
     <div className="pierre-hunk-header" id={`diff-${hunk.id}`}>{hunk.header}{props.symbol && <strong>{props.symbol}</strong>}</div>
+    {!!props.findings?.length && <FindingNotes findings={props.findings} />}
     {!!props.affected?.length && <AffectedNote names={props.affected} />}
   </>;
-  if (!hunk.header) return <div className="diff-note">No content changes, rename or mode change only.</div>;
+  // A committed key file is binary: it has no diff, but its finding still shows.
+  if (!hunk.header) return <>
+    {!!props.findings?.length && <FindingNotes findings={props.findings} />}
+    <div className="diff-note">{props.file.binary ? "Binary file, not shown." : "No content changes, rename or mode change only."}</div>
+  </>;
   if (hunk.lines.length > LARGE_HUNK_LINES && !loadLarge)
     return <>
       {header}
@@ -74,10 +96,18 @@ export const DiffHunk: React.FC<Props> = (props) => {
 
 const HUNK_HEADER_HEIGHT = 24;
 
-/** Placeholder height for a whole DiffHunk (header, the affected line if any, diff) before it first renders. */
-export function estimateHunkHeight(hunk: Hunk, mode: DiffMode, affected = false): number {
-  if (!hunk.header) return 40;
-  return HUNK_HEADER_HEIGHT * (affected ? 2 : 1) + (hunk.lines.length > LARGE_HUNK_LINES ? 44 : diffHeight(hunk, mode));
+/**
+ * Placeholder height for a whole DiffHunk (header, its notes, diff) before it first renders. `notes` is how many
+ * lines sit under the header: one per safety finding, one for the affected code.
+ */
+export function estimateHunkHeight(hunk: Hunk, mode: DiffMode, notes = 0): number {
+  if (!hunk.header) return 40 + HUNK_HEADER_HEIGHT * notes;
+  return HUNK_HEADER_HEIGHT * (1 + notes) + (hunk.lines.length > LARGE_HUNK_LINES ? 44 : diffHeight(hunk, mode));
+}
+
+/** The lines DiffHunk shows under a chunk's header, for estimateHunkHeight. */
+export function hunkNotes(info: { affected: readonly string[]; findings: readonly SafetyFinding[] } | undefined): number {
+  return info ? info.findings.length + (info.affected.length > 0 ? 1 : 0) : 0;
 }
 
 /** One row per line (changed pairs share a row side by side), plus Pierre's block padding. */

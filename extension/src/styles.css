@@ -2387,6 +2387,43 @@ kbd {
   color: var(--fg);
   margin-left: 8px;
 }
+/* Safety findings: one row each under the chunk header, above the affected line. */
+.hunk-findings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.hunk-finding {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 12px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+.hunk-finding.severity-high {
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+}
+.hunk-finding .ms-Icon,
+.hunk-finding .fabric-icon {
+  color: var(--warn);
+  align-self: center;
+}
+.hunk-finding.severity-high .ms-Icon,
+.hunk-finding.severity-high .fabric-icon {
+  color: var(--err);
+}
+.hunk-finding .finding-line,
+.hunk-finding .finding-message {
+  color: var(--fg2);
+}
+.hunk-finding .finding-line {
+  font-family: var(--mono);
+  white-space: nowrap;
+}
 /* One line, so the placeholder height (estimateHunkHeight) holds; the tooltip lists every name. */
 .hunk-affected {
   padding: 2px 12px;
