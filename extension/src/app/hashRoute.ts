@@ -59,7 +59,7 @@ export class HashRouter {
 
   /**
    * `onChange` runs when back or forward lands on another route; never for `navigate`. `findRepo` names the
-   * repository of a `?pr=<id>` link, or resolves to null, and the hub opens instead.
+   * repository of a `?pr=<id>` link, or resolves to null, and the hub opens instead, keeping the id for a reload.
    */
   static async connect(host: HostHistory, onChange: (route: Route) => void, findRepo?: (pr: number) => Promise<string | null>): Promise<HashRouter> {
     const [hash, query] = await Promise.all([host.getHash(), host.getQueryParams()]);
@@ -71,10 +71,11 @@ export class HashRouter {
       if (repo) fromQuery = { view: "pr", pr: bare, repo };
     }
     const router = new HashRouter(host, fromHash.view === "pr" ? fromHash : fromQuery);
-    if (fromQuery.view === "pr" || bare !== null) {
+    if (fromQuery.view === "pr") {
       // Clear the query first, so it can't reopen this PR from the hub, then record the route where history sees it.
+      // A `?pr=<id>` whose repository wasn't found stays, so a reload looks it up again.
       host.setQueryParams({ pr: "", repo: "" });
-      if (router.current.view === "pr") host.replaceHash(routeHash(router.current));
+      host.replaceHash(routeHash(router.current));
     }
     host.onHashChanged((next) => {
       const route = routeFromHash(next);

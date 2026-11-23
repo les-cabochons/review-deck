@@ -105,11 +105,14 @@ test("Given a link with only the PR id (?pr=), then the PR opens in the reposito
   assert.deepEqual(entry(), { hash: "pr=7&repo=repo-id", query: {} });
 });
 
-test("Given a link with only the PR id, and findRepo finds nothing, then the hub opens without the id", async () => {
+// The lookup can fail for a moment (network, a token not ready yet): the id stays, so a reload tries again.
+test("Given a link with only the PR id, and findRepo finds nothing, then the hub opens and a reload looks it up again", async () => {
   const { host, entry } = fakeHost({ query: { pr: "7" } });
   const router = await HashRouter.connect(host, () => {}, async () => null);
   assert.deepEqual(router.route(), { view: "hub" });
-  assert.deepEqual(entry(), { hash: "", query: {} });
+  assert.deepEqual(entry(), { hash: "", query: { pr: "7" } });
+  const reloaded = await HashRouter.connect(host, () => {}, async () => "repo-id");
+  assert.deepEqual(reloaded.route(), pr(7));
 });
 
 test("Given a PR in the hash, then a bare ?pr= isn't looked up", async () => {
