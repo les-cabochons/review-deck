@@ -62,7 +62,7 @@
     "vso.code_manage",
     "vso.notification_write",
     "vso.build",
-    "vso.work",
+    "vso.work_write",
     "vso.project",
     "vso.hooks_write"
   ],

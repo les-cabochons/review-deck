@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Icon } from "azure-devops-ui/Icon";
 import { Button } from "azure-devops-ui/Button";
-import type { PrOverview } from "../data/model";
+import type { PrActions, PrOverview, WorkItemRef } from "../data/model";
 import { MoreMenu } from "./controls";
 import { PresenceAvatar, PresenceStatus, usePresence } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
@@ -178,3 +178,128 @@ export const Tags: React.FC<{ data: PrOverview }> = ({ data }) => {
     </section>
   );
 };
+
+/** The work items linked to the pull request, with a search to link more by id or title. */
+export const WorkItems: React.FC<{ data: PrOverview }> = ({ data }) => {
+  const { actions, disabled, run } = useReviewActions();
+  const [linking, setLinking] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const { results, searching, error } = useSearch(actions.searchWorkItems, linking ? query : "", 1);
+  const [details, remember] = useWorkItemDetails(actions.describeWorkItems, data.partial ? [] : data.workItems.map((w) => w.id));
+  const available = results.filter((w) => !data.workItems.some((linked) => linked.id === w.id));
+  return (
+    <section className="side-section">
+      <h3>
+        Work items{" "}
+        <button className="link-button" disabled={disabled} onClick={() => setLinking(!linking)}>
+          {linking ? "Cancel" : "Link"}
+        </button>
+      </h3>
+      {linking && (
+        <div className="reviewer-picker">
+          <input
+            aria-label="Search work items"
+            placeholder="ID or title"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            disabled={disabled}
+            autoFocus
+          />
+          {searching && (
+            <p role="status" className="muted">
+              Searching…
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="tone-error">
+              {error}
+            </p>
+          )}
+          {!searching && !error && !!query.trim() && !available.length && <p className="muted">No work items found.</p>}
+          <ul className="reviewer-results">
+            {available.map((w) => (
+              <li key={w.id}>
+                <button
+                  disabled={disabled}
+                  onClick={async () => {
+                    // Known now, so the linked row shows its title as soon as the page refreshes.
+                    remember(w);
+                    if (await run(() => actions.linkWorkItem(w.id))) {
+                      setLinking(false);
+                      setQuery("");
+                    }
+                  }}
+                >
+                  <Icon iconName="WorkItem" />
+                  <span>
+                    #{w.id} {w.title}
+                    <small>{[w.type, w.state].filter(Boolean).join(" · ")}</small>
+                  </span>
+                  <Icon iconName="Link" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.partial ? (
+        <p className="muted">Loading work items…</p>
+      ) : !data.workItems.length ? (
+        <p className="muted">No work items linked</p>
+      ) : (
+        <ul className="work-items">
+          {data.workItems.map((ref) => {
+            const w = details.get(ref.id) ?? ref;
+            return (
+              <li key={ref.id}>
+                <Icon iconName="WorkItem" />
+                <span className="name">
+                  {/* _top leaves Azure DevOps' iframe for the work item's own page. */}
+                  {w.url ? (
+                    <a href={w.url} target="_top">
+                      #{w.id}
+                    </a>
+                  ) : (
+                    `#${w.id}`
+                  )}{" "}
+                  {w.title}
+                  {w.state && <span className="muted"> · {w.state}</span>}
+                </span>
+                <button
+                  className="icon-button"
+                  aria-label={`Unlink work item ${ref.id}`}
+                  title="Unlink"
+                  disabled={disabled}
+                  onClick={() => void run(() => actions.unlinkWorkItem(ref.id))}
+                >
+                  <Icon iconName="Cancel" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+};
+
+/**
+ * The titles, types, states and pages of the linked work items, read after the page's load so the page doesn't wait
+ * for them. Until they're in, or if they can't be read, the card lists the ids. `remember` adds one already known
+ * (a search result being linked), so its row shows the title at once.
+ */
+function useWorkItemDetails(describe: PrActions["describeWorkItems"], ids: string[]) {
+  const key = ids.join(",");
+  const [details, setDetails] = React.useState(() => new Map<string, WorkItemRef>());
+  React.useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    describe(key.split(",")).then(
+      (found) => !cancelled && setDetails((known) => new Map([...known, ...found.map((w) => [w.id, w] as const)])),
+      (e) => console.warn("[review-deck] work item details unavailable:", e),
+    );
+    return () => void (cancelled = true);
+  }, [describe, key]);
+  const remember = React.useCallback((w: WorkItemRef) => setDetails((known) => new Map(known).set(w.id, w)), []);
+  return [details, remember] as const;
+}

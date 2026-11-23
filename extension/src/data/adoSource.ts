@@ -2,6 +2,7 @@ import { getClient } from "azure-devops-extension-api";
 import { NotificationRestClient } from "azure-devops-extension-api/Notification";
 import { GitRestClient } from "azure-devops-extension-api/Git";
 import { PolicyRestClient } from "azure-devops-extension-api/Policy";
+import { WorkItemTrackingRestClient } from "azure-devops-extension-api/WorkItemTracking";
 import { IdentityServiceIds, type IVssIdentityService } from "azure-devops-extension-api/Identities";
 import { getHost, getService } from "azure-devops-extension-sdk";
 import type { IIdentity as PickerIdentity } from "azure-devops-ui/IdentityPicker";
@@ -69,6 +70,7 @@ export class AdoPrSource implements PrSource {
     this.files = new FileReads({ changes: (iteration, compareTo) => this.readChanges(iteration, compareTo), blobs: (ids, signal) => this.blobs.load(ids, signal) });
     this.actions = createAdoActions(this.git, { project: projectId, repo: repositoryId, pr: pullRequestId }, currentUser, {
       notifications: getClient(NotificationRestClient),
+      workItems: { client: getClient(WorkItemTrackingRestClient), hostUrl: `https://dev.azure.com/${encodeURIComponent(getHost().name)}/` },
       mergePolicies: async () => (await this.policy.getPolicyConfigurations(projectId, undefined, MERGE_POLICY_TYPE)) as MergePolicy[],
       searchReviewers: async (query) => {
         if (query.trim().length < 2) return [];
