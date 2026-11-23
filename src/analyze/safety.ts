@@ -104,7 +104,10 @@ const SECTION_MARK = /^\s*--\s*(?:migrate:(up|down)|\+(?:goose|migrate)\s+(up|do
 /** The rollback method of a migration class or module: EF Core and Laravel `Down`, Rails and Knex `down`, Alembic `downgrade`. */
 const ROLLBACK_DECL = /^(down|downgrade)$/i;
 
-/** `test` gets the added line and, for statements that span lines, the lines after it up to the statement's end. */
+/**
+ * `test` gets the added line and `statement`: that line and the ones after it, up to the line holding a `;` (statementFrom).
+ * A rule that reads `statement` cuts it at the `;` itself, since one line can hold several statements.
+ */
 const MIGRATION_RULES: { rule: string; severity: Severity; message: string; test: (line: string, statement: string) => boolean }[] = [
   {
     rule: "Drops a table",
@@ -152,7 +155,9 @@ const MIGRATION_RULES: { rule: string; severity: Severity; message: string; test
     rule: "Writes rows without WHERE",
     severity: "medium",
     message: "It changes or deletes every row of the table.",
-    test: (l, statement) => /\b(DELETE\s+FROM|UPDATE\s+\S+\s+SET)\b/i.test(l) && !/\bWHERE\b/i.test(statement),
+    // Each write on the line is checked up to its own `;`, so a later statement's WHERE doesn't cover an earlier one.
+    test: (l, statement) =>
+      [...l.matchAll(/\b(?:DELETE\s+FROM|UPDATE\s+\S+\s+SET)\b/gi)].some((m) => !/\bWHERE\b/i.test(statement.slice(m.index).split(";")[0])),
   },
 ];
 
@@ -172,6 +177,7 @@ export function safetyRules(file: FileDiff, newContent: string | null, decls: re
   const scanSecrets = !NOT_REAL.test(file.path) && !isTestPath(file.path);
   const isMigration = MIGRATION_PATH.test(file.path) && !ROLLBACK_FILE.test(file.path);
   const rollback = isMigration ? rollbackLines(newContent, decls) : new Set<number>();
+  const newLines = isMigration ? (newContent?.split("\n") ?? null) : null;
   if (!scanSecrets && !isMigration) return () => [];
 
   return (hunk, mechanical) => {
@@ -192,7 +198,7 @@ export function safetyRules(file: FileDiff, newContent: string | null, decls: re
         }
       }
       if (isMigration && line !== null && !rollback.has(line)) {
-        const statement = statementFrom(hunk, i);
+        const statement = statementFrom(newLines, hunk, i, line);
         for (const r of MIGRATION_RULES) {
           if (r.test(l.text, statement)) findings.push({ kind: "migration", severity: r.severity, rule: r.rule, message: r.message, line });
         }
@@ -208,16 +214,17 @@ function isPlaceholder(m: RegExpMatchArray, group: number): boolean {
   return PLACEHOLDER.test(value) || value === AZURITE_KEY || (group === 2 && m[1] === value);
 }
 
-/** The new-side text from line `i` of the hunk to the end of its statement: the next `;`, or a few lines on. */
-function statementFrom(hunk: Hunk, i: number): string {
-  const parts: string[] = [];
-  for (let k = i; k < hunk.lines.length && parts.length < STATEMENT_LINES; k++) {
-    const l = hunk.lines[k];
-    if (l.kind === "del") continue;
-    parts.push(l.text);
-    if (l.text.includes(";")) break;
-  }
-  return parts.join("\n");
+/**
+ * The new-side text from `line` (line `i` of the hunk) to the line holding the next `;`, at most STATEMENT_LINES
+ * lines. Read from the file's new side when it was read, since the statement can run past the hunk's few lines of
+ * context; from the hunk otherwise.
+ */
+function statementFrom(newLines: readonly string[] | null, hunk: Hunk, i: number, line: number): string {
+  const texts = newLines
+    ? newLines.slice(line - 1, line - 1 + STATEMENT_LINES)
+    : hunk.lines.slice(i).filter((l) => l.kind !== "del").slice(0, STATEMENT_LINES).map((l) => l.text);
+  const end = texts.findIndex((t) => t.includes(";"));
+  return texts.slice(0, end === -1 ? undefined : end + 1).join("\n");
 }
 
 /** New-side line numbers (1-based) of a migration file's rollback code: its down section, or its `Down` method. */

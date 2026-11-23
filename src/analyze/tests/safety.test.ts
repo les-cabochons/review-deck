@@ -71,6 +71,18 @@ test("Given a DELETE or UPDATE in a migration, then it is flagged only when its 
   assert.deepEqual(rules(hunks), ["Writes rows without WHERE @3"]);
 });
 
+test("Given a changed UPDATE whose WHERE is past the hunk, then it isn't flagged: the WHERE is read from the file", async () => {
+  const statement = (table: string) => [`UPDATE ${table} SET`, "  status = 'archived',", "  archived_at = now(),", "  note = 'moved'", "WHERE closed_at < now();"];
+  // The analysis gets no context lines, so the hunk holds only the first line.
+  const hunks = await analyzeFile("db/migrations/005_archive.sql", statement("orders"), statement("archived_orders"));
+  assert.deepEqual(rules(hunks), []);
+});
+
+test("Given two writes on one line, then the one without WHERE is flagged even when the other has one", async () => {
+  const hunks = await analyzeFile("db/migrations/006_purge.sql", null, ["DELETE FROM orders; DELETE FROM sessions WHERE id = 10;"]);
+  assert.deepEqual(rules(hunks), ["Writes rows without WHERE @1"]);
+});
+
 test("Given an EF Core migration, then a column dropped in Up is flagged and the table dropped in Down isn't", async () => {
   const file = (up: string[]) => [
     "public partial class AddOrderNotes : Migration",
