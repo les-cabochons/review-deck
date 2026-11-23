@@ -58,6 +58,11 @@ export interface InfraBlock {
   changes: AttributeChange[];
   risk: Risk | null;
   notes: Note[];
+  /**
+   * A module block's `source`, unquoted: `./modules/storage`, `Azure/naming/azurerm`. The head side's, or the base
+   * side's if the block is removed. Absent for other blocks, and for a module declared in a file the PR doesn't change.
+   */
+  source?: string;
 }
 
 /** `to` uses `from`: a storage account uses its resource group. */
@@ -68,6 +73,8 @@ export interface InfraEdge {
   status: "added" | "removed" | "touched" | "same";
   /** The attributes of `to` that hold the reference. For `touched`, only the changed ones. */
   via: string[];
+  /** When `from` is a module: the outputs of it that `to` reads (`queue_name` in `module.storage.queue_name`). */
+  outputs?: string[];
 }
 
 /** The changed Terraform files of one directory, which Terraform treats as one module. */
