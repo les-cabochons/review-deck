@@ -3,6 +3,7 @@ import { TextField, TextFieldWidth } from "azure-devops-ui/TextField";
 import * as React from "react";
 import { type AppHost, type BackendSettings, normalizeBackendUrl } from "../../app/host";
 import { fetchUsage } from "../../review/backend";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -14,6 +15,7 @@ import { SkeletonHtml } from "../SkeletonHtml";
  */
 export const BackendSetting: React.FC<{ host: AppHost }> = ({ host }) => {
   const [saved, setSaved] = React.useState<BackendSettings | null | undefined>(undefined);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [url, setUrl] = React.useState("");
   const [key, setKey] = React.useState("");
@@ -28,12 +30,13 @@ export const BackendSetting: React.FC<{ host: AppHost }> = ({ host }) => {
       setUrl(settings?.url ?? "");
       setKey(settings?.key ?? "");
       setCanManage(manage);
-    });
+    }, loadFailed("backend", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
   }, [host]);
 
+  if (loadError) return <LoadError message={loadError} />;
   if (saved === undefined) return <SkeletonHtml html={SETTINGS_BODIES.orgBackend} />;
 
   const store = async (settings: BackendSettings | null) => {
