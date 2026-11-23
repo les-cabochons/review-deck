@@ -207,12 +207,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       })
       .then((r) => {
         if (cancelled || !r) return;
-        setReview(r);
-        setGroupedWith({ title: r.result.title, description: r.result.description });
-        setProgress(null);
+        // First, so a hold on the preview applies before the grouped review does: React 16 renders each update of a
+        // promise callback on its own, and the guided view would replace the preview for a render, remounting it.
         const keepPlace = commentOnPreview.current;
         commentOnPreview.current = false;
         if (previewAt !== null && (keepPlace || Date.now() - previewAt >= ANNOUNCE_AFTER_MS)) announceGrouped(r, keepPlace);
+        setReview(r);
+        setGroupedWith({ title: r.result.title, description: r.result.description });
+        setProgress(null);
       })
       .catch((e: Error) => !cancelled && setReviewError(`Could not analyze changes: ${e.message}`))
       .finally(() => !cancelled && setReviewLoading(false));
