@@ -2,6 +2,7 @@ import * as React from "react";
 import type { Link } from "../../../../src/core/types";
 import { boxTitle, layoutRelations, type MapEdge, type MapItem, type MapNode } from "../../../../src/relations/diagram";
 import { cx } from "../util";
+import { DiagramCanvas } from "./DiagramCanvas";
 
 interface Props {
   items: MapItem[];
@@ -17,13 +18,25 @@ interface Props {
   onSelectEdge?: (from: string, to: string) => void;
   /** The card id, or the `pairKey` of a connector's two cards, drawn as selected. */
   selected?: string | null;
-  /** Height the map may take before it scrolls. */
+  /** Height the map may take; the rest is reached by dragging (DiagramCanvas). */
   height: number;
   label: string;
+  /** Extra class on a card, such as the Infra view's `tone-replace`. */
+  cardClass?: (id: string) => string | undefined;
+  /** Whether a card can be picked; all of them when absent. */
+  selectable?: (id: string) => boolean;
+  /**
+   * How to draw a connector: an extra class (`added`, `removed`, `touched`), a mark before its label ("+ "), and
+   * whether it is quiet: drawn, but without a label.
+   */
+  edgeInfo?: (from: string, to: string) => { className?: string; mark?: string; quiet?: boolean } | undefined;
+  /** A thumbnail: fitted whole into `height`, without labels, not interactive, not draggable. */
+  compact?: boolean;
 }
 
-/** Below this the text is too small to read: a wider map scrolls sideways instead of shrinking further. */
-const MIN_SCALE = 0.75;
+/** The arrowheads a map defines, one per connector class, so a head takes its line's colour. */
+const HEADS = ["", "added", "removed", "touched"];
+
 let maps = 0;
 
 /**
@@ -31,7 +44,7 @@ let maps = 0;
  * src/relations/diagram.ts: columns from left to right, what is defined before what uses it. A connector's arrowhead
  * is on the user's side, on both sides when each uses the other. Loose links (member names only) aren't drawn.
  */
-const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, onSelect, onSelectEdge, selected, height, label }) => {
+const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, onSelect, onSelectEdge, selected, height, label, cardClass, selectable, edgeInfo, compact }) => {
   const [box, setBox] = React.useState<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(0);
   // Arrowhead markers are looked up by id in the whole document, so each map needs its own.
@@ -48,27 +61,48 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
   const room = Math.max(width - 8, 240);
   const map = React.useMemo(() => (measured ? layoutRelations(items, links, { width: room }) : null), [items, links, measured, room]);
   const titles = React.useMemo(() => new Map(items.map((i) => [i.id, i.title])), [items]);
-  const scale = map ? Math.max(MIN_SCALE, Math.min(1, room / map.width)) : 1;
+  const pick = (id: string) => (onSelect && !compact && (!selectable || selectable(id)) ? onSelect : undefined);
 
-  return (
-    <div className="relation-map" ref={setBox} style={{ maxHeight: height + 16 }}>
-      {map && (
-        <svg viewBox={`0 0 ${map.width} ${map.height}`} width={Math.ceil(map.width * scale)} height={Math.ceil(map.height * scale)} role="img" aria-label={label}>
+  const svg = map && (
+        <svg
+          viewBox={`0 0 ${map.width} ${map.height}`}
+          width={compact ? Math.ceil(map.width * Math.min(1, room / map.width, height / map.height)) : map.width}
+          height={compact ? Math.ceil(map.height * Math.min(1, room / map.width, height / map.height)) : map.height}
+          role={compact ? undefined : "img"}
+          aria-hidden={compact || undefined}
+          aria-label={compact ? undefined : label}
+        >
           <defs>
-            <marker id={`${id}-end`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path className="relation-arrowhead" d="M0,0 L10,5 L0,10 z" />
-            </marker>
+            {HEADS.map((head) => (
+              <marker key={head} id={`${id}-end${head && `-${head}`}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path className={cx("relation-arrowhead", head)} d="M0,0 L10,5 L0,10 z" />
+              </marker>
+            ))}
           </defs>
           {map.headings.map((h) => (
             <text key={h.text} className="relation-heading" x={h.x} y={h.y}>
               {h.text}
             </text>
           ))}
-          {map.edges.map((edge) => (
-            <Connector key={`${edge.from}>${edge.to}`} edge={edge} marker={`url(#${id}-end)`} titles={titles} selected={selected} onSelect={onSelectEdge} />
-          ))}
+          {map.edges.map((edge) => {
+            const info = edgeInfo?.(edge.from, edge.to);
+            const head = info?.className && HEADS.includes(info.className) ? `-${info.className}` : "";
+            return (
+              <Connector
+                key={`${edge.from}>${edge.to}`}
+                edge={edge}
+                marker={`url(#${id}-end${head})`}
+                titles={titles}
+                selected={selected}
+                onSelect={compact ? undefined : onSelectEdge}
+                className={info?.className}
+                mark={info?.mark}
+                quiet={compact || info?.quiet}
+              />
+            );
+          })}
           {map.nodes.map((node) => (
-            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} selected={selected === node.id} />
+            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={pick(node.id)} selected={selected === node.id} className={cardClass?.(node.id)} />
           ))}
           {map.apartTop !== null && (
             <text className="relation-apart-caption" x={12} y={map.apartTop + 14}>
@@ -76,10 +110,21 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
             </text>
           )}
           {map.apart.map((node) => (
-            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} apart />
+            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={pick(node.id)} apart className={cardClass?.(node.id)} />
           ))}
         </svg>
-      )}
+  );
+
+  return (
+    <div className={cx("relation-map", compact && "compact")} ref={setBox}>
+      {map &&
+        (compact ? (
+          svg
+        ) : (
+          <DiagramCanvas contentWidth={map.width} contentHeight={map.height} maxHeight={height} label={label}>
+            {svg}
+          </DiagramCanvas>
+        ))}
     </div>
   );
 };
@@ -97,13 +142,18 @@ const Connector: React.FC<{
   titles: Map<string, string>;
   selected?: string | null;
   onSelect?: (from: string, to: string) => void;
-}> = ({ edge, marker, titles, selected, onSelect }) => {
+  className?: string;
+  /** Written before the label: "+ " for a reference the change adds. */
+  mark?: string;
+  /** Drawn without its label. */
+  quiet?: boolean;
+}> = ({ edge, marker, titles, selected, onSelect, className, mark, quiet }) => {
   const select = onSelect ? () => onSelect(edge.from, edge.to) : undefined;
   const key = edge.from < edge.to ? `${edge.from}\u0001${edge.to}` : `${edge.to}\u0001${edge.from}`;
   const tooltip = edgeTooltip(edge, titles);
   return (
     <g
-      className={cx("relation-edge", select && "selectable", selected === key && "selected")}
+      className={cx("relation-edge", className, select && "selectable", selected === key && "selected")}
       tabIndex={select ? 0 : undefined}
       role={select ? "button" : undefined}
       aria-pressed={select ? selected === key : undefined}
@@ -116,8 +166,9 @@ const Connector: React.FC<{
       <path className="relation-edge-hit" d={edge.path} />
       {/* The path runs left to right; the arrowhead goes on the user's side. */}
       <path d={edge.path} markerEnd={edge.both || !edge.reversed ? marker : undefined} markerStart={edge.both || edge.reversed ? marker : undefined} />
-      {edge.label && (
+      {edge.label && !quiet && (
         <text x={edge.label.x} y={edge.label.y}>
+          {mark}
           {edge.label.text}
         </text>
       )}
@@ -131,14 +182,15 @@ function greenSquares(adds: number, dels: number): number {
   return Math.max(adds > 0 ? 1 : 0, Math.min(dels > 0 ? 4 : 5, Math.round((5 * adds) / (adds + dels))));
 }
 
-const Card: React.FC<{ node: MapNode; color?: string; badge: string | null; apart?: boolean; selected?: boolean; onSelect?: (id: string) => void }> = ({
-  node,
-  color,
-  badge,
-  apart,
-  selected,
-  onSelect,
-}) => {
+const Card: React.FC<{
+  node: MapNode;
+  color?: string;
+  badge: string | null;
+  apart?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
+  className?: string;
+}> = ({ node, color, badge, apart, selected, onSelect, className }) => {
   const { x, y, width, height } = node;
   const select = onSelect ? () => onSelect(node.id) : undefined;
   const left = x + (badge ? 34 : 13);
@@ -149,16 +201,16 @@ const Card: React.FC<{ node: MapNode; color?: string; badge: string | null; apar
   const subtitleRoom = width - (left - x) - 8 - (stats ? 108 : 0);
   return (
     <g
-      className={cx("relation-node", apart && "apart", select && "selectable", selected && "selected")}
+      className={cx("relation-node", className, apart && "apart", select && "selectable", selected && "selected")}
       aria-pressed={select ? !!selected : undefined}
       style={color ? ({ "--node-color": color } as React.CSSProperties) : undefined}
       tabIndex={select ? 0 : undefined}
       role={select ? "button" : undefined}
-      aria-label={select ? `${node.title}${node.subtitle ? `, ${node.subtitle}` : ""}${stats ? `, ${stats.adds} added, ${stats.dels} removed` : ""}. Show it.` : undefined}
+      aria-label={select ? `${node.tooltip ?? `${node.title}${node.subtitle ? `, ${node.subtitle}` : ""}`}${stats ? `, ${stats.adds} added, ${stats.dels} removed` : ""}. Show it.` : undefined}
       onClick={select}
       onKeyDown={select && onKey(select)}
     >
-      <title>{[node.title, node.path ?? node.subtitle].filter(Boolean).join("\n")}</title>
+      <title>{node.tooltip ?? [node.title, node.path ?? node.subtitle].filter(Boolean).join("\n")}</title>
       <rect className="relation-card" x={x} y={y} width={width} height={height} rx={7} />
       <rect className="relation-bar" x={x} y={y + 7} width={3} height={height - 14} rx={1.5} />
       {badge && (

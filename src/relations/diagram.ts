@@ -11,6 +11,8 @@ export interface MapItem {
   subtitle: string | null;
   /** The full path of a change's file, for its tooltip. */
   path?: string;
+  /** The card's tooltip, when its title and path don't say enough. */
+  tooltip?: string;
   /** Lines the item adds and removes, shown as counts and five squares. */
   adds?: number;
   dels?: number;

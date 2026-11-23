@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { before, test } from "node:test";
-import { layoutDiagram } from "../diagram.js";
+import { diagramContent, edgeName } from "../diagram.js";
 import { TERRAFORM_GRAMMAR } from "../grammar.js";
 import { summarize } from "../blocks.js";
 import { TerraformReader } from "../terraform.js";
@@ -228,7 +228,7 @@ test("Given only a variable's description changed, then it is listed as descript
   const variable = (description: string) => `variable "location" {\n  type = string\n  description = "${description}"\n}\n`;
   const module = diff(variable("Region"), variable("Azure region"));
   assert.equal(block(module, "var.location").docsOnly, true);
-  assert.equal(layoutDiagram(module, { width: 700, height: 400 }), null);
+  assert.deepEqual(diagramContent(module).blocks, []);
 });
 
 test("Given a changed resource, then the diagram draws it with what the change involves, and leaves unrelated neighbours out", () => {
@@ -238,13 +238,11 @@ resource "random_password" "key" {
 }
 `;
   const after = before.replace('account_replication_type = "LRS"', 'account_replication_type = "LRS"\n  tags = { key = random_password.key.result }');
-  const diagram = layoutDiagram(diff(before, after), { width: 700, height: 400 });
-  assert.ok(diagram);
+  const content = diagramContent(diff(before, after));
   // The resource group is used through an unchanged line, so it adds nothing to this change.
-  assert.deepEqual(diagram.nodes.map((n) => n.block.address).sort(), ["azurerm_storage_account.this", "random_password.key"]);
-  assert.equal(diagram.nodes.find((n) => n.block.address === "azurerm_storage_account.this")?.title, "Storage account");
-  assert.deepEqual(diagram.edges.map((e) => [e.edge.status, e.label?.text]), [["added", "tags.key"]]);
-  for (const node of diagram.nodes) assert.ok(node.x >= 0 && node.y >= 0 && node.x + node.width <= diagram.width && node.y + node.height <= diagram.height);
+  assert.deepEqual(content.blocks.map((b) => b.address).sort(), ["azurerm_storage_account.this", "random_password.key"]);
+  assert.deepEqual(content.edges.map((e) => [e.from, e.to, e.status, e.via]), [["random_password.key", "azurerm_storage_account.this", "added", ["tags.key"]]]);
+  assert.equal(edgeName("app_settings.API_KEY"), "API_KEY");
 });
 
 test("Given a reference that only gains [0] because its target gained count, then that alone is no replace", () => {
