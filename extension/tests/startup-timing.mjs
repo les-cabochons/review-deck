@@ -358,6 +358,8 @@ const SCENARIOS = [
   // On the Files tab, so the diff's wait counts too (prDiff).
   { name: "hosted PR", path: "/host?pr=471&repo=users-sdk&tab=files", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
+  // A link from the browser extension: only the PR id, so the page finds its repository with one REST call first.
+  { name: "hosted PR from its id alone, slow REST", path: "/host?pr=471&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: ["handshake", "loaded"] },
   { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // The same 250 to 520 ms, but each call its own. The page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
   { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },

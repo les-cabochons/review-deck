@@ -83,10 +83,21 @@ export class AdoHost implements AppHost {
     this.cacheScope = `${SDK.getHost().id}/${this.projectId}/${user.id}`;
   }
 
-  static async create(): Promise<AdoHost> {
+  /**
+   * `onLookup` runs when a `?pr=<id>` link needs its repository found first, before that lookup, so the page can show
+   * the pull request's skeleton instead of the hub's while it waits.
+   */
+  static async create(onLookup?: (pr: number) => void): Promise<AdoHost> {
     const nav = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
     const host = new AdoHost(nav);
-    host.router = await HashRouter.connect(nav, (route) => host.listeners.emit(route), (pr) => host.findRepository(pr));
+    host.router = await HashRouter.connect(
+      nav,
+      (route) => host.listeners.emit(route),
+      (pr) => {
+        onLookup?.(pr);
+        return host.findRepository(pr);
+      },
+    );
     return host;
   }
 

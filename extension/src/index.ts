@@ -39,8 +39,13 @@ function showError(error: Error) {
 
 async function renderHosted() {
   const { adoHost, page, preferences } = ui!;
+  // A link with only the PR id (from the browser extension) waits for one REST call to find its repository: the PR's
+  // skeleton shows meanwhile, not the hub's.
+  const showPr = (id: number) => {
+    if (isReview) root.innerHTML = prSkeleton({ id });
+  };
   const host = await withTimeout(
-    adoHost.then(({ AdoHost }) => AdoHost.create()),
+    adoHost.then(({ AdoHost }) => AdoHost.create(showPr)),
     "Could not connect to Azure DevOps navigation. Reload to try again.",
   );
   // Started now, so the hub's on/off check (page.tsx, which doesn't hold up the first render) answers sooner.
@@ -49,7 +54,7 @@ async function renderHosted() {
   // loading, the Files tab's reads included, while the UI loads.
   const route = host.route();
   if (route.view === "pr" && isReview) {
-    root.innerHTML = prSkeleton({ id: route.pr });
+    showPr(route.pr);
     host.prefetchPr(route, { files: true });
   }
   const [{ renderHost }, { connectPreferences }] = await withTimeout(
