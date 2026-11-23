@@ -11,6 +11,9 @@ thing end up together, ordered so definitions come before their uses and code co
 - **A review page:** Overview, Files and Commits. Files opens in the **Guided** view, grouped by concern,
   with a Files A–Z toggle and inline or side-by-side diffs.
 - **GitHub-style reviews:** draft comments, then submit them all with a verdict.
+- **A generated description:** beside the author's, behind a toggle. Why, from the commit messages, and a map
+  and a list of how the concerns connect, from the names they share. In Files, a concern shows how its own
+  changes connect. See [docs/generated-description.md](docs/generated-description.md).
 - **An Infra view:** a pull request that changes Terraform or OpenTofu files gets a diagram of the resources it adds,
   changes or removes, and a list of what may be destroyed or replaced. It is read from the files, not from a plan,
   and says so. See [docs/infra-view.md](docs/infra-view.md).

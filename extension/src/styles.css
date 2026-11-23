@@ -5206,3 +5206,416 @@ span.artifact-toggle {
     padding: 10px 12px 12px;
   }
 }
+
+/* ---------- generated description and relation maps (src/ui/relations) ---------- */
+.description-source {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  flex: none;
+}
+.description-source button {
+  font: inherit;
+  font-size: 12px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.description-source button + button {
+  border-left: 1px solid var(--line-strong);
+}
+.description-source button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--link);
+  font-weight: 600;
+}
+.description-source + .description-edit {
+  margin-left: 10px;
+}
+.generated-description {
+  padding: 10px 16px 14px;
+  font-size: 13px;
+}
+.generated-description h4 {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg2);
+}
+.generated-description section:first-child h4 {
+  margin-top: 4px;
+}
+.generated-changelog h5 {
+  margin: 6px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.generated-changelog ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.generated-changelog li {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+.generated-source {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+.generated-note {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.concern-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.concern-list > li {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+.concern-list-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: left;
+}
+.concern-list-title .badge {
+  flex: none;
+}
+.concern-list-count {
+  margin-left: 8px;
+  font-size: 12px;
+}
+.concern-list ul {
+  margin: 4px 0 0 26px;
+  padding: 0;
+  color: var(--fg2);
+}
+.concern-list ul li {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+.concern-list code {
+  color: var(--fg);
+  font-size: 12px;
+}
+.badge.concern-ref {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  vertical-align: middle;
+  min-width: 18px;
+  height: 18px;
+}
+.concern-flow {
+  margin: 0 0 8px;
+  padding: 0 14px 8px;
+}
+.concern-flow-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg2);
+  padding-top: 4px;
+}
+.concern-flow-head,
+.generated-map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg2);
+  padding: 4px 0;
+}
+.generated-map-head {
+  padding: 0 0 4px;
+}
+.diagram-controls {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 12px;
+  font-weight: 400;
+}
+.how-to-read {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--fg);
+}
+.how-to-read h5 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.how-to-read h5:first-child {
+  margin-top: 0;
+}
+.how-to-read p {
+  margin: 0;
+}
+.how-to-read ul {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.how-to-read li {
+  margin: 2px 0;
+}
+/* Left out by a pick in the concern's map (FilesTab GroupSection). */
+.hunk-card[hidden] {
+  display: none;
+}
+.hunk-card.flash {
+  box-shadow: 0 0 0 2px var(--focus-border-color, var(--accent));
+}
+.relation-map {
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  --map-bg: var(--surface-2);
+}
+.relation-map svg {
+  display: block;
+}
+.relation-heading {
+  fill: var(--fg2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.relation-card {
+  fill: var(--card-bg, var(--surface));
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.relation-bar {
+  fill: var(--node-color, var(--fg3));
+}
+.relation-node-title {
+  fill: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.relation-node-subtitle {
+  fill: var(--fg2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+.relation-stats {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.relation-stats .adds,
+.relation-square.adds {
+  fill: var(--ok);
+}
+.relation-stats .dels,
+.relation-square.dels {
+  fill: var(--err);
+}
+.relation-badge circle {
+  fill: var(--node-color, var(--fg3));
+}
+.relation-badge text {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.relation-node.selectable {
+  cursor: pointer;
+}
+.relation-node.selectable:focus {
+  outline: none;
+}
+.relation-node.selectable:hover .relation-card {
+  stroke: var(--fg2);
+}
+.relation-node.selectable:focus-visible .relation-card {
+  stroke: var(--focus-border-color, var(--accent));
+  stroke-width: 2.5;
+}
+.relation-node.selected .relation-card {
+  stroke: var(--link);
+  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--accent) 9%, var(--card-bg, var(--surface)));
+}
+.relation-edge path {
+  fill: none;
+  stroke: var(--fg2);
+  stroke-width: 1.5;
+}
+.relation-edge .relation-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+.relation-edge:hover path:not(.relation-edge-hit) {
+  stroke: var(--fg);
+  stroke-width: 2.5;
+}
+.relation-edge:hover text {
+  fill: var(--link);
+}
+.relation-edge.selectable {
+  cursor: pointer;
+}
+.relation-edge.selectable:focus {
+  outline: none;
+}
+.relation-edge.selected path:not(.relation-edge-hit),
+.relation-edge.selectable:focus-visible path:not(.relation-edge-hit) {
+  stroke: var(--link);
+  stroke-width: 3;
+}
+.relation-edge.selected text {
+  fill: var(--link);
+  font-weight: 700;
+}
+.relation-arrowhead {
+  fill: var(--fg2);
+}
+.relation-edge text {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--fg);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.flow-outline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+.flow-outline button {
+  font: inherit;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  width: 100%;
+}
+.flow-outline-root {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--node-color, var(--fg3));
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+}
+.flow-outline-file {
+  color: var(--fg2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.flow-outline-stats {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.flow-outline-stats .adds {
+  color: var(--ok);
+}
+.flow-outline-stats .dels {
+  color: var(--err);
+}
+.flow-outline ul {
+  list-style: none;
+  margin: 0 0 0 14px;
+  padding: 0;
+}
+.flow-outline li {
+  position: relative;
+  padding-left: 20px;
+}
+/* The tree's lines: a trunk down the left, stopping at the last row's branch. */
+.flow-outline li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--fg3);
+}
+.flow-outline li:last-child::before {
+  bottom: calc(100% - 17px);
+}
+.flow-outline li::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 17px;
+  width: 14px;
+  border-top: 1.5px solid var(--fg3);
+}
+.flow-outline-row {
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  overflow-wrap: anywhere;
+}
+.flow-outline code {
+  font-size: 11.5px;
+}
+.flow-outline .selected {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--accent) 9%, var(--card-bg, var(--surface)));
+}
+.flow-focus {
+  margin: 0 14px 8px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  font-size: 12.5px;
+}
+.relation-apart-caption {
+  fill: var(--fg2);
+  font-size: 11px;
+  font-style: italic;
+}
+@media (max-width: 700px) {
+  .description .card-head {
+    flex-wrap: wrap;
+  }
+  .description-source {
+    margin-left: 0;
+  }
+}

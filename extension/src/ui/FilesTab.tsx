@@ -14,6 +14,9 @@ import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
+import { ConcernFlow, type FlowFocus } from "./relations/ConcernFlow";
+import { useDiagramsShown } from "./relations/diagramsShown";
+import { useMediaQuery } from "./useMediaQuery";
 import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
@@ -147,6 +150,7 @@ const FilesContent: React.FC<Props> = (props) => {
     }
     setGroupCollapsed(card.group, false);
     setCollapsed([card.info.hunk.id], false);
+    revealHunk(card.info.hunk.id);
     requestAnimationFrame(() => scrollToThread([`hunk-${card.info.hunk.id}`], thread.id));
   }, [focusThread, review, selection, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
@@ -228,19 +232,6 @@ const FilesContent: React.FC<Props> = (props) => {
   );
 };
 
-/** Whether the window matches a media query, kept current as the window resizes. */
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = React.useState(() => window.matchMedia(query).matches);
-  React.useEffect(() => {
-    const list = window.matchMedia(query);
-    const update = () => setMatches(list.matches);
-    update();
-    list.addEventListener("change", update);
-    return () => list.removeEventListener("change", update);
-  }, [query]);
-  return matches;
-}
-
 /** Whether the file tree sidebar is shown. Hidden, it leaves a slim rail and the diffs take the rest of the width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
   const [shown, setShown] = usePreference<"shown" | "hidden">("fileTree", "shown");
@@ -300,10 +291,14 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
       : []),
   ];
   const grouping = !!review && !review.analyzed;
+  const [diagramsShown, setDiagramsShown] = useDiagramsShown();
   const settings: MenuOption[] = [
     { id: "inline", text: "Inline", selected: mode === "inline", onSelect: () => onMode("inline") },
     { id: "split", text: "Side-by-side", selected: mode === "split", onSelect: () => onMode("split") },
     { id: "modes", text: "", divider: true },
+    // Every pull request, saved with the user's preferences (relations/diagramsShown.ts).
+    { id: "diagrams", text: diagramsShown ? "Hide change diagrams" : "Show change diagrams", icon: "Org", onSelect: () => setDiagramsShown(!diagramsShown) },
+    { id: "diagrams-end", text: "", divider: true },
     // Grouping again needs a finished one; a published or own guide stays for everyone else either way.
     { id: "regroup", text: "Regroup", icon: "Refresh", disabled: !review?.analyzed || !!progress, onSelect: onRegroup },
     ...(review?.ownGuide
@@ -388,6 +383,15 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
 // ---------- navigator ----------
 
 /** Scrolls to an element, then again once lazily mounted content above it has settled. */
+/**
+ * Says a change is about to be scrolled to. A concern showing only the changes of a card or connector picked in its
+ * map (GroupSection's focus) shows them all again if this one isn't among them: its card would not be on the page.
+ */
+const REVEAL_HUNK = "review-deck:reveal-hunk";
+function revealHunk(id: string) {
+  window.dispatchEvent(new CustomEvent<string>(REVEAL_HUNK, { detail: id }));
+}
+
 function scrollToId(id: string) {
   const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
   go();
@@ -743,6 +747,7 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
           setCollapsed(hunksOf(path), false);
           const section = document.getElementById(`group-${group.id}`);
           section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
+          revealHunk(hunksOf(path)[0]);
           requestAnimationFrame(() => scrollToId(`hunk-${hunksOf(path)[0]}`));
           onPick?.();
         }}
@@ -827,8 +832,22 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   const { groupCollapsed, setGroupCollapsed } = useFileReview();
   const open = !groupCollapsed(group.id, group.hunkIds, group.kind === "mechanical");
   const setOpen = (next: boolean) => setGroupCollapsed(group.id, !next);
-  const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
-  const files = new Set(hunks.map((h) => h.file.path)).size;
+  /** A box or an arrow picked in the concern's map: only its changes show, until it is picked again or cleared. */
+  const [focus, setFocus] = React.useState<FlowFocus | null>(null);
+  // The navigator or a comment is about to scroll to a change the focus hides: show them all, so it is there.
+  React.useEffect(() => {
+    if (!focus) return;
+    const reveal = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (group.hunkIds.includes(id) && !focus.hunkIds.includes(id)) setFocus(null);
+    };
+    window.addEventListener(REVEAL_HUNK, reveal);
+    return () => window.removeEventListener(REVEAL_HUNK, reveal);
+  }, [focus, group]);
+  const all = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
+  // The others stay mounted, hidden: a comment being typed on one of them must survive the pick.
+  const inFocus = (h: HunkInfo) => !focus || focus.hunkIds.includes(h.hunk.id);
+  const files = new Set(all.map((h) => h.file.path)).size;
   return (
     <section
       className={cx("group-section", `kind-${group.kind}`)}
@@ -844,17 +863,29 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
           <span className="gtitle">{group.title}</span>
           <TitleSourceIcon group={group} />
           <span className="count">
-            {plural(hunks.length, "change")} · {plural(files, "file")}
+            {plural(all.length, "change")} · {plural(files, "file")}
           </span>
         </button>
         <ViewedCheckbox hunkIds={group.hunkIds} label={`Mark concern ${group.title} as viewed`} onChange={(checked) => setOpen(!checked)} />
       </div>
       {open && (
         <>
-          {group.rationale && <p className="rationale">{group.rationale}</p>}
-          {hunks.map((h) => (
+          {/* "Other changes" has no rationale worth reading. Guides saved before it was dropped still hold one. */}
+          {group.rationale && group.kind !== "misc" && <p className="rationale">{group.rationale}</p>}
+          {group.kind === "semantic" && (
+            <ConcernFlow group={group} result={review.result} color={groupColor(review.result.groups, group)} focus={focus} onFocus={setFocus} />
+          )}
+          {focus && (
+            <p className="flow-focus" role="status">
+              Showing {plural(all.filter(inFocus).length, "change")} of {all.length}: <strong>{focus.label}</strong> ·{" "}
+              <button className="link-button" onClick={() => setFocus(null)}>
+                Show all
+              </button>
+            </p>
+          )}
+          {all.map((h) => (
             <HunkCard key={h.hunk.id} info={h} mode={mode} threads={fileThreads.get(h.file.path) ?? []}
-              showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} />
+              showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} hidden={!inFocus(h)} />
           ))}
         </>
       )}
@@ -862,19 +893,21 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   );
 };
 
-const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; showFileThreads: boolean; viewUrl: string | null }> = ({
-  info,
-  mode,
-  threads,
-  showFileThreads,
-  viewUrl,
-}) => {
+const HunkCard: React.FC<{
+  info: HunkInfo;
+  mode: DiffMode;
+  threads: Thread[];
+  showFileThreads: boolean;
+  viewUrl: string | null;
+  /** Left out by a pick in the concern's map. Still mounted, so what the reader has open in it is kept. */
+  hidden?: boolean;
+}> = ({ info, mode, threads, showFileThreads, viewUrl, hidden }) => {
   const { isCollapsed } = useFileReview();
   const collapsed = isCollapsed([info.hunk.id]);
   const adds = info.hunk.lines.filter((l) => l.kind === "add").length;
   const dels = info.hunk.lines.filter((l) => l.kind === "del").length;
   return (
-    <article className="hunk-card" id={`hunk-${info.hunk.id}`}>
+    <article className="hunk-card" id={`hunk-${info.hunk.id}`} hidden={hidden}>
       {/* The article stays as a scroll target; its contents mount near the viewport. */}
       <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode))}>
       <FileHeader file={info.file} hunk={info.hunk} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>

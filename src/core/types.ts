@@ -106,6 +106,21 @@ export interface Group {
  */
 export type TitleSource = "llm" | "description" | "heuristic";
 
+/** How concerns connect (src/relations): `to` uses something `from` defines or changes. Test files are left out. */
+export interface Link {
+  from: string;
+  to: string;
+  /** The names behind the link, best first: named symbols, then members (`.hide`), which match the loosest. */
+  symbols: string[];
+}
+
+export interface ReviewRelations {
+  /** Between concerns (semantic groups), by group id. */
+  links: Link[];
+  /** Inside each concern, by hunk id, keyed by group id. A concern whose changes don't use each other has none. */
+  flows: Record<string, Link[]>;
+}
+
 export interface ReviewResult {
   title: string;
   description: string;
@@ -113,6 +128,8 @@ export interface ReviewResult {
   hunks: Map<string, HunkInfo>;
   pairs: PairScore[];
   groups: Group[];
+  /** How the groups connect. Absent from a guide saved before it was recorded, or published without it. */
+  relations?: ReviewRelations;
   /** Community merges done after Louvain (a hunk using a symbol another community introduced). */
   merges: { from: string; into: string; symbol: string }[];
   timings: Record<string, number>;

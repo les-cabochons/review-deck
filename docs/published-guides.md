@@ -39,6 +39,10 @@ An older Review Deck shows a published guide only if its `mode` matches the read
   - A Publish of a guide that is no longer the latest grouping fails the same way, without writing.
 - **The summary is checked line by line.** Its text is trimmed, a line whose text is empty or only spaces is left out, hunk ids not in the diff are dropped, and a ticket link that isn't `http(s)` is dropped. Without a problem to state, no summary shows, but the guide still does. Each line links to the concerns holding its hunks.
 
+## Relations
+
+Review Deck saves how the concerns connect in the same entry (`relations`, see [generated-description.md](generated-description.md)). A published guide may leave it out: Review Deck then shows its concerns without links and says why. The format stays 4.
+
 ## Keeping Ajour in sync
 
 Ajour keeps a vendored copy of `saved.ts` and of `buildDiff`, so that its hunk ids match Review Deck's. The next sync picks up `PublishingApp`, `GuideSummary`, `keepsPublished`, `carrySummary`, `GuideTooLarge`, the `publish` option of `withSaved`, the stricter check of a saved entry, and `SavedReviews.save` resolving to whether it saved.

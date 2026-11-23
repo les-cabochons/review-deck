@@ -391,3 +391,21 @@ test("Given a published guide missing what the page needs (options, merges or th
     assert.equal((savedFor(withSaved(withSaved(null, key, saved), key, own), key) as SavedReview).madeWith.app, undefined);
   }
 });
+
+test("Given a guide saved with its relations, then reopening restores them, without links to hunks no longer in the diff", () => {
+  const mode = reviewMode({}, true);
+  const result = analyzed();
+  result.relations = {
+    links: [],
+    flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", symbols: ["fetchJson"] }, { from: "src/api.ts#0", to: "src/gone.ts#0", symbols: ["x"] }] },
+  };
+  const saved = JSON.parse(JSON.stringify(packReview(result, mode)));
+  assert.deepEqual(restored(saved, mode).relations, { links: [], flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", symbols: ["fetchJson"] }] } });
+});
+
+test("Given a guide saved before relations were recorded, then it still restores, without relations", () => {
+  const mode = reviewMode({}, true);
+  const saved = JSON.parse(JSON.stringify(packReview(analyzed(), mode)));
+  delete saved.relations;
+  assert.equal(restored(saved, mode).relations, undefined);
+});

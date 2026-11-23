@@ -53,6 +53,16 @@ A guide another app wrote for Review Deck to show, today only Ajour (`madeWith.a
 What a published guide says above the guide: the problem the pull request fixes, its kinds of change, breaking changes, risky areas, test coverage and leftovers.
 _Avoid_: Description (that's the author's text on the pull request)
 
+**Generated description**:
+The description card's second view: the pull request described from what Review Deck reads (the commits, the guide's concerns and the links between them), beside the one its author wrote.
+_Avoid_: Summary (that's what a published guide carries)
+
+**Link**:
+Two concerns, or two changes in one concern, joined by a name one defines and the other uses. Matched as text, so it can be wrong; it always shows its names. Test files make none.
+
+**Loose match**:
+A link that rests only on member names (`.hide`), which match on whatever object they are on. Listed, never drawn.
+
 ### Infrastructure
 
 **Infra view**:
