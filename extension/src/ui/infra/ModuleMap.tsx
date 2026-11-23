@@ -1,5 +1,5 @@
 import * as React from "react";
-import { blockTitle, isInfrastructure, needsLook, riskRank } from "../../../../src/infra/blocks";
+import { blockTitle, isInfrastructure, needsLook, pairStatus, riskRank } from "../../../../src/infra/blocks";
 import { type ModuleLink, type ModuleMap as Map_, type ModuleNode, moduleMap } from "../../../../src/infra/modules";
 import type { InfraBlock, InfraModule } from "../../../../src/infra/types";
 import type { MapRow } from "../../../../src/relations/diagram";
@@ -102,8 +102,8 @@ const ModuleDrawing: React.FC<{ map: Map_; onSelect?: (dir: string) => void; com
       selectable={(id) => nodes.get(id)?.kind === "changed"}
       onSelect={onSelect}
       edgeInfo={(from, to) => {
-        const link = links.get(`${from}\u0000${to}`) ?? links.get(`${to}\u0000${from}`);
-        return link && { className: link.status === "same" ? undefined : link.status, mark: EDGE_MARK[link.status] };
+        const status = pairStatus(links.get(`${from}\u0000${to}`)?.status, links.get(`${to}\u0000${from}`)?.status);
+        return status && { className: status === "same" ? undefined : status, mark: EDGE_MARK[status] };
       }}
     />
   );
