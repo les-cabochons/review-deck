@@ -65,6 +65,11 @@ async page => {
     await f.getByText('Pierre browser check: right-side comment.',{exact:true}).waitFor();
     await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor();
 
+    await f.getByRole('button',{name:'Pending comment actions',exact:true}).click();
+    await f.getByRole('menuitem',{name:'Delete',exact:true}).click();
+    await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor({state:'hidden'});
+    // The theme switch comes after the menu: repainting the diffs changes their heights, which scrolls the page and
+    // closes any open menu.
     await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption('dark');
     await f.locator('diffs-container').first().locator('pre').first().waitFor();
     await page.waitForFunction(()=>{
@@ -74,10 +79,6 @@ async page => {
       return color&&color.slice(0,3).every(value=>value<128);
     });
     await page.getByRole('combobox',{name:'Theme',exact:true}).selectOption('light');
-
-    await f.getByRole('button',{name:'Pending comment actions',exact:true}).click();
-    await f.getByRole('menuitem',{name:'Delete',exact:true}).click();
-    await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor({state:'hidden'});
     const hunks=await f.locator('.file-card').count();
     if(!hunks||await f.locator('diffs-container').count()>=hunks)throw new Error('Expected only diffs near the viewport to be mounted');
     await f.getByRole('tab',{name:'Overview',exact:true}).click();
