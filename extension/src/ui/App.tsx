@@ -7,7 +7,7 @@ import { hubPatch, prFromRow, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
-import { followLatest, latestComparison } from "./comparison";
+import { followLatest, latestComparison, threadComparison } from "./comparison";
 import { Breadcrumb } from "./Breadcrumb";
 import { CommitsTab } from "./CommitsTab";
 import type { DiffMode } from "./DiffHunk";
@@ -368,15 +368,16 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onOpenInfra={() => selectTab("infra")}
                       building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
-                      onOpenThread={(id) => {
-                        // The PR's full comparison has every file it changes, so the comment's card is there even
-                        // after "update N" or the picker narrowed the Files tab.
-                        setSelection(latestComparison(data));
-                        setFocusThread(id);
+                      onOpenThread={(thread) => {
+                        // The comparison the comment was written on holds it, wherever the Files tab was. Without
+                        // one, the PR's full comparison.
+                        setSelection(threadComparison(thread) ?? latestComparison(data));
+                        setFocusThread(thread.id);
                         selectTab("files");
                       }}
                       onOpenUpdate={(id) => {
                         // What that update pushed: its head against the update before it (the base for update 1).
+                        setFocusThread(null);
                         setSelection({ iteration: id, compareTo: id - 1 });
                         selectTab("files");
                       }}
@@ -397,7 +398,11 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       threads={fileThreads}
                       iterations={data.iterations}
                       selection={selection}
-                      onSelection={setSelection}
+                      onSelection={(s) => {
+                        // Picking another comparison drops a comment request the last one never showed.
+                        setFocusThread(null);
+                        setSelection(s);
+                      }}
                       view={view}
                       onView={setView}
                       mode={mode}

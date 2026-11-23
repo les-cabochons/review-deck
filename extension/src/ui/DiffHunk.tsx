@@ -29,7 +29,8 @@ export const DiffHunk: React.FC<Props> = (props) => {
   const { hunk, mode } = props;
   // Large hunks that already carry comments open by default so threads are never hidden.
   const [loadLarge, setLoadLarge] = React.useState(() => lineAnnotations(hunk, props.threads.keys()).length > 0);
-  const header = <div className="pierre-hunk-header">{hunk.header}{props.symbol && <strong>{props.symbol}</strong>}</div>;
+  // The id is a scroll target: the diff below mounts only near the viewport (FilesTab scrollToThread).
+  const header = <div className="pierre-hunk-header" id={`diff-${hunk.id}`}>{hunk.header}{props.symbol && <strong>{props.symbol}</strong>}</div>;
   if (!hunk.header) return <div className="diff-note">No content changes, rename or mode change only.</div>;
   if (hunk.lines.length > LARGE_HUNK_LINES && !loadLarge)
     return <>

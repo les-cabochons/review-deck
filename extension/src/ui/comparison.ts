@@ -1,4 +1,4 @@
-import { latestIteration, type PrOverview } from "../data/model";
+import { latestIteration, type PrOverview, type Thread } from "../data/model";
 import type { ReviewModel } from "../review/engine";
 
 /** Which update the Files tab shows, against which (0: the PR's base). */
@@ -14,6 +14,19 @@ export function latestComparison(data: PrOverview | null): Comparison {
 }
 
 export const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;
+
+/**
+ * The comparison a comment was written on, from its iteration context, or null when it has none. A comment is saved
+ * with first = compareTo || iteration and second = iteration (adoActions.ts createThread), so equal iterations mean
+ * the PR's base, as Azure DevOps documents them. Each comparison's comments are read for that comparison only
+ * (PrSource.getThreads), so this is the one sure to hold the comment.
+ */
+export function threadComparison(thread: Pick<Thread, "iterationContext">): Comparison | null {
+  const context = thread.iterationContext;
+  if (!context) return null;
+  const { firstComparingIteration: first, secondComparingIteration: second } = context;
+  return { iteration: second, compareTo: first === second ? 0 : first };
+}
 
 /**
  * The comparison to show once a load says which update is the latest. The page moves to it when the one shown is

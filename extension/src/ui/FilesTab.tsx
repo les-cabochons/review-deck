@@ -127,23 +127,26 @@ const FilesContent: React.FC<Props> = (props) => {
     const { path } = thread.file;
     if (!shown(path)) return;
     const { result } = review;
+    const anchor = isLineAnchor(thread.file) ? thread.file : null;
     if (shownView === "alpha") {
-      setCollapsed(result.files.find((f) => f.path === path)?.hunks.map((h) => h.id) ?? [], false);
-      requestAnimationFrame(() => scrollToThread(`file-${path}`, thread.id));
+      // The file's card, then the chunk with the comment's line: each chunk's diff mounts on its own.
+      const file = result.files.find((f) => f.path === path);
+      setCollapsed(file?.hunks.map((h) => h.id) ?? [], false);
+      const hunk = anchor && file?.hunks.find((h) => hunkHasLine(h, anchor.side, anchor.endLine));
+      requestAnimationFrame(() => scrollToThread([...(hunk ? [`diff-${hunk.id}`] : []), `file-${path}`], thread.id));
       return;
     }
     // Guided view: the chunk with the comment's line. A comment on the whole file sits on the file's first chunk once
     // that is unfolded. One outside the changed lines has its own section, always rendered.
-    const anchor = isLineAnchor(thread.file) ? thread.file : null;
     const cards = result.groups.flatMap((g) => g.hunkIds.map((id) => ({ group: g.id, info: result.hunks.get(id)! }))).filter((c) => c.info.file.path === path);
     const card = anchor ? cards.find((c) => hunkHasLine(c.info.hunk, anchor.side, anchor.endLine)) : cards[0];
     if (!card) {
-      requestAnimationFrame(() => scrollToThread(`thread-${thread.id}`, thread.id));
+      requestAnimationFrame(() => scrollToThread([], thread.id));
       return;
     }
     setGroupCollapsed(card.group, false);
     setCollapsed([card.info.hunk.id], false);
-    requestAnimationFrame(() => scrollToThread(`hunk-${card.info.hunk.id}`, thread.id));
+    requestAnimationFrame(() => scrollToThread([`hunk-${card.info.hunk.id}`], thread.id));
   }, [focusThread, review, selection, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
   const navigatorProps = (review: ReviewModel): NavigatorProps => ({
@@ -387,18 +390,23 @@ function scrollToId(id: string) {
 }
 
 /**
- * Scrolls to a comment on the card with id `card`. The card's contents mount only near the viewport (LazyMount), so
- * the first pass may find just the card: it scrolls there, and the next passes find the comment once it has rendered.
+ * Scrolls to a comment. Cards, and a file's chunks inside them, mount only near the viewport (LazyMount), so until the
+ * comment has rendered each frame scrolls to the first of `targets` (innermost first) that has, which brings the next
+ * one in range. Then it centers the comment, and again once the content above it has settled. It gives up after 2s.
  */
-function scrollToThread(card: string, threadId: number) {
-  const go = () => {
+function scrollToThread(targets: string[], threadId: number) {
+  const started = performance.now();
+  const step = () => {
     const thread = document.getElementById(`thread-${threadId}`);
-    if (thread) thread.scrollIntoView({ block: "center" });
-    else document.getElementById(card)?.scrollIntoView({ block: "start" });
+    if (thread) {
+      thread.scrollIntoView({ block: "center" });
+      setTimeout(() => document.getElementById(`thread-${threadId}`)?.scrollIntoView({ block: "center" }), 300);
+      return;
+    }
+    targets.map((id) => document.getElementById(id)).find((el) => el)?.scrollIntoView({ block: "start" });
+    if (performance.now() - started < 2000) requestAnimationFrame(step);
   };
-  go();
-  requestAnimationFrame(go);
-  setTimeout(go, 300);
+  step();
 }
 
 /**

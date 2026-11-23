@@ -25,7 +25,7 @@ interface Props {
   building: boolean;
   onOpenGroup: (groupId: string) => void;
   /** Shows a code comment where it sits on the Files tab. */
-  onOpenThread: (threadId: number) => void;
+  onOpenThread: (thread: Thread) => void;
   /** Shows what one update pushed on the Files tab. */
   onOpenUpdate: (iterationId: number) => void;
   /** Shown first in the sidebar (the stack panel). */
@@ -95,7 +95,7 @@ type TimelineItem = { date: Date; key: string; node: React.ReactNode };
 
 const Timeline: React.FC<{
   data: PrOverview;
-  onOpenThread: (threadId: number) => void;
+  onOpenThread: (thread: Thread) => void;
   onOpenUpdate: (iterationId: number) => void;
 }> = ({ data, onOpenThread, onOpenUpdate }) => {
   const links = React.useContext(HostLinks);
@@ -172,7 +172,7 @@ const Timeline: React.FC<{
               thread={t}
               fileLabel={
                 t.file ? (
-                  <button className="link-button" onClick={() => onOpenThread(t.id)}>
+                  <button className="link-button" onClick={() => onOpenThread(t)}>
                     <Icon iconName="FileCode" /> {t.file.path}{isLineAnchor(t.file) && `:${t.file.line}`}
                   </button>
                 ) : undefined
