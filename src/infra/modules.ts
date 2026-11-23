@@ -61,8 +61,8 @@ const merge = (a: InfraEdge["status"], b: InfraEdge["status"]): InfraEdge["statu
 
 /**
  * The map of the modules `modules` (one per changed folder, from TerraformReader.diff) change and call. A link goes
- * from a module to the module that reads one of its outputs, through the folder that calls them both, or to that
- * folder itself when it reads the output, or only calls the module.
+ * from a module to the module that reads one of its outputs, through the folder that calls them both and any locals
+ * there, or to that folder itself when it reads the output, or only calls the module.
  */
 export function moduleMap(modules: InfraModule[]): ModuleMap {
   const nodes = new Map<string, ModuleNode>();
@@ -89,11 +89,26 @@ export function moduleMap(modules: InfraModule[]): ModuleMap {
       target.set(block.address, where.id);
       calls.push({ caller: module.dir, callee: where.id, name: block.name });
     }
+    // What reads each block here, to follow an output through locals (`local.id = module.storage.id`).
+    const readers = new Map<string, InfraEdge[]>();
+    for (const edge of module.edges) (readers.get(edge.from) ?? readers.set(edge.from, []).get(edge.from)!).push(edge);
+    /**
+     * Where a value read by `address` ends up: the modules that read it, through any locals, or else this folder.
+     * `status` merges the statuses of the references on the way.
+     */
+    const destinations = (address: string, status: InfraEdge["status"], seen: Set<string>): { to: string; status: InfraEdge["status"] }[] => {
+      if (!address.startsWith("local.")) return [{ to: target.get(address) ?? module.dir, status }];
+      if (seen.has(address)) return [];
+      seen.add(address);
+      const next = (readers.get(address) ?? []).flatMap((edge) => destinations(edge.to, merge(status, edge.status), seen));
+      // A local nothing here reads is used in a file the PR doesn't change, or nowhere: it stays in this folder.
+      return next.length > 0 ? next : [{ to: module.dir, status }];
+    };
     const linked = new Set<string>();
     for (const edge of module.edges) {
       const from = target.get(edge.from);
       if (from === undefined) continue;
-      link(from, target.get(edge.to) ?? module.dir, edge.outputs ?? [], edge.status);
+      for (const end of destinations(edge.to, edge.status, new Set())) link(from, end.to, edge.outputs ?? [], end.status);
       linked.add(edge.from);
     }
     // A module whose outputs nothing here reads still hangs off the folder that calls it.

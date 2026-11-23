@@ -103,3 +103,21 @@ test("an output a pull request stops reading still names its arrow", () => {
   const link = moduleMap(modules).links.find((l) => l.from === "modules/storage" && l.to === "modules/app");
   assert.deepEqual([link?.status, link?.names], ["touched", ["queue_name", "account_name"]]);
 });
+
+test("an output passed through a local still links the module that gives it to the module that reads it", () => {
+  const storage = 'module "storage" {\n  source = "../../modules/storage"\n}\n';
+  const modules = reader.diff([
+    {
+      path: "envs/prod/main.tf",
+      old: `${storage}module "app" {\n  source = "../../modules/app"\n  id     = module.storage.id\n}\n`,
+      new: `${storage}locals {\n  id = module.storage.id\n}\nmodule "app" {\n  source = "../../modules/app"\n  id     = local.id\n}\n`,
+    },
+    { path: "modules/app/variables.tf", old: 'variable "id" {}\n', new: 'variable "id" {\n  type = string\n}\n' },
+  ]);
+  const links = moduleMap(modules).links.map((l) => [`${l.from} > ${l.to}`, l.status, l.names.join(",")]);
+  // The reference moved into a local: still storage to app, and touched, not removed.
+  assert.deepEqual(links, [
+    ["modules/storage > modules/app", "touched", "id"],
+    ["modules/app > envs/prod", "same", ""],
+  ]);
+});
