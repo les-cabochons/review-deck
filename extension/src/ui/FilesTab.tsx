@@ -39,6 +39,9 @@ interface Props {
   onMode: (m: DiffMode) => void;
   /** Scroll target requested by another tab (group id). */
   focusGroup?: string | null;
+  /** A comment the Overview asked to show (thread id), until `onThreadFocused` says it was. */
+  focusThread?: number | null;
+  onThreadFocused?: () => void;
   /** Grouping progress while the worker runs; null once done. Only the PR header shows it; here it hides Regroup. */
   progress: AnalysisProgress | null;
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
@@ -108,6 +111,38 @@ const FilesContent: React.FC<Props> = (props) => {
   React.useEffect(() => {
     if (props.focusGroup && review) scrollToId(`group-${props.focusGroup}`);
   }, [props.focusGroup, review]);
+
+  // A comment picked on the Overview: unfold the card it sits on, then scroll to it, as soon as the comparison and its
+  // comments have loaded. The request is then cleared, so opening the tab again later doesn't scroll back to it.
+  // A comment on a file the "Show" filter hides stays out of sight.
+  const { setCollapsed, setGroupCollapsed } = useFileReview();
+  const { focusThread, onThreadFocused } = props;
+  React.useEffect(() => {
+    if (!focusThread || !review) return;
+    const thread = props.threads.find((t) => t.id === focusThread);
+    if (!thread?.file) return;
+    onThreadFocused?.();
+    const { path } = thread.file;
+    if (!shown(path)) return;
+    const { result } = review;
+    if (shownView === "alpha") {
+      setCollapsed(result.files.find((f) => f.path === path)?.hunks.map((h) => h.id) ?? [], false);
+      requestAnimationFrame(() => scrollToThread(`file-${path}`, thread.id));
+      return;
+    }
+    // Guided view: the chunk with the comment's line. A comment on the whole file sits on the file's first chunk once
+    // that is unfolded. One outside the changed lines has its own section, always rendered.
+    const anchor = isLineAnchor(thread.file) ? thread.file : null;
+    const cards = result.groups.flatMap((g) => g.hunkIds.map((id) => ({ group: g.id, info: result.hunks.get(id)! }))).filter((c) => c.info.file.path === path);
+    const card = anchor ? cards.find((c) => hunkHasLine(c.info.hunk, anchor.side, anchor.endLine)) : cards[0];
+    if (!card) {
+      requestAnimationFrame(() => scrollToThread(`thread-${thread.id}`, thread.id));
+      return;
+    }
+    setGroupCollapsed(card.group, false);
+    setCollapsed([card.info.hunk.id], false);
+    requestAnimationFrame(() => scrollToThread(`hunk-${card.info.hunk.id}`, thread.id));
+  }, [focusThread, review, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
   const navigatorProps = (review: ReviewModel): NavigatorProps => ({
     review,
@@ -346,6 +381,21 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
 function scrollToId(id: string) {
   const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
   go();
+  setTimeout(go, 300);
+}
+
+/**
+ * Scrolls to a comment on the card with id `card`. The card's contents mount only near the viewport (LazyMount), so
+ * the first pass may find just the card: it scrolls there, and the next passes find the comment once it has rendered.
+ */
+function scrollToThread(card: string, threadId: number) {
+  const go = () => {
+    const thread = document.getElementById(`thread-${threadId}`);
+    if (thread) thread.scrollIntoView({ block: "center" });
+    else document.getElementById(card)?.scrollIntoView({ block: "start" });
+  };
+  go();
+  requestAnimationFrame(go);
   setTimeout(go, 300);
 }
 
@@ -897,6 +947,11 @@ function visibleLines(files: FileDiff[]): Map<string, Set<string>> {
     out.set(f.path, set);
   }
   return out;
+}
+
+/** Whether a chunk shows `line` on that side, as visibleLines counts it. */
+function hunkHasLine(hunk: HunkInfo["hunk"], side: FileAnchor["side"], line: number): boolean {
+  return hunk.lines.some((l) => (side === "right" ? l.newLine === line && l.kind !== "del" : l.oldLine === line && l.kind !== "add"));
 }
 
 function isVisible(t: LineThread, visible: Set<string> | undefined): boolean {

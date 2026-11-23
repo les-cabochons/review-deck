@@ -322,6 +322,10 @@ export class LocalHost implements AppHost {
     return `https://github.com/pingdotgg/t3code/blob/${commit}/${path.split("/").map(encodeURIComponent).join("/")}`;
   }
 
+  commitUrl(_route: Extract<Route, { view: "pr" }>, commit: string): string {
+    return `https://github.com/pingdotgg/t3code/commit/${commit}`;
+  }
+
   private href(route: Route): string {
     const params = new URLSearchParams(location.search);
     params.delete("mock");

@@ -487,6 +487,10 @@ export class AdoHost implements AppHost {
     return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}?${query}`;
   }
 
+  commitUrl(route: Extract<Route, { view: "pr" }>, commit: string): string {
+    return `${this.projectUrl()}/_git/${encodeURIComponent(route.repo)}/commit/${commit}`;
+  }
+
   private projectUrl(): string {
     return `${this.hostUrl}${encodeURIComponent(this.project.name)}`;
   }

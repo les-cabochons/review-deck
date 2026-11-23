@@ -49,9 +49,11 @@ const InfraTab = React.lazy(() => import("./infra/InfraTab").then((module) => ({
 export const HostLinks = React.createContext<{
   commentUrl: (threadId: number, commentId: number) => string;
   fileUrl: (path: string, commit: string) => string | null;
+  commitUrl: (commit: string) => string | null;
 }>({
   commentUrl: (threadId, commentId) => `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
   fileUrl: () => null,
+  commitUrl: () => null,
 });
 
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
@@ -87,6 +89,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [fileThreads, setFileThreads] = React.useState<Thread[]>([]);
   const [threadError, setThreadError] = React.useState<string | null>(null);
   const [focusGroup, setFocusGroup] = React.useState<string | null>(null);
+  /** A comment the Overview asked the Files tab to show (thread id). The Files tab clears it once shown. */
+  const [focusThread, setFocusThread] = React.useState<number | null>(null);
   const [view, setView] = usePreference<FileView>("fileView", "grouped");
   const [mode, setMode] = usePreference<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
@@ -288,6 +292,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       commentUrl: (threadId: number, commentId: number) =>
         native && host.kind === "ado" ? `${native}?discussionId=${threadId}` : `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
       fileUrl: (path: string, commit: string) => host.fileUrl(route, path, commit),
+      commitUrl: (commit: string) => host.commitUrl(route, commit),
     }),
     [native, host, route],
   );
@@ -363,7 +368,15 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onOpenInfra={() => selectTab("infra")}
                       building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
-                      onOpenFiles={() => selectTab("files")}
+                      onOpenThread={(id) => {
+                        setFocusThread(id);
+                        selectTab("files");
+                      }}
+                      onOpenUpdate={(id) => {
+                        // What that update pushed: its head against the update before it (the base for update 1).
+                        setSelection({ iteration: id, compareTo: id - 1 });
+                        selectTab("files");
+                      }}
                       onOpenGroup={(id) => {
                         setView("grouped");
                         setFocusGroup(id);
@@ -387,6 +400,8 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       mode={mode}
                       onMode={setMode}
                       focusGroup={focusGroup}
+                      focusThread={focusThread}
+                      onThreadFocused={() => setFocusThread(null)}
                       progress={progress}
                       holdPreview={holdPreview}
                       onShowGrouped={showGrouped}

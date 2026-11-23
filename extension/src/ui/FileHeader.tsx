@@ -52,7 +52,7 @@ export const FileHeader: React.FC<{
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${name}`} onClick={() => setCollapsed(hunkIds, !collapsed)}>
           <Icon iconName={collapsed ? "ChevronRight" : "ChevronDown"} />
         </button>
-        <FilePath path={file.path} from={file.status === "renamed" ? file.oldPath : null} />
+        <FilePath path={file.path} from={file.status === "renamed" ? file.oldPath : null} url={viewUrl} />
         {children}
         <span className="spacer" />
         <span className="adds">+{adds}</span> <span className="dels">−{dels}</span>
@@ -113,11 +113,26 @@ function chunkLines(hunk: Hunk): string | null {
   return count === 1 ? `line ${start}` : `lines ${start} to ${start + count - 1}`;
 }
 
-export const FilePath: React.FC<{ path: string; from?: string | null }> = ({ path, from }) => (
-  <span className="file-path" title={path}>
-    {from && <span className="dir">{from} → </span>}
-    <span className="dir">{dirname(path) ? `${dirname(path)}/` : ""}</span>
-    <span className="name">{basename(path)}</span>
-  </span>
-);
+/**
+ * A file's path, directory dimmed. With a `url` (the file's page on the host, the same as "View file") it is a link
+ * that opens in a new tab, as "View file" does, so the review keeps its place.
+ */
+export const FilePath: React.FC<{ path: string; from?: string | null; url?: string | null }> = ({ path, from, url }) => {
+  const parts = (
+    <>
+      {from && <span className="dir">{from} → </span>}
+      <span className="dir">{dirname(path) ? `${dirname(path)}/` : ""}</span>
+      <span className="name">{basename(path)}</span>
+    </>
+  );
+  return url ? (
+    <a className="file-path" href={url} target="_blank" rel="noopener" title={path}>
+      {parts}
+    </a>
+  ) : (
+    <span className="file-path" title={path}>
+      {parts}
+    </span>
+  );
+};
 

@@ -2874,6 +2874,15 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* As a link to the file's page it still reads as the card's title, and shows it is a link on hover. */
+a.file-path {
+  color: inherit;
+  text-decoration: none;
+}
+a.file-path:hover .name {
+  color: var(--link);
+  text-decoration: underline;
+}
 .file-path .dir {
   flex: 0 1 auto;
   color: var(--fg2);
@@ -2937,6 +2946,15 @@ kbd {
 .commit-subject {
   font-weight: 600;
   font-size: 13px;
+}
+/* Commit links read as text, like GitHub's commit lists, and show they are links on hover. */
+.commit-link {
+  color: inherit;
+  text-decoration: none;
+}
+.commit-link:hover {
+  color: var(--link);
+  text-decoration: underline;
 }
 .commit-meta {
   font-size: 12px;
