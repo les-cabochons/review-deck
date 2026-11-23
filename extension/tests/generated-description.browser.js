@@ -84,6 +84,29 @@ async page => {
     assert(!boxes.some(t => /\.test\.|\/tests?\//.test(t)), `A test file is in a concern's map: ${boxes.filter(t => /test/.test(t))}`);
   });
 
+  // How to read it, then Hide diagrams: every map goes, after a reload too, and the ⋯ menu brings them back.
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    const link = label => [...document.querySelectorAll('.concern-flow .diagram-controls button')].find(b => b.textContent === label);
+    link('How to read it').click();
+    await wait(() => document.querySelector('.concern-flow .how-to-read'), 'How to read it did not open');
+    assert(document.querySelector('.how-to-read').textContent.includes('An arrow from A to B means B uses something A defines'), 'The explanation is not the one for a concern\'s map');
+    link('Hide diagrams').click();
+    await wait(() => !document.querySelector('.concern-flow'), 'Hide diagrams left a map in Files');
+  });
+  await page.reload();
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    await wait(() => document.querySelector('.group-section'), 'Files did not load again');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    assert(!document.querySelector('.concern-flow'), 'A map came back after a reload');
+  });
+  await page.click('.pr-header .more-menu');
+  await page.click('text=Show change diagrams');
+  await page.evaluate(async () => {
+    await check.wait(() => document.querySelector('.concern-flow .relation-map svg'), 'The ⋯ menu did not bring the maps back');
+  });
+
   // A guide saved before relations were recorded: concerns without links, and the page says why.
   await page.evaluate(() => {
     const [comparison] = check.saved();

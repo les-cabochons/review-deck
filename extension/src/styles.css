@@ -5336,12 +5336,53 @@ span.artifact-toggle {
   color: var(--fg2);
   padding-top: 4px;
 }
-.concern-flow summary {
-  cursor: pointer;
+.concern-flow-head,
+.generated-map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
   font-size: 12px;
   font-weight: 600;
   color: var(--fg2);
   padding: 4px 0;
+}
+.generated-map-head {
+  padding: 0 0 4px;
+}
+.diagram-controls {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 12px;
+  font-weight: 400;
+}
+.how-to-read {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--fg);
+}
+.how-to-read h5 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.how-to-read h5:first-child {
+  margin-top: 0;
+}
+.how-to-read p {
+  margin: 0;
+}
+.how-to-read ul {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.how-to-read li {
+  margin: 2px 0;
 }
 .hunk-card.flash {
   box-shadow: 0 0 0 2px var(--focus-border-color, var(--accent));

@@ -6,6 +6,8 @@ import type { ReviewModel } from "../../review/engine";
 import { groupColor } from "../groupColors";
 import { plural } from "../util";
 import { ConcernList } from "./ConcernList";
+import { useDiagramsShown } from "./diagramsShown";
+import { DiagramControls, HowToRead } from "./HowToRead";
 
 const RelationMap = React.lazy(() => import("./RelationMap"));
 
@@ -65,6 +67,8 @@ const Why: React.FC<{ data: PrOverview }> = ({ data }) => {
 };
 
 const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: string) => void }> = ({ review, onOpenGroup }) => {
+  const [shown, setShown] = useDiagramsShown();
+  const [reading, setReading] = React.useState(false);
   if (!review?.analyzed) return <p className="muted">Building the guide…</p>;
   const { groups, relations } = review.result;
   const concerns = groups.filter((g) => g.kind === "semantic");
@@ -83,7 +87,13 @@ const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: stri
       {!relations && (
         <p className="generated-note">This guide was saved before Review Deck recorded links. Choose Regroup in Files to see them.</p>
       )}
-      {relations && concerns.length > 1 && (
+      {relations && concerns.length > 1 && shown && (
+        <div className="generated-map-head">
+          <DiagramControls reading={reading} onReading={setReading} onHide={() => setShown(false)} />
+        </div>
+      )}
+      {relations && concerns.length > 1 && shown && reading && <HowToRead kind="concerns" />}
+      {relations && concerns.length > 1 && shown && (
         <React.Suspense fallback={<div className="relation-map loading">Drawing the map…</div>}>
           <RelationMap
             items={items}

@@ -16,6 +16,12 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 - Past 12 boxes, a line gives the count instead of a map nobody can read.
 - Clicking a box scrolls to its first change.
 
+## Reading and hiding the diagrams
+
+- **How to read it**, beside each diagram, opens a full explanation above it: what a box and an arrow mean, how to use the map while reviewing, and what it can't tell (`extension/src/ui/relations/HowToRead.tsx`).
+- **Hide diagrams** hides every diagram, in Overview and in Files, on every pull request. The choice is saved with the user's preferences, so it follows them to other browsers (`diagramsShown.ts`). The list of how concerns connect stays.
+- **Show change diagrams**, in the pull request's ⋯ menu, brings them back.
+
 ## Where the links come from
 
 `src/relations` reads what the pipeline already records for each hunk: the names it defines and the names its changed lines use (`HunkInfo.defines` and `.references`). The guide's ordering used them, and dropped them. Now they are kept:
