@@ -13,6 +13,8 @@ import { OthersOnPr } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
 import { Avatar, CommitLink, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 
+/** The description from what Review Deck reads, behind the description card's toggle. */
+const GeneratedDescription = React.lazy(() => import("./relations/GeneratedDescription"));
 const InfraCard = React.lazy(() => import("./infra/InfraCard").then(({ InfraCard }) => ({ default: InfraCard })));
 
 interface Props {
@@ -38,7 +40,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra,
     <div className="overview">
       <div className="overview-main">
         {review?.analyzed && <GuideSummaryCard review={review} onOpenGroup={onOpenGroup} />}
-        <DescriptionCard data={data} />
+        <DescriptionCard data={data} review={review} onOpenGroup={onOpenGroup} />
         {infra.present && (
           <React.Suspense fallback={null}>
             <InfraCard infra={infra} onOpen={onOpenInfra} />
@@ -60,9 +62,15 @@ export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra,
   );
 };
 
-const DescriptionCard: React.FC<{ data: PrOverview }> = ({ data: { pr } }) => {
+/**
+ * The author's description, or, behind the toggle, one generated from what Review Deck reads (GeneratedDescription).
+ * It always opens on the author's: the generated one doesn't know how the change was tested or what could break.
+ */
+const DescriptionCard: React.FC<{ data: PrOverview; review: ReviewModel | null; onOpenGroup: (groupId: string) => void }> = ({ data, review, onOpenGroup }) => {
+  const { pr } = data;
   const { actions, disabled } = useReviewActions();
   const [editing, setEditing] = React.useState(false);
+  const [generated, setGenerated] = React.useState(false);
   return (
     <div className="timeline-card description">
       <div className="card-head">
@@ -70,11 +78,25 @@ const DescriptionCard: React.FC<{ data: PrOverview }> = ({ data: { pr } }) => {
         <div>
           <strong>{pr.createdBy.displayName}</strong> opened this pull request <Time date={pr.creationDate} />
         </div>
-        <button className="link-button description-edit" disabled={disabled} onClick={() => setEditing(!editing)}>
-          {editing ? "Cancel" : "Edit description"}
-        </button>
+        <div className="description-source" role="group" aria-label="Description">
+          <button aria-pressed={!generated} onClick={() => setGenerated(false)}>
+            Written by {pr.createdBy.displayName}
+          </button>
+          <button aria-pressed={generated} onClick={() => setGenerated(true)}>
+            Generated
+          </button>
+        </div>
+        {!generated && (
+          <button className="link-button description-edit" disabled={disabled} onClick={() => setEditing(!editing)}>
+            {editing ? "Cancel" : "Edit description"}
+          </button>
+        )}
       </div>
-      {editing ? (
+      {generated ? (
+        <React.Suspense fallback={<div className="card-body muted">Loading…</div>}>
+          <GeneratedDescription data={data} review={review} onOpenGroup={onOpenGroup} onShowWritten={() => setGenerated(false)} />
+        </React.Suspense>
+      ) : editing ? (
         <CommentComposer
           label="Pull request description"
           submitText="Save description"

@@ -63,3 +63,31 @@ test("Given a concern of fewer than three changes, then it has no flow", () => {
   const hunks = [hunk("a#0", ["x"], []), hunk("b#0", [], ["x"])];
   assert.deepEqual(relationsOf([concern("g1", ["a#0", "b#0"])], new Map(hunks.map((h) => [h.hunk.id, h]))).flows, {});
 });
+
+test("Given linked and unlinked concerns, then the map draws the linked ones, merges both directions, and puts the rest apart", async () => {
+  const { layoutRelations, startsOf } = await import("../diagram.js");
+  const items = ["g1", "g2", "g3", "g4"].map((id) => ({ id, title: `Concern ${id}`, subtitle: "2 changes" }));
+  const map = layoutRelations(
+    items,
+    [
+      { from: "g1", to: "g2", kind: "uses", symbols: ["TagFields"] },
+      { from: "g2", to: "g1", kind: "tests", symbols: ["AdoTagStore"] },
+      { from: "g2", to: "g3", kind: "uses", symbols: [".hide"] },
+    ],
+    { width: 700, height: 300 },
+  );
+  assert.ok(map);
+  assert.deepEqual(map.nodes.map((n) => n.id).sort(), ["g1", "g2"]);
+  // g2 to g3 rests on a member name only: not drawn, so g3 is apart with g4.
+  assert.deepEqual(map.apart.map((n) => n.id), ["g3", "g4"]);
+  assert.deepEqual(map.edges.map((e) => [e.from, e.to, e.both, e.tests, e.symbols]), [["g1", "g2", true, false, ["TagFields", "AdoTagStore"]]]);
+  assert.deepEqual(startsOf(map), []);
+  for (const n of [...map.nodes, ...map.apart]) assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.width <= map.width && n.y + n.height <= map.height, n.id);
+});
+
+test("Given a chain of uses, then reading starts at what uses nothing else", async () => {
+  const { layoutRelations, startsOf } = await import("../diagram.js");
+  const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: null }));
+  const map = layoutRelations(items, [{ from: "a", to: "b", kind: "uses", symbols: ["x"] }, { from: "b", to: "c", kind: "uses", symbols: ["y"] }], { width: 700, height: 300 });
+  assert.deepEqual(startsOf(map!), ["a"]);
+});

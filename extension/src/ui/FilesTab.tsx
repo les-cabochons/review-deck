@@ -14,6 +14,7 @@ import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
+import { ConcernFlow } from "./relations/ConcernFlow";
 import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
@@ -852,6 +853,7 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
       {open && (
         <>
           {group.rationale && <p className="rationale">{group.rationale}</p>}
+          {group.kind === "semantic" && <ConcernFlow group={group} result={review.result} color={groupColor(review.result.groups, group)} />}
           {hunks.map((h) => (
             <HunkCard key={h.hunk.id} info={h} mode={mode} threads={fileThreads.get(h.file.path) ?? []}
               showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} />
