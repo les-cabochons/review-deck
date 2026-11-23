@@ -108,13 +108,17 @@ function edgesOf(sides: Map<string, BlockSides>, blocks: Map<string, InfraBlock>
       const before = base?.references.get(from);
       const after = head?.references.get(from);
       const via = [...(after ?? before)!].sort();
-      const outputs = from.startsWith("module.") ? { outputs: outputsRead(from, head ?? base!, via) } : {};
+      // A removed reference is only in the base side's text.
+      const block = (after ? head : base)!;
+      const module = from.startsWith("module.");
       if (!before || !after) {
-        edges.push({ from, to, status: after ? "added" : "removed", via, ...outputs });
+        edges.push({ from, to, status: after ? "added" : "removed", via, ...(module ? { outputs: outputsRead(from, block, via) } : {}) });
         continue;
       }
       const changed = blocks.get(to)!.changes.map((c) => c.path);
       const touched = [...new Set([...before, ...after])].filter((path) => overlaps(path, changed)).sort();
+      // The outputs a changed line reads, on either side, come first: they are what a label too short for all of them shows.
+      const outputs = module ? { outputs: [...new Set([...outputsRead(from, head!, touched), ...outputsRead(from, base!, touched), ...outputsRead(from, block, via)])] } : {};
       edges.push(touched.length > 0 ? { from, to, status: "touched", via: touched, ...outputs } : { from, to, status: "same", via, ...outputs });
     }
   }

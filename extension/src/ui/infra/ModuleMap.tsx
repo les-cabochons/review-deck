@@ -127,11 +127,17 @@ const ModuleOutline: React.FC<{ map: Map_; onSelect: (dir: string) => void }> = 
   // Each folder no changed folder calls is a root; the modules it calls go under it, indented.
   const called = new Set(map.calls.filter((c) => changed.has(c.caller)).map((c) => c.callee));
   const shown = new Set<string>();
-  const entry = (node: ModuleNode): React.ReactNode => {
-    if (shown.has(node.id)) return null;
+  /** A module's entry, the first time. Under a later caller (`caller`), a line that points to it. At the top, nothing. */
+  const entry = (node: ModuleNode, caller?: string): React.ReactNode => {
+    if (shown.has(node.id))
+      return caller === undefined ? null : (
+        <div key={`${caller}>${node.id}`} className={cx("infra-outline-module", "infra-outline-ref", tone(node))}>
+          <code>{node.label}</code> <span className="muted">listed above</span>
+        </div>
+      );
     shown.add(node.id);
-    const callees = [...new Set(map.calls.filter((c) => c.caller === node.id).map((c) => c.callee))].map((id) => byId.get(id)!)
-      .filter((n) => !shown.has(n.id))
+    const callees = [...new Set(map.calls.filter((c) => c.caller === node.id).map((c) => c.callee))]
+      .map((id) => byId.get(id)!)
       // What the PR changes first; the grey neighbours after.
       .sort((a, b) => Number(a.kind !== "changed") - Number(b.kind !== "changed"));
     const blocks = node.module ? listed(node.module) : [];
@@ -164,15 +170,15 @@ const ModuleOutline: React.FC<{ map: Map_; onSelect: (dir: string) => void }> = 
           )}
           {line && <p className="infra-outline-gets">{line}</p>}
         </div>
-        {callees.length > 0 && <div className="infra-outline-callees">{callees.map(entry)}</div>}
+        {callees.length > 0 && <div className="infra-outline-callees">{callees.map((callee) => entry(callee, node.id))}</div>}
       </React.Fragment>
     );
   };
   return (
     <div className="infra-outline">
-      {map.nodes.filter((n) => n.kind === "changed" && !called.has(n.id)).map(entry)}
+      {map.nodes.filter((n) => n.kind === "changed" && !called.has(n.id)).map((n) => entry(n))}
       {/* A cycle of calls has no root: what is left still shows. */}
-      {map.nodes.filter((n) => n.kind === "changed").map(entry)}
+      {map.nodes.filter((n) => n.kind === "changed").map((n) => entry(n))}
     </div>
   );
 };

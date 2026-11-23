@@ -48,17 +48,17 @@ interface Drag {
 export const DiagramCanvas: React.FC<Props> = (props) => {
   const [expanded, setExpanded] = React.useState(false);
   const opener = React.useRef<HTMLButtonElement | null>(null);
-  const close = React.useCallback(() => {
+  /** `restore`: focus goes back to Expand. Not after a pick, which has put focus where the page shows it. */
+  const close = React.useCallback((restore: boolean) => {
     setExpanded(false);
-    // Back on the page, focus returns to the button that opened it.
-    setTimeout(() => opener.current?.focus(), 0);
+    if (restore) setTimeout(() => opener.current?.focus(), 0);
   }, []);
   if (!expanded) return <Canvas {...props} onExpand={() => setExpanded(true)} expandRef={opener} />;
   return (
     <>
       <div className="diagram-canvas-away" style={{ height: Math.min(props.contentHeight, props.maxHeight) }}>
         Shown over the page.{" "}
-        <button type="button" className="link-button" onClick={close}>
+        <button type="button" className="link-button" onClick={() => close(true)}>
           Put it back
         </button>
       </div>
@@ -68,7 +68,7 @@ export const DiagramCanvas: React.FC<Props> = (props) => {
 };
 
 /** The canvas over the whole page, with a title bar. The page behind doesn't scroll while it is open. */
-const Expanded: React.FC<Props & { onClose: () => void }> = ({ onClose, ...props }) => {
+const Expanded: React.FC<Props & { onClose: (restore: boolean) => void }> = ({ onClose, ...props }) => {
   const [room, setRoom] = React.useState(() => window.innerHeight - EXPANDED_CHROME);
   const closeButton = React.useRef<HTMLButtonElement | null>(null);
   React.useEffect(() => {
@@ -91,15 +91,25 @@ const Expanded: React.FC<Props & { onClose: () => void }> = ({ onClose, ...props
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
-          onClose();
-        } else if ((e.key === "Enter" || e.key === " ") && picks(e.target)) onClose();
+          onClose(true);
+        } else if ((e.key === "Enter" || e.key === " ") && picks(e.target)) onClose(false);
+        else if (e.key === "Tab") {
+          // Focus stays in the dialog: Tab from its last control goes to its first, Shift+Tab the other way.
+          const all = [...e.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]')];
+          const [first, last] = [all[0], all[all.length - 1]];
+          const to = e.shiftKey ? (document.activeElement === first ? last : null) : document.activeElement === last ? first : null;
+          if (to) {
+            e.preventDefault();
+            to.focus();
+          }
+        }
       }}
       // A card or connector picked here acts on the page behind: the page comes back to show it.
-      onClick={(e) => picks(e.target) && onClose()}
+      onClick={(e) => picks(e.target) && onClose(false)}
     >
       <div className="diagram-expanded-bar">
         <span>{props.label}</span>
-        <button type="button" ref={closeButton} onClick={onClose}>
+        <button type="button" ref={closeButton} onClick={() => onClose(true)}>
           Close
         </button>
       </div>
@@ -131,7 +141,11 @@ const Canvas: React.FC<CanvasProps> = ({ contentWidth, contentHeight, maxHeight,
     return () => observer.disconnect();
   }, [viewport]);
 
-  const fit = fill ? Math.max(MIN_ZOOM, Math.min(1, width / contentWidth, maxHeight / contentHeight)) : Math.max(MIN_FIT, Math.min(1, width / contentWidth));
+  // Expanded, the whole diagram fits, however small that makes it.
+  // (Above 0: the canvas measures 0 wide until it is laid out.)
+  const fit = fill ? Math.max(0.01, Math.min(1, width / contentWidth, maxHeight / contentHeight)) : Math.max(MIN_FIT, Math.min(1, width / contentWidth));
+  /** Zooming out stops at MIN_ZOOM, or at the fit when that is smaller. */
+  const minZoom = Math.min(MIN_ZOOM, fit);
   const height = fill ? maxHeight : Math.min(Math.ceil(contentHeight * fit), maxHeight);
   /** Null while the reader hasn't moved or zoomed it: the diagram sits fitted. */
   const [moved, setMoved] = React.useState<View | null>(null);
@@ -159,11 +173,11 @@ const Canvas: React.FC<CanvasProps> = ({ contentWidth, contentHeight, maxHeight,
   const zoomAt = React.useCallback(
     (factor: number, px: number, py: number) => {
       const from = viewNow.current;
-      const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, from.scale * factor));
+      const scale = Math.min(MAX_ZOOM, Math.max(minZoom, from.scale * factor));
       // The point under the pointer stays under it.
       setMoved(clamp({ scale, x: px - ((px - from.x) * scale) / from.scale, y: py - ((py - from.y) * scale) / from.scale }));
     },
-    [clamp],
+    [clamp, minZoom],
   );
 
   // Ctrl or ⌘ and the wheel zoom. A listener of its own: React's is passive, so it couldn't stop the page zooming.

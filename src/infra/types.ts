@@ -73,7 +73,10 @@ export interface InfraEdge {
   status: "added" | "removed" | "touched" | "same";
   /** The attributes of `to` that hold the reference. For `touched`, only the changed ones. */
   via: string[];
-  /** When `from` is a module: the outputs of it that `to` reads (`queue_name` in `module.storage.queue_name`). */
+  /**
+   * When `from` is a module: the outputs of it that `to` reads (`queue_name` in `module.storage.queue_name`), the
+   * ones a changed line reads first.
+   */
   outputs?: string[];
 }
 

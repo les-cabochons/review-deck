@@ -41,9 +41,12 @@ async page => {
     // The new input reads a new output: the arrow from storage to the function app says so.
     const edges = [...document.querySelectorAll('.infra-module-map .relation-edge')].map(e => `${e.getAttribute('class')}|${e.querySelector('title').textContent}`);
     assert(
-      edges.some(e => e.includes('touched') && e.includes('modules/function-app uses account_name and queue_name from modules/storage')),
+      edges.some(e => e.includes('touched') && e.includes('modules/function-app uses queue_name and account_name from modules/storage')),
       `No arrow for the new queue: ${edges.join(' / ')}`,
     );
+    // The label too short for both outputs shows the new one.
+    const labels = [...document.querySelectorAll('.infra-module-map .relation-edge text')].map(t => t.textContent);
+    assert(labels.includes('~ queue_name +1'), `Arrow labels: ${labels}`);
     // The folders still each have their section, with its own diagram.
     assert(document.querySelectorAll('.infra-module').length === 3, 'Each changed folder should keep its section');
   });
@@ -72,6 +75,9 @@ async page => {
     const { wait, assert } = check;
     await wait(() => !document.querySelector('.diagram-expanded'), 'A pick did not close the expanded map');
     await wait(() => document.activeElement?.classList.contains('infra-module'), 'Picking a module did not move to its section');
+    // Focus stays there once the expanded map has gone.
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert(document.activeElement?.classList.contains('infra-module'), `Focus left the picked section for ${document.activeElement?.outerHTML.slice(0, 80)}`);
     const heading = document.activeElement.querySelector('h3').textContent;
     assert(heading === 'modules/storage/', `Picking storage moved to ${heading}`);
   });
@@ -86,7 +92,7 @@ async page => {
     assert(heads[0] === 'envs/prod', `The outline does not start at the root: ${heads}`);
     assert(document.querySelector('.infra-outline-callees')?.textContent.includes('modules/storage'), 'The called modules are not indented under the root');
     const gets = [...document.querySelectorAll('.infra-outline-gets')].map(g => g.textContent);
-    assert(gets.some(g => g.includes('~ account_name and ~ queue_name from modules/storage')), `What the function app gets: ${gets}`);
+    assert(gets.some(g => g.includes('~ queue_name and ~ account_name from modules/storage')), `What the function app gets: ${gets}`);
     assert(document.documentElement.scrollWidth <= innerWidth, 'The outline scrolls sideways');
     return 'infra module map: cards, rows, output arrows, pick to section, and the phone outline checked';
   });

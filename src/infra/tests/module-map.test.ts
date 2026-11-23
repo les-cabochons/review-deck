@@ -59,8 +59,8 @@ test("links the modules a pull request changes through the folder that calls the
   );
   const links = Object.fromEntries(map.links.map((l) => [`${l.from} > ${l.to}`, [l.status, l.names.join(",")]]));
   assert.deepEqual(links, {
-    // The new input reads a new output: the reference is new, the pair isn't.
-    "modules/storage > modules/function-app": ["touched", "account_name,queue_name"],
+    // The new input reads a new output: the reference is new, the pair isn't. The new output comes first.
+    "modules/storage > modules/function-app": ["touched", "queue_name,account_name"],
     "modules/network > modules/function-app": ["same", "subnet_id"],
     "modules/function-app > envs/prod": ["same", "hostname"],
     // Called, and nothing read from it: it still hangs off its caller.
@@ -90,5 +90,16 @@ test("a module declared in a file the pull request doesn't change is known by it
       ["module.web", "unknown"],
     ],
   );
-  assert.deepEqual(map.links, [{ from: "call:envs/prod:web", to: "envs/prod", names: ["public_url"], status: "touched" }]);
+  // The line now reads public_url and read url before: both are the change.
+  assert.deepEqual(map.links, [{ from: "call:envs/prod:web", to: "envs/prod", names: ["public_url", "url"], status: "touched" }]);
+});
+
+test("an output a pull request stops reading still names its arrow", () => {
+  const caller = (outputs: string) => `module "storage" {\n  source = "../../modules/storage"\n}\nmodule "app" {\n  source = "../../modules/app"\n${outputs}}\n`;
+  const modules = reader.diff([
+    { path: "envs/prod/main.tf", old: caller("  queue = module.storage.queue_name\n  account = module.storage.account_name\n"), new: caller("  account = module.storage.account_name\n") },
+    { path: "modules/app/variables.tf", old: 'variable "queue" {}\n', new: null },
+  ]);
+  const link = moduleMap(modules).links.find((l) => l.from === "modules/storage" && l.to === "modules/app");
+  assert.deepEqual([link?.status, link?.names], ["touched", ["queue_name", "account_name"]]);
 });

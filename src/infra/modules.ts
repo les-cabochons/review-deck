@@ -21,7 +21,7 @@ export interface ModuleNode {
 export interface ModuleLink {
   from: string;
   to: string;
-  /** The outputs passed, sorted. Empty when `to` calls `from` without reading an output. */
+  /** The outputs passed, the ones the change touches first. Empty when `to` calls `from` without reading an output. */
   names: string[];
   /** Over every reference behind the link: `same` when none changed, otherwise what the change did to them. */
   status: InfraEdge["status"];
@@ -72,9 +72,9 @@ export function moduleMap(modules: InfraModule[]): ModuleMap {
     if (from === to) return;
     const key = `${from}\u0000${to}`;
     const known = links.get(key);
-    if (!known) links.set(key, { from, to, names: [...names].sort(), status });
+    if (!known) links.set(key, { from, to, names: [...names], status });
     else {
-      known.names = [...new Set([...known.names, ...names])].sort();
+      known.names = [...new Set(status === "same" ? [...known.names, ...names] : [...names, ...known.names])];
       known.status = merge(known.status, status);
     }
   };

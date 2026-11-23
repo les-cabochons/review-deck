@@ -122,7 +122,8 @@ type Pair = Omit<MapEdge, "path" | "label" | "reversed">;
 function pairs(links: Link[], items: ReadonlyMap<string, MapItem>): Pair[] {
   const byPair = new Map<string, Pair & { directions: Set<string> }>();
   for (const link of links) {
-    if (isLoose(link) || !items.has(link.from) || !items.has(link.to)) continue;
+    // A link without names is a use the caller states as such (the Infra view's module calls), not a loose one.
+    if ((link.symbols.length > 0 && isLoose(link)) || !items.has(link.from) || !items.has(link.to)) continue;
     const [a, b] = link.from < link.to ? [link.from, link.to] : [link.to, link.from];
     const key = `${a}\u0000${b}`;
     let edge = byPair.get(key);

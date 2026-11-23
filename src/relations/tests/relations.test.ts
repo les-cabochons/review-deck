@@ -195,3 +195,12 @@ test("Given more boxes than a map can show, then the flow says so instead of dra
   const flow = concernFlow(concern("g1", ["src/def.ts#0", ...ids]), { links: [], flows: { g1: links } }, hunks);
   assert.equal(flow.tooMany, true);
 });
+
+test("Given a link without names, then it is drawn without a label, not left out as loose", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = ["a", "b"].map((id) => ({ id, title: id, subtitle: null }));
+  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: [] }], { width: 700 })!;
+  assert.equal(map.edges.length, 1);
+  assert.equal(map.edges[0].label, null);
+  assert.equal(map.apart.length, 0);
+});
