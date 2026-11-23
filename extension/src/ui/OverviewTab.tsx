@@ -7,6 +7,7 @@ import { GuideSummaryCard } from "./GuideSummary";
 import type { InfraState } from "./infra/useInfra";
 import { HostLinks } from "./App";
 import { ThreadCard } from "./ThreadCard";
+import { LevelPill } from "./TitleSource";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
 import { OthersOnPr } from "./presence/Presence";
@@ -277,6 +278,7 @@ const SemanticSummary: React.FC<{ review: ReviewModel | null; building: boolean;
                   {i + 1}
                 </span>
                 <span className={cx("text", g.kind !== "semantic" && "muted")}>{g.title}</span>
+                {g.level === "must" && <LevelPill group={g} />}
                 <span className="count">{g.hunkIds.length}</span>
               </button>
             </li>

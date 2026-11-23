@@ -309,7 +309,7 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
     files,
     hunks,
     pairs: [],
-    groups,
+    groups: groups.map(checkedLevel),
     merges: s.merges ?? [],
     timings: {},
     options: s.options!,
@@ -399,4 +399,11 @@ function savedFindings(value: unknown): SafetyFinding[] {
       ? [{ kind: f.kind, severity: f.severity, rule: f.rule, message: f.message, line: f.line }]
       : [],
   );
+}
+
+/** A saved group with its review level only if it is one the page knows; a level without a reason gets an empty one. */
+function checkedLevel(group: Group): Group {
+  const { level, levelReason, ...rest } = group;
+  if (level !== "must" && level !== "skim" && level !== "skip") return rest;
+  return { ...rest, level, levelReason: typeof levelReason === "string" ? levelReason : "" };
 }

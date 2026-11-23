@@ -9,7 +9,7 @@ import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
 import { DropdownButton, type MenuOption, MoreMenu } from "./controls";
-import { TitleSourceIcon } from "./TitleSource";
+import { LevelPill, TitleSourceIcon } from "./TitleSource";
 import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
@@ -546,6 +546,7 @@ const Navigator: React.FC<NavigatorProps> = ({ review, view, shown, search, onSe
                     {i + 1}
                   </span>
                   <span className="text">{g.title}</span>
+                  {g.level === "must" && <Icon iconName="Warning" className="nav-must" ariaLabel="Must read" tooltipProps={{ text: g.levelReason || "Must read" }} />}
                   {viewedStatus(g.hunkIds, viewedHunks).checked && <Icon iconName="CheckMark" className="nav-viewed" ariaLabel="Viewed" />}
                   <span className="count">{g.hunkIds.length}</span>
                 </button>
@@ -862,6 +863,7 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
           </span>
           <span className="gtitle">{group.title}</span>
           <TitleSourceIcon group={group} />
+          <LevelPill group={group} />
           <span className="count">
             {plural(all.length, "change")} · {plural(files, "file")}
           </span>
@@ -870,6 +872,8 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
       </div>
       {open && (
         <>
+          {/* Skim and skip say why in the rationale already; a must-read concern says which rules hit. */}
+          {group.level === "must" && group.levelReason && <p className="rationale level-reason">{group.levelReason}</p>}
           {/* "Other changes" has no rationale worth reading. Guides saved before it was dropped still hold one. */}
           {group.rationale && group.kind !== "misc" && <p className="rationale">{group.rationale}</p>}
           {group.kind === "semantic" && (

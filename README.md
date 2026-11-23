@@ -296,6 +296,7 @@ then runs the pipeline there. The A–Z diff shows first, and the grouping repla
 | `src/analyze/safety.ts` | Fixed rules over added lines: likely secrets, and migrations that can lose data or break a deploy ([below](#safety-rules)). |
 | `src/score/` | Pairwise signals, each 0..1 with evidence (below). |
 | `src/cluster/` | Louvain (seeded, resolution 1.0) on edges ≥ `minEdgeWeight`. A small community whose new symbols are used by exactly one other community is absorbed into it. Singletons go to **misc**. |
+| `src/analyze/level.ts` | A concern's review level, with its reason: **must read** when a safety rule hit one of its hunks, **skip** for the mechanical group, **skim** when it only changes comments. An ordinary concern has none: rules can't tell that code is safe to skim. |
 | `src/order/topo.ts` | Definitions before uses, code before tests. Misc and mechanical come last. |
 | `src/title/` | `HeuristicTitler` recognizes renames, moves and doc-only groups, and otherwise names the group's central symbol. The LLM titler orders the groups as a story and names each step, falling back to heuristics on any failure. |
 | `src/pipeline.ts` | Orchestration. |
@@ -315,7 +316,7 @@ Edges below 0.22 are dropped, so one weak coincidence never links two hunks.
 
 ### Safety rules
 
-The page shows a finding under the chunk it was found in. The rules run in the browser with the grouping, read
+The page shows a finding under the chunk it was found in, and marks that chunk's concern **Must read**. The rules run in the browser with the grouping, read
 added lines only, and need no backend. A finding holds the rule and the line, never the matched text.
 
 | Rule | Level | Where |
