@@ -117,7 +117,7 @@ async page => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     assert(!document.querySelector('.concern-flow'), 'A map came back after a reload');
   });
-  await page.click('.files-toolbar [aria-label="File view settings"]');
+  await page.click('.files-toolbar [aria-label^="File view settings"]');
   await page.click('text=Show change diagrams');
   await page.evaluate(async () => {
     await check.wait(() => document.querySelector('.concern-flow .relation-map svg'), 'The settings menu did not bring the maps back');
