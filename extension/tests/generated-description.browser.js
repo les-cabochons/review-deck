@@ -40,9 +40,9 @@ async page => {
     assert(drawn === 4 && apart === 1, `Map: ${drawn} drawn, ${apart} apart`);
     assert(document.querySelectorAll('.generated-description .relation-edge').length > 0, 'The map has no link');
 
-    // The list: where to start, the links' names, loose matches on one line, and the concern on its own.
+    // The list: the links' names, loose matches on one line, and the concern on its own. No "start here".
     const list = text('.concern-list');
-    assert(list.includes('Start here: it uses nothing the other concerns change.'), 'No starting concern');
+    assert(!/start here/i.test(list), 'The list still says where to start');
     assert(list.includes('StorageCleanupReport'), 'The links don\'t name their symbols');
     assert(list.includes('through member names only'), 'Loose matches are not said to be loose');
     assert(list.includes('reviewable on its own'), 'No concern is said to stand alone');
@@ -64,7 +64,10 @@ async page => {
     const target = node.querySelector('title').textContent.split('\n')[0];
     node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await wait(() => document.querySelector('.hunk-card.flash'), `A click on "${target}" did not point at its change`);
-    assert(document.querySelector('.concern-flow .relation-start'), 'No change is marked as where to start');
+    // Every box: the function, then its file. No "start here", and no `make` linking two files.
+    const subtitles = [...document.querySelectorAll('.concern-flow .relation-node-subtitle')].map(t => t.textContent);
+    assert(subtitles.length > 0 && subtitles.every(t => /^[\w.-]+\.\w+( · \d+ changes)?$/.test(t)), `A box's second line isn't its file: ${subtitles}`);
+    assert(!document.querySelector('.concern-flow')?.textContent.includes('start here'), 'A map still says where to start');
     const boxes = [...document.querySelectorAll('.concern-flow .relation-node title')].map(t => t.textContent);
     assert(!boxes.some(t => /\.test\.|\/tests?\//.test(t)), `A test file is in a concern's map: ${boxes.filter(t => /test/.test(t))}`);
   });

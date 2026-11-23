@@ -6,12 +6,13 @@ The description card in Overview has a toggle: **Written by \<author\>**, and **
 
 - **Why.** The commit messages, as a changelog: subjects grouped by conventional-commit type, like the Changelog hub (`buildChangelog` in `extension/src/data/releases.ts`). Merges from the target branch are left out by their subject, because the PR's commits don't say how many parents they have.
 - **What changed.** A map of the guide's concerns. An arrow goes from the concern that defines a name to the one that uses it, both ways when each uses the other. Each arrow shows the name behind it. Concerns without a link sit apart, under "On their own".
-- **How they connect.** The same, in sentences, per concern: what it uses from which concern, which concerns use it, where to start, and "reviewable on its own" when nothing links it. This is what a screen reader and a phone get.
+- **How they connect.** The same, in sentences, per concern: what it uses from which concern, which concerns use it, and "reviewable on its own" when nothing links it. This is what a screen reader and a phone get.
 
 In **Files**, a concern of three changes or more whose changes use each other's names shows **How these changes connect** (`src/relations/flow.ts`):
 
-- One box per function and file. Changes inside the same function of the same file share a box with their count, so a large function edited in twelve places is one box, not twelve boxes with its name. When two boxes would share a name (`make` in two files), the file goes in the title.
-- One box is marked **start here**: of those that use nothing else in the map, the one the most others depend on.
+- One box per function and file. Changes inside the same function of the same file share a box, so a large function edited in twelve places is one box, not twelve boxes with its name.
+- Every box reads the same way: the function as its title, then its file, and the number of changes past one.
+- An arrow's label gives only the names the boxes don't already show: no `StorageCleanup` on an arrow from the box `StorageCleanup`.
 - Past 12 boxes, a line gives the count instead of a map nobody can read.
 - Clicking a box scrolls to its first change.
 
@@ -24,7 +25,7 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 
 **Test files are left out.** A test calling the code it tests says nothing about how the change fits together, and it put test files in most maps.
 
-Names are matched as text, like the grouping's structural signal. Two different things with the same name look linked, which is why each link shows its names.
+Names are matched as text, like the grouping's structural signal. Two different things with the same name can look linked, which is why each link shows its names. One case is handled: a name defined in the user's own file resolves there, so `Layer.effect(StorageCleanup, make)` links to its own file's `make`, never to a `make` in another file.
 
 **Loose matches** are links that rest only on member names (`.hide`, `.files`). A member name matches on whatever object it is on, so these are often wrong. They aren't drawn, and the list puts them on one line per concern, said to be loose.
 

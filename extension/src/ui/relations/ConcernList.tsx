@@ -53,7 +53,6 @@ export const ConcernList: React.FC<Props> = ({ groups, links: known, onOpenGroup
             </button>
             <span className="muted concern-list-count">{plural(g.hunkIds.length, "change")}</span>
             <ul>
-              {usedBy.length > 0 && uses.length === 0 && <li>Start here: it uses nothing the other concerns change.</li>}
               {uses.map((l) => (
                 <li key={`u${l.from}`}>
                   Uses {names(l.symbols)} from {badge(l.from)}

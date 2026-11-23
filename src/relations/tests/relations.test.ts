@@ -5,7 +5,7 @@ import { isLoose, MAX_FLOW_LINKS, readRelations, relationsOf } from "../relation
 
 /** A hunk with only what relationsOf reads. */
 function hunk(id: string, defines: string[], references: string[], isTest = false): HunkInfo {
-  return { hunk: { id }, defines: new Set(defines), references: new Set(references), isTest } as unknown as HunkInfo;
+  return { hunk: { id }, file: { path: id.split("#")[0] }, defines: new Set(defines), references: new Set(references), isTest } as unknown as HunkInfo;
 }
 const concern = (id: string, hunkIds: string[]): Group => ({ id, kind: "semantic", hunkIds, title: id, rationale: "" });
 
@@ -65,7 +65,7 @@ test("Given a concern of fewer than three changes, then it has no flow", () => {
 });
 
 test("Given linked and unlinked concerns, then the map draws the linked ones, merges both directions, and puts the rest apart", async () => {
-  const { layoutRelations, startOf } = await import("../diagram.js");
+  const { layoutRelations } = await import("../diagram.js");
   const items = ["g1", "g2", "g3", "g4"].map((id) => ({ id, title: `Concern ${id}`, subtitle: "2 changes" }));
   const map = layoutRelations(
     items,
@@ -81,20 +81,20 @@ test("Given linked and unlinked concerns, then the map draws the linked ones, me
   // g2 to g3 rests on a member name only: not drawn, so g3 is apart with g4.
   assert.deepEqual(map.apart.map((n) => n.id), ["g3", "g4"]);
   assert.deepEqual(map.edges.map((e) => [e.from, e.to, e.both, e.symbols]), [["g1", "g2", true, ["TagFields", "AdoTagStore"]]]);
-  assert.equal(startOf(map), null);
   for (const n of [...map.nodes, ...map.apart]) assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.width <= map.width && n.y + n.height <= map.height, n.id);
 });
 
-test("Given a chain of uses, then reading starts at the one change everything else builds on", async () => {
-  const { layoutRelations, startOf } = await import("../diagram.js");
-  const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: null }));
-  // d also uses nothing, but only c depends on it; a leads to b and c.
-  const map = layoutRelations(
-    [...items, { id: "d", title: "d", subtitle: null }],
-    [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }, { from: "d", to: "c", symbols: ["z"] }],
-    { width: 700, height: 300 },
-  );
-  assert.equal(startOf(map!), "a");
+test("Given an arrow whose only name is the title of the box it comes from, then it has no label", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = [{ id: "a", title: "StorageCleanup", subtitle: "storageCleanup.ts" }, { id: "b", title: "make", subtitle: "storageCleanup.ts" }, { id: "c", title: "sentence", subtitle: null }];
+  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: ["StorageCleanup"] }, { from: "c", to: "b", symbols: ["sentence", "Reason", "kind"] }], { width: 700, height: 300 });
+  assert.deepEqual(map!.edges.map((e) => [e.from, e.label?.text ?? null]).sort(), [["a", null], ["c", "Reason +1"]]);
+});
+
+test("Given a name defined both in the user's own file and in another, then it links only to its own file", () => {
+  const hunks = [hunk("src/env.ts#0", ["make"], []), hunk("src/cleanup.ts#0", ["make"], []), hunk("src/cleanup.ts#1", ["layer"], ["make"])];
+  const relations = relationsOf([concern("g1", hunks.map((h) => h.hunk.id))], new Map(hunks.map((h) => [h.hunk.id, h])));
+  assert.deepEqual(relations.flows.g1, [{ from: "src/cleanup.ts#0", to: "src/cleanup.ts#1", symbols: ["make"] }]);
 });
 
 /** A hunk in `path`, inside `symbol`, with only what concernFlow reads. */
@@ -116,11 +116,11 @@ test("Given many changes inside one function of one file, then the concern's flo
     { from: "src/env.ts#0", to: "src/layer.ts#0", symbols: ["make"] },
   ];
   const flow = concernFlow(concern("g1", ids), { links: [], flows: { g1: links } }, hunks);
-  // Two `make`s in two files: the file goes in the title. The link inside the first box is left out.
+  // Every box: the function, then its file and count. The link inside the first box is left out.
   assert.deepEqual(flow.boxes.map((b) => [b.title, b.subtitle, b.hunkIds.length]).sort(), [
     ["StorageLayer", "layer.ts", 1],
-    ["make · cleanup.ts", "3 changes", 3],
-    ["make · env.ts", null, 1],
+    ["make", "cleanup.ts · 3 changes", 3],
+    ["make", "env.ts", 1],
   ]);
   assert.equal(flow.links.length, 2);
   assert.equal(flow.tooMany, false);

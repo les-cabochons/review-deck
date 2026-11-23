@@ -26,8 +26,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * The flow of `group`: changes linked through a named symbol, one box per function and file. Changes inside the same
- * function of the same file share a box ("make · storageCleanup.ts · 12 changes"), so a large function edited in many
- * places is one box, not many boxes with its name. A change outside any function gets its own box.
+ * function of the same file share a box, so a large function edited in many places is one box, not many boxes with
+ * its name. Every box reads the same way: the function as its title, its file (and how many changes, past one) below.
+ * A change outside any function gets its own box, titled by its place in the file.
  */
 export function concernFlow(group: Group, relations: ReviewRelations | undefined, hunks: Map<string, HunkInfo>): ConcernFlowMap {
   const links = (relations?.flows[group.id] ?? []).filter((l) => !isLoose(l) && hunks.has(l.from) && hunks.has(l.to));
@@ -43,25 +44,15 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
   }
 
   const boxes: FlowBox[] = [...members].map(([id, hs]) => {
-    const file = basename(hs[0].file.path);
     const count = hs.length > 1 ? ` · ${plural(hs.length, "change")}` : "";
     return {
       id,
-      title: hs[0].symbol ?? `${file} · change ${hs[0].hunk.index + 1}`,
-      subtitle: `${file}${count}`,
+      title: hs[0].symbol ?? `change ${hs[0].hunk.index + 1}`,
+      subtitle: `${basename(hs[0].file.path)}${count}`,
       path: hs[0].file.path,
       hunkIds: hs.map((h) => h.hunk.id),
     };
   });
-  // Two boxes with one name (two `make`s in two files): the file goes in the title, where it isn't cut.
-  const titles = new Map<string, number>();
-  for (const b of boxes) titles.set(b.title, (titles.get(b.title) ?? 0) + 1);
-  for (const b of boxes) {
-    if ((titles.get(b.title) ?? 0) < 2) continue;
-    b.title = `${b.title} · ${basename(b.path!)}`;
-    b.subtitle = b.hunkIds.length > 1 ? plural(b.hunkIds.length, "change") : null;
-  }
-
   const merged = new Map<string, Link>();
   for (const l of links) {
     const from = boxOf.get(l.from);

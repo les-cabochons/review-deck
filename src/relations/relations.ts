@@ -25,14 +25,20 @@ function rank(symbols: Iterable<string>): string[] {
   return [...symbols].sort((a, b) => Number(isMember(a)) - Number(isMember(b)) || b.length - a.length || (a < b ? -1 : 1)).slice(0, MAX_SYMBOLS);
 }
 
-/** Every link between two hunks of `hunks`: `user` references a name `def` defines. A hunk never links to itself. */
+/**
+ * Every link between two hunks of `hunks`: `user` references a name `def` defines. A hunk never links to itself. A
+ * name defined in the user's own file resolves there, never to a same-named thing in another file: two different
+ * `make`s in two files must not link.
+ */
 function hunkLinks(hunks: HunkInfo[]): Map<string, { def: HunkInfo; user: HunkInfo; symbols: Set<string> }> {
   const definers = new Map<string, HunkInfo[]>();
   for (const h of hunks) for (const s of h.defines) (definers.get(s) ?? definers.set(s, []).get(s)!).push(h);
   const links = new Map<string, { def: HunkInfo; user: HunkInfo; symbols: Set<string> }>();
   for (const user of hunks) {
     for (const s of user.references) {
-      for (const def of definers.get(s) ?? []) {
+      const all = definers.get(s) ?? [];
+      const local = all.filter((d) => d.file.path === user.file.path);
+      for (const def of local.length > 0 ? local : all) {
         if (def === user) continue;
         const key = `${def.hunk.id}\u0000${user.hunk.id}`;
         let link = links.get(key);

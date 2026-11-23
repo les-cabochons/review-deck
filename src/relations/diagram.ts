@@ -26,7 +26,7 @@ export interface MapEdge {
   to: string;
   /** Each end uses the other: one line, an arrowhead at both ends. */
   both: boolean;
-  /** The names behind the link, best first, both directions merged. */
+  /** The names behind the link, best first, both directions merged, without the ends' own titles. */
   symbols: string[];
   points: { x: number; y: number }[];
   label: { text: string; x: number; y: number } | null;
@@ -54,11 +54,14 @@ const width = (item: MapItem) => Math.max(130, Math.min(260, Math.max(Math.min(i
 /** A title cut to fit its box: the full one is the box's tooltip. */
 export const boxTitle = (title: string) => (title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE - 1)}…` : title);
 
-/** One edge per pair of items, both directions merged. Loose links (member names only) are left out. */
-function pairs(links: Link[], ids: ReadonlySet<string>): Omit<MapEdge, "points" | "label">[] {
+/**
+ * One edge per pair of items, both directions merged. Loose links (member names only) are left out, and so are the
+ * names that are an end's own title: an arrow from the box `StorageCleanup` labelled `StorageCleanup` says nothing.
+ */
+function pairs(links: Link[], items: ReadonlyMap<string, MapItem>): Omit<MapEdge, "points" | "label">[] {
   const byPair = new Map<string, Omit<MapEdge, "points" | "label"> & { names: string[]; directions: Set<string> }>();
   for (const link of links) {
-    if (isLoose(link) || !ids.has(link.from) || !ids.has(link.to)) continue;
+    if (isLoose(link) || !items.has(link.from) || !items.has(link.to)) continue;
     const [a, b] = link.from < link.to ? [link.from, link.to] : [link.to, link.from];
     const key = `${a}\u0000${b}`;
     let edge = byPair.get(key);
@@ -66,9 +69,14 @@ function pairs(links: Link[], ids: ReadonlySet<string>): Omit<MapEdge, "points" 
     edge.directions.add(`${link.from}>${link.to}`);
     for (const s of link.symbols) if (!edge.names.includes(s)) edge.names.push(s);
   }
-  return [...byPair.values()].map(({ names, directions, ...edge }) => ({ ...edge, both: directions.size > 1, symbols: names.filter((s) => !s.startsWith(".")).concat(names.filter((s) => s.startsWith("."))) }));
+  return [...byPair.values()].map(({ names, directions, ...edge }) => {
+    const own = new Set([items.get(edge.from)!.title, items.get(edge.to)!.title]);
+    const told = names.filter((s) => !own.has(s));
+    return { ...edge, both: directions.size > 1, symbols: told.filter((s) => !s.startsWith(".")).concat(told.filter((s) => s.startsWith("."))) };
+  });
 }
 
+/** The first name, and how many more: "measureWorktree +1". Empty when the boxes' own titles said it all. */
 const labelOf = (symbols: string[]) => (symbols.length > 1 ? `${symbols[0]} +${symbols.length - 1}` : (symbols[0] ?? ""));
 
 function lay(items: MapItem[], edges: Omit<MapEdge, "points" | "label">[], rankdir: "LR" | "TB"): Pick<RelationMap, "width" | "height" | "nodes" | "edges"> {
@@ -78,7 +86,7 @@ function lay(items: MapItem[], edges: Omit<MapEdge, "points" | "label">[], rankd
   for (const item of items) graph.setNode(item.id, { width: width(item), height: HEIGHT });
   for (const edge of edges) {
     const text = labelOf(edge.symbols);
-    graph.setEdge(edge.from, edge.to, { width: text.length * LABEL_CHAR + 10, height: 16, labelpos: "c" });
+    graph.setEdge(edge.from, edge.to, text ? { width: text.length * LABEL_CHAR + 10, height: 16, labelpos: "c" } : {});
   }
   layout(graph);
   const size = graph.graph();
@@ -103,7 +111,7 @@ function lay(items: MapItem[], edges: Omit<MapEdge, "points" | "label">[], rankd
  */
 export function layoutRelations(items: MapItem[], links: Link[], fit: { width: number; height: number }): RelationMap | null {
   if (items.length === 0) return null;
-  const edges = pairs(links, new Set(items.map((i) => i.id)));
+  const edges = pairs(links, new Map(items.map((i) => [i.id, i])));
   const linked = new Set(edges.flatMap((e) => [e.from, e.to]));
   const drawn = items.filter((i) => linked.has(i.id));
   const overflow = (m: { width: number; height: number }) => Math.max(m.width / fit.width, m.height / fit.height);
@@ -127,24 +135,4 @@ export function layoutRelations(items: MapItem[], links: Link[], fit: { width: n
   const right = Math.max(main.width, ...apart.map((n) => n.x + n.width + 12));
   const bottom = apart.length ? y + APART_HEIGHT + 12 : main.height;
   return { width: Math.ceil(right), height: Math.ceil(bottom), nodes: main.nodes, edges: main.edges, apart, apartTop };
-}
-
-/**
- * Where to start reading: of the drawn items that use nothing else drawn, the one the most others depend on, directly
- * or through others. Null when every item uses another (a cycle) or nothing is drawn.
- */
-export function startOf(map: RelationMap): string | null {
-  const code = map.edges;
-  const users = new Set(code.flatMap((e) => (e.both ? [e.from, e.to] : [e.to])));
-  const next = new Map<string, string[]>();
-  for (const e of code) (next.get(e.from) ?? next.set(e.from, []).get(e.from)!).push(e.to);
-  const reach = (id: string) => {
-    const seen = new Set<string>();
-    const stack = [id];
-    while (stack.length) for (const n of next.get(stack.pop()!) ?? []) if (!seen.has(n) && n !== id) stack.push((seen.add(n), n));
-    return seen.size;
-  };
-  const candidates = map.nodes.filter((n) => next.has(n.id) && !users.has(n.id)).map((n) => ({ id: n.id, reach: reach(n.id) }));
-  candidates.sort((a, b) => b.reach - a.reach);
-  return candidates[0]?.id ?? null;
 }

@@ -7,7 +7,7 @@ const RelationMap = React.lazy(() => import("./RelationMap"));
 
 /**
  * Inside a concern of the Guided view: which of its changes use names another one defines, one box per function and
- * file (src/relations/flow.ts), with the one to start from marked. Clicking a box goes to its first change. Past
+ * file (src/relations/flow.ts). Clicking a box goes to its first change. Past
  * MAX_FLOW_BOXES boxes, a line says so instead of a map nobody can read.
  */
 export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: string }> = ({ group, result, color }) => {
@@ -39,7 +39,6 @@ export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: 
           links={flow.links}
           color={() => color}
           apartCaption=""
-          showStart
           onSelect={show}
           height={260}
           label={`How the changes in concern ${group.title} connect`}
