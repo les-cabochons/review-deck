@@ -16,7 +16,8 @@ import { applyPatches, holdHubSnapshot, onHubPatch, readHubSnapshot, withRecentP
 import { CHECKS, reviewState, STATE_ICON } from "../prState";
 import { stackFor, stackIndex, type StackPosition } from "../../../../src/stack/stacks";
 import { preferencesLoaded, readPreference, writePreference } from "../preferences";
-import { hubRowsSkeleton } from "../../skeletons";
+import { countSkeleton, hubRowsSkeleton, repoPickerSkeleton } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 import { StackDialog } from "../stack/StackDialog";
 import { type CatalogRepo, CURRENT_REPO, type CurrentContext, type ListScope, parseSelection, type RepoCatalog, type RepoSelection, resolveSelection, selectionScope, singleRepo } from "../../data/repoSelection";
 import { tagKey } from "../../data/tags";
@@ -266,6 +267,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   }, [prs]);
   const groupIds = React.useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
   const sections = inboxSections(visible, me, groupIds);
+  /** The first list hasn't arrived: the sidebar's counts show in gray. */
+  const listing = !prs && !error;
   const shown = sections.filter((s) => filter === "inbox" || s.id === filter);
   const rows = shown.flatMap((s) => (collapsed.has(s.id) && filter === "inbox" ? [] : s.prs));
   want(
@@ -365,14 +368,20 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
     <div className={cx("hub", railOnly && "rail")}>
       <aside className="hub-sidebar">
         <nav aria-label="Inbox sections">
-          <SidebarItem icon="Inbox" text="Inbox" count={sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)} active={filter === "inbox"} onClick={() => choose("inbox")} />
+          <SidebarItem
+            icon="Inbox"
+            text="Inbox"
+            count={listing ? null : sections.reduce((n, s) => n + (s.id === "other" ? 0 : s.prs.length), 0)}
+            active={filter === "inbox"}
+            onClick={() => choose("inbox")}
+          />
           <div className="hub-sidebar-sep" />
           {sections.map((s) => (
             <SidebarItem
               key={s.id}
               icon={SECTION_META[s.id].icon}
               text={s.title}
-              count={s.prs.length}
+              count={listing ? null : s.prs.length}
               active={filter === s.id}
               attention={s.id === "needs-review" || s.id === "returned"}
               onClick={() => choose(s.id)}
@@ -411,6 +420,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
             />
             {!query && <kbd>/</kbd>}
           </div>
+          {/* Its place in gray until the choices load, so the buttons after it don't move (src/skeletons.ts). */}
+          {!selection && <SkeletonHtml html={repoPickerSkeleton()} />}
           {selection && (
             <RepoPicker
               catalog={catalog}
@@ -434,6 +445,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
           {source?.newPullRequestUrl && (
             <Button text="New pull request" primary href={source.newPullRequestUrl(newPrRepo)} target="_top" />
           )}
+          {/* Azure DevOps' list source has the button; the skeleton showed it disabled until the source answers. */}
+          {!source && <Button text="New pull request" primary disabled />}
           {/* Shown while the list or row details are loading; rows on screen may be from the last visit until then. */}
           {refreshing && prs && <div className="hub-progress" role="progressbar" aria-label="Updating pull requests" />}
         </div>
@@ -502,7 +515,8 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   );
 };
 
-const SidebarItem: React.FC<{ icon: string; text: string; count: number; active: boolean; attention?: boolean; onClick: () => void }> = ({
+/** `count` is null while the list loads: its pill shows in gray, so the label keeps the width it will have. */
+const SidebarItem: React.FC<{ icon: string; text: string; count: number | null; active: boolean; attention?: boolean; onClick: () => void }> = ({
   icon,
   text,
   count,
@@ -513,7 +527,7 @@ const SidebarItem: React.FC<{ icon: string; text: string; count: number; active:
   <button className={cx("hub-nav-item", active && "active")} onClick={onClick} aria-current={active ? "page" : undefined} title={text}>
     <Icon iconName={icon} className="hub-nav-icon" />
     <span className="text">{text}</span>
-    {count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
+    {count === null ? <SkeletonHtml html={countSkeleton} /> : count > 0 && <span className={cx("count-pill", attention && "attention")}>{count}</span>}
   </button>
 );
 
@@ -687,7 +701,7 @@ const PrRow: React.FC<{
 };
 
 /** Placeholder rows for the very first load, before anything is cached: the same ones the static page shows. */
-const SkeletonSection: React.FC<{ label: string }> = ({ label }) => <div dangerouslySetInnerHTML={{ __html: hubRowsSkeleton(label) }} />;
+const SkeletonSection: React.FC<{ label: string }> = ({ label }) => <SkeletonHtml html={hubRowsSkeleton(label)} />;
 
 const SizeBar: React.FC<{ files: number; adds: number; dels: number }> = ({ files, adds, dels }) => {
   const total = adds + dels;

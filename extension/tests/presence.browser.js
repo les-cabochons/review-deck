@@ -65,7 +65,7 @@ async page => {
   assert(mine.length === 1 && mine[0].tab === 'overview' && mine[0].drafts === 0, `Your record is not as expected: ${JSON.stringify(mine)}`);
   await f.locator('body').evaluate(() => window.scrollTo(0, 0));
   await f.locator('.breadcrumb button.crumb-link').click();
-  await f.locator('.pr-row').first().waitFor();
+  await f.locator('.pr-row[data-pr]').first().waitFor();
   await page.waitForTimeout(300);
   assert((await ownRecords()).length === 0, 'Your record stayed after leaving without drafts');
 

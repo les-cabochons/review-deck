@@ -5,6 +5,8 @@ import type { OrganizationSettings } from "../../data/access";
 import { BackendSetting } from "./BackendSetting";
 import { FeatureAccess } from "./FeatureAccess";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 /**
  * Organization settings → Review Deck (contribution "org-settings-hub", dist/org-settings.html). Organization
@@ -56,7 +58,7 @@ const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [host]);
 
-  if (!settings) return null;
+  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.orgAi} />;
 
   const change = (aiTitles: boolean) => {
     setStatus("saving");

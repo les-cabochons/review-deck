@@ -376,6 +376,9 @@ kbd {
     justify-content: center;
     padding: 0;
   }
+  .hub.rail .count-pill.skeleton-count {
+    width: 16px;
+  }
 }
 .hub-sidebar-title {
   font-size: 16px;
@@ -504,17 +507,7 @@ kbd {
     box-shadow: inset 2px 0 0 var(--accent);
   }
 }
-/* First load with nothing cached. */
-.skeleton-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--line-soft);
-}
-.skeleton-row:last-child {
-  border-bottom: 0;
-}
+/* Skeletons (src/skeletons.ts): the loaded pages' own markup, with these gray shapes only where data goes. */
 .skeleton-dot {
   flex: none;
   width: 24px;
@@ -522,12 +515,6 @@ kbd {
   border-radius: 50%;
   background: var(--surface-3);
   animation: pulse 1.2s ease-in-out infinite;
-}
-.skeleton-lines {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 .skeleton-bar {
   display: block;
@@ -539,72 +526,85 @@ kbd {
 .skeleton-bar.short {
   height: 8px;
 }
-/* Page skeletons (src/skeletons.ts): the pages' own layout in gray, before React and while their data loads. */
-.skeleton-icon {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border-radius: 3px;
-  background: var(--surface-3);
-  animation: pulse 1.2s ease-in-out infinite;
-  flex: none;
-}
-.hub-nav-icon.skeleton-icon {
-  width: 18px;
-  height: 18px;
-}
-.skeleton-pill {
-  display: inline-block;
-  height: 32px;
-  border-radius: 2px;
-  background: var(--surface-3);
-  animation: pulse 1.2s ease-in-out infinite;
-  flex: none;
-}
-.skeleton-pill.primary {
-  background: var(--accent);
-  opacity: 0.35;
-  animation: none;
-}
-.skeleton-pill.small {
-  height: 20px;
-  border-radius: 10px;
-  margin-right: 4px;
-}
-.skeleton-dot.small {
-  width: 20px;
-  height: 20px;
-}
-.pr-meta .skeleton-bar,
-.search-box .skeleton-bar {
-  display: inline-block;
-}
 .skeleton-bar.skeleton-h1 {
   display: inline-block;
   height: 20px;
   vertical-align: middle;
 }
-.skeleton-bar.skeleton-h2 {
+/* Bars in a line of text sit in it, like the words they stand for. */
+.pr-meta .skeleton-bar,
+.card-head .skeleton-bar,
+.bolt-button-text .skeleton-bar,
+.people .skeleton-bar {
+  display: inline-block;
+  vertical-align: middle;
+}
+.card-body .skeleton-bar {
+  margin: 4px 0 10px;
+}
+.skeleton-bar.skeleton-h3 {
   height: 14px;
 }
-.overview .skeleton-bar,
-.settings-section .skeleton-bar {
-  margin: 0 0 14px;
+/* Gray help text: each bar one line of it. */
+.settings-help .skeleton-bar,
+.tag-description .skeleton-bar {
+  margin: 6px 0;
 }
-.skeleton-tabs {
-  display: flex;
-  gap: 8px;
+.changelog-section li .skeleton-bar,
+.tag-list-item .skeleton-bar {
+  display: inline-block;
+  vertical-align: middle;
 }
-.skeleton-tab {
-  padding: 14px 8px;
-  line-height: 20px;
-  color: var(--fg2);
-  border-bottom: 2px solid transparent;
+.tag-list-item:has(.skeleton-bar) {
+  cursor: default;
 }
-.skeleton-tab.active {
-  color: var(--fg);
-  font-weight: 600;
-  border-bottom-color: var(--accent);
+.skeleton-page .bolt-button,
+.skeleton-page .md-tool,
+.skeleton-page .md-tabs button {
+  cursor: default;
+}
+/* A sidebar count or a PR status that hasn't loaded. */
+.count-pill.skeleton-count {
+  width: 24px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.status-pill.skeleton-status {
+  width: 72px;
+  height: 20px;
+  background: var(--surface-3);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.tag-dot.skeleton-dot {
+  width: 12px;
+  height: 12px;
+}
+.hub-tag .skeleton-bar {
+  display: inline-block;
+}
+/* Placeholder hub rows: the real row's grid, without its hover or pointer. */
+.pr-row.skeleton,
+.inbox-section.skeleton .inbox-section-header {
+  cursor: default;
+}
+.pr-row.skeleton:hover,
+.inbox-section.skeleton .inbox-section-header:hover {
+  background: none;
+}
+.pr-row.skeleton .pr-title,
+.pr-row.skeleton .pr-sub {
+  height: 20px;
+}
+.pr-row.skeleton .pr-sub {
+  height: 16px;
+  align-items: center;
+}
+.pr-row.skeleton .pr-title .skeleton-bar,
+.pr-row.skeleton .pr-sub .skeleton-bar {
+  flex: none;
+}
+/* React's placeholders wrap skeleton HTML in an element of their own; this one stays out of the layout. */
+.skeleton-contents {
+  display: contents;
 }
 @media (prefers-reduced-motion: reduce) {
   .hub-progress::before,
@@ -614,8 +614,8 @@ kbd {
   .hub-refresh.busy .fabric-icon,
   .skeleton-dot,
   .skeleton-bar,
-  .skeleton-icon,
-  .skeleton-pill {
+  .count-pill.skeleton-count,
+  .status-pill.skeleton-status {
     animation: none;
   }
 }

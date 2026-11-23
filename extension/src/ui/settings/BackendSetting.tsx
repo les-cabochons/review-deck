@@ -4,6 +4,8 @@ import * as React from "react";
 import { type AppHost, type BackendSettings, normalizeBackendUrl } from "../../app/host";
 import { fetchUsage } from "../../review/backend";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 /**
  * The organization's own backend (backend/, deployed by infra/): its URL and API key. Saved for the whole
@@ -32,7 +34,7 @@ export const BackendSetting: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [host]);
 
-  if (saved === undefined) return null;
+  if (saved === undefined) return <SkeletonHtml html={SETTINGS_BODIES.orgBackend} />;
 
   const store = async (settings: BackendSettings | null) => {
     await host.saveBackendSettings(settings);

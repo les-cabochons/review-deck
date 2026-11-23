@@ -92,20 +92,20 @@ function hostHtml(query, handshake, data, apiRoot, tab) {
   </script></body></html>`;
 }
 
-/** What the page shows at each landmark. */
+/** What the page shows at each landmark. The skeletons use the loaded pages' markup, so React's landmarks exclude them. */
 const LANDMARKS = {
   skeleton: ".skeleton-page, .inbox-section.skeleton, .page-loading",
-  hubReact: ".hub-toolbar input[type=search]",
-  hubRows: ".pr-row",
+  hubReact: ".hub:not(.skeleton-page) .hub-toolbar input[type=search]",
+  hubRows: ".pr-row[data-pr]",
   prSkeleton: ".review-page",
   // The PR's page with its data, from the copy kept in this browser (data/prCache.ts), the PR and its updates
   // ahead of the rest (data/adoOverview.ts), or the whole load.
-  prReact: ".pr-actions button",
+  prReact: ".review-page:not(.skeleton-page) .pr-actions button",
   // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
   prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
   // The Files tab shows the diff, so the update's changes and both sides of every file are in (review/engine.ts).
   prDiff: ".file-header",
-  settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
+  settled: ".inbox-section:not(.skeleton), .error-box, .review-page:not(.skeleton-page) .pr-actions button",
 };
 
 /** Inside every frame: when each landmark first appears, as epoch milliseconds. */
@@ -358,6 +358,8 @@ const SCENARIOS = [
   // On the Files tab, so the diff's wait counts too (prDiff).
   { name: "hosted PR", path: "/host?pr=471&repo=users-sdk&tab=files", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // Each Azure DevOps REST call takes 250–500 ms (measured on a small organization), so the PR's data is most of the wait.
+  // A link from the browser extension: only the PR id, so the page finds its repository with one REST call first.
+  { name: "hosted PR from its id alone, slow REST", path: "/host?pr=471&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact"], host: ["handshake", "loaded"] },
   { name: "hosted PR, slow REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=400", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
   // The same 250 to 520 ms, but each call its own. The page shows after the PR and its updates (data/adoOverview.ts), not the slowest call.
   { name: "hosted PR, uneven REST", path: "/host?pr=471&repo=users-sdk&tab=files&api=250&jitter=270", frame: ["dom", "skeleton", "prSkeleton", "prReact", "prLive", "prDiff"], host: ["handshake", "loaded"] },
@@ -600,6 +602,18 @@ async function screenshots(browser, origin, dir) {
   await hub.page.screenshot({ path: join(dir, "1-hub-skeleton-before-handshake.png") });
   await hub.page.close();
 
+  // React's hub with its list on the way, then loaded: the three should line up.
+  const listing = await open(context, origin, "/host?api=8000", true);
+  await listing.waitFor("hubReact");
+  await listing.page.waitForTimeout(500);
+  await listing.page.screenshot({ path: join(dir, "1b-hub-listing.png") });
+  await listing.page.close();
+  const loaded = await open(context, origin, "/host", true);
+  await loaded.waitFor("hubRows");
+  await loaded.page.waitForTimeout(800);
+  await loaded.page.screenshot({ path: join(dir, "1c-hub-loaded.png") });
+  await loaded.page.close();
+
   const pr = await open(context, origin, "/host?pr=471&repo=users-sdk&handshake=500&api=8000", true);
   await pr.waitFor("prSkeleton");
   await pr.page.waitForTimeout(1500);
@@ -635,7 +649,7 @@ async function screenshots(browser, origin, dir) {
     await new Promise((ok) => setTimeout(ok, 3000));
     await route.continue();
   });
-  await local.page.locator(".pr-row").first().click();
+  await local.page.locator(".pr-row[data-pr]").first().click();
   await local.page.waitForTimeout(600);
   await local.page.screenshot({ path: join(dir, "6-local-pr-opening.png") });
   await local.waitFor("prReact");

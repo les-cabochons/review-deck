@@ -20,10 +20,10 @@ async page => {
   await page.reload();
 
   const sidebar = page.locator('.hub-tags');
-  const sidebarNames = async () => (await sidebar.locator('.hub-tag .text').allTextContents()).map(t => t.trim());
-  await sidebar.locator('.hub-tag').first().waitFor();
+  const sidebarNames = async () => (await sidebar.locator('button.hub-tag .text').allTextContents()).map(t => t.trim());
+  await sidebar.locator('button.hub-tag').first().waitFor();
   // Two tags on open pull requests, so the rows below the sidebar carry them.
-  const used = sidebar.locator('.hub-tag').filter({ has: page.locator('.count') });
+  const used = sidebar.locator('button.hub-tag').filter({ has: page.locator('.count') });
   assert(await used.count() >= 2, 'The mock needs two tags on open pull requests');
   const first = (await used.nth(0).locator('.text').textContent()).trim();
   const second = (await used.nth(1).locator('.text').textContent()).trim();
@@ -56,11 +56,11 @@ async page => {
 
   // Given a reload, the tag stays hidden.
   await page.reload();
-  await sidebar.locator('.hub-tag').first().waitFor();
+  await sidebar.locator('button.hub-tag').first().waitFor();
   assert(!(await sidebarNames()).includes(first), `${first} came back after a reload`);
 
   // Given a tag filtering the list, hiding it keeps it listed until the filter is cleared.
-  const secondButton = () => sidebar.locator('.hub-tag', { hasText: second });
+  const secondButton = () => sidebar.locator('button.hub-tag', { hasText: second });
   await secondButton().click();
   assert(await secondButton().getAttribute('aria-pressed') === 'true', 'Tag filter did not apply');
   await sidebar.getByRole('button', { name: '1 hidden tag' }).click();
