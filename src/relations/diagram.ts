@@ -26,8 +26,10 @@ export interface MapEdge {
   to: string;
   /** Each end uses the other: one line, an arrowhead at both ends. */
   both: boolean;
-  /** The names behind the link, best first, both directions merged, without the ends' own titles. */
+  /** The names behind the link, best first, both directions merged, without the ends' own titles: the label's. */
   symbols: string[];
+  /** All of them, the ends' own titles too: the tooltip's. */
+  names: string[];
   points: { x: number; y: number }[];
   label: { text: string; x: number; y: number } | null;
 }
@@ -69,10 +71,10 @@ function pairs(links: Link[], items: ReadonlyMap<string, MapItem>): Omit<MapEdge
     edge.directions.add(`${link.from}>${link.to}`);
     for (const s of link.symbols) if (!edge.names.includes(s)) edge.names.push(s);
   }
+  const best = (list: string[]) => list.filter((s) => !s.startsWith(".")).concat(list.filter((s) => s.startsWith(".")));
   return [...byPair.values()].map(({ names, directions, ...edge }) => {
     const own = new Set([items.get(edge.from)!.title, items.get(edge.to)!.title]);
-    const told = names.filter((s) => !own.has(s));
-    return { ...edge, both: directions.size > 1, symbols: told.filter((s) => !s.startsWith(".")).concat(told.filter((s) => s.startsWith("."))) };
+    return { ...edge, both: directions.size > 1, symbols: best(names.filter((s) => !own.has(s))), names: best(names) };
   });
 }
 

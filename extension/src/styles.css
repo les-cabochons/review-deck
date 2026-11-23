@@ -5401,6 +5401,18 @@ span.artifact-toggle {
   stroke: var(--fg2);
   stroke-width: 1.5;
 }
+.relation-edge .relation-edge-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+.relation-edge:hover path:not(.relation-edge-hit) {
+  stroke: var(--fg);
+  stroke-width: 2.5;
+}
+.relation-edge:hover text {
+  fill: var(--link);
+}
 .relation-arrowhead {
   fill: var(--fg2);
 }

@@ -42,6 +42,7 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
   const measured = width > 0;
   const fit = { width: Math.max(width - 8, 240), height };
   const map = React.useMemo(() => (measured ? layoutRelations(items, links, fit) : null), [items, links, measured, fit.width, fit.height]);
+  const titles = React.useMemo(() => new Map(items.map((i) => [i.id, i.title])), [items]);
   const scale = map ? Math.max(MIN_SCALE, Math.min(1, fit.width / map.width, fit.height / map.height)) : 1;
 
   return (
@@ -55,7 +56,9 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
           </defs>
           {map.edges.map((edge) => (
             <g key={`${edge.from}>${edge.to}`} className="relation-edge">
-              <title>{`${edge.from} ${edge.both ? "and" : "→"} ${edge.to}: ${edge.symbols.join(", ")}`}</title>
+              <title>{edgeTooltip(edge, titles)}</title>
+              {/* The line is 1.5 px: a wide invisible copy under it is what the pointer finds. */}
+              <path className="relation-edge-hit" d={smooth(edge.points)} />
               <path d={smooth(edge.points)} markerEnd={`url(#${id}-end)`} markerStart={edge.both ? `url(#${id}-end)` : undefined} />
               {edge.label && (
                 <text x={edge.label.x} y={edge.label.y + 4} textAnchor="middle">
@@ -130,6 +133,20 @@ const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart
     </g>
   );
 };
+
+/**
+ * An arrow's tooltip, in full: "make uses sentence, cleanupFailureReason and REPORT_ENTRY_LIMIT from sentence", or
+ * "layerRuntimeCoreDependenciesBase uses StorageCleanup" when the only name is the box it comes from. The box an
+ * arrow goes to doesn't use its own name, so that name is left out.
+ */
+function edgeTooltip(edge: { from: string; to: string; both: boolean; names: string[] }, titles: Map<string, string>): string {
+  const from = titles.get(edge.from) ?? edge.from;
+  const to = titles.get(edge.to) ?? edge.to;
+  const used = edge.names.filter((n) => edge.both || n !== to);
+  const list = used.length > 1 ? `${used.slice(0, -1).join(", ")} and ${used.at(-1)}` : (used[0] ?? "");
+  if (edge.both) return `${from} and ${to} use each other: ${list}`;
+  return used.length === 1 && used[0] === from ? `${to} uses ${from}` : `${to} uses ${list} from ${from}`;
+}
 
 /** `text` cut to `room` pixels of 10.5 px monospace, keeping its end (a file name matters more than its folders). */
 function fitText(text: string, room: number): string {

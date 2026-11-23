@@ -64,6 +64,18 @@ async page => {
     const target = node.querySelector('title').textContent.split('\n')[0];
     node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await wait(() => document.querySelector('.hunk-card.flash'), `A click on "${target}" did not point at its change`);
+    // An arrow answers the pointer anywhere along it, and its tooltip names both ends.
+    const edge = document.querySelector('.concern-flow .relation-edge');
+    const tooltip = edge.querySelector('title').textContent;
+    assert(/ uses |use each other/.test(tooltip) && !tooltip.includes('\u0000') && !tooltip.includes('#'), `Arrow tooltip: "${tooltip}"`);
+    const hit = edge.querySelector('.relation-edge-hit');
+    const box = hit.getBoundingClientRect();
+    const middle = hit.getPointAtLength(hit.getTotalLength() / 2);
+    const svg = hit.ownerSVGElement.getBoundingClientRect();
+    const scale = svg.width / hit.ownerSVGElement.viewBox.baseVal.width;
+    const found = document.elementFromPoint(svg.left + middle.x * scale + 4 * scale, svg.top + middle.y * scale);
+    assert(found?.closest('.relation-edge') === edge, `The pointer 4 px off the line found ${found?.outerHTML.slice(0, 80)}`);
+    void box;
     // Every box: the function, then its file. No "start here", and no `make` linking two files.
     const subtitles = [...document.querySelectorAll('.concern-flow .relation-node-subtitle')].map(t => t.textContent);
     assert(subtitles.length > 0 && subtitles.every(t => /^[\w.-]+\.\w+( · \d+ changes)?$/.test(t)), `A box's second line isn't its file: ${subtitles}`);
