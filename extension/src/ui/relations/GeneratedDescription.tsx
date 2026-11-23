@@ -13,17 +13,14 @@ interface Props {
   data: PrOverview;
   review: ReviewModel | null;
   onOpenGroup: (id: string) => void;
-  /** Back to the author's description, which has what this view can't know. */
-  onShowWritten: () => void;
 }
 
 /**
  * The pull request described from what Review Deck reads, not from what its author wrote: why, from the commit
- * messages; what changed, from the guide's concerns; and how they connect, from the names they share. Each part
- * says where it comes from, and the view says what it can't know.
+ * messages; what changed, from the guide's concerns; and how they connect, from the names they share. What it can't
+ * know (how the change was tested, what could break) is in docs/generated-description.md, not on the page.
  */
-const GeneratedDescription: React.FC<Props> = ({ data, review, onOpenGroup, onShowWritten }) => {
-  const author = data.pr.createdBy.displayName;
+const GeneratedDescription: React.FC<Props> = ({ data, review, onOpenGroup }) => {
   return (
     <div className="generated-description">
       <section>
@@ -33,13 +30,6 @@ const GeneratedDescription: React.FC<Props> = ({ data, review, onOpenGroup, onSh
       <section>
         <WhatChanged review={review} onOpenGroup={onOpenGroup} />
       </section>
-      <p className="generated-missing">
-        Not in the code, so not here: how it was tested, and what could break.{" "}
-        <button className="link-button" onClick={onShowWritten}>
-          Written by {author}
-        </button>{" "}
-        may have them.
-      </p>
     </div>
   );
 };
@@ -109,7 +99,6 @@ const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: stri
       )}
       <h4>How they connect</h4>
       <ConcernList groups={groups} links={relations ? links : null} onOpenGroup={onOpenGroup} />
-      {relations && <p className="generated-source muted">Links come from names shared between changed lines. Two different things with the same name look linked, so each link shows its names.</p>}
     </>
   );
 };

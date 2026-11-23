@@ -94,7 +94,7 @@ const DescriptionCard: React.FC<{ data: PrOverview; review: ReviewModel | null; 
       </div>
       {generated ? (
         <React.Suspense fallback={<div className="card-body muted">Loading…</div>}>
-          <GeneratedDescription data={data} review={review} onOpenGroup={onOpenGroup} onShowWritten={() => setGenerated(false)} />
+          <GeneratedDescription data={data} review={review} onOpenGroup={onOpenGroup} />
         </React.Suspense>
       ) : editing ? (
         <CommentComposer

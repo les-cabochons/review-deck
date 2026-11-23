@@ -55,7 +55,6 @@ export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: 
           label={`How the changes in concern ${group.title} connect`}
         />
       </React.Suspense>
-      <p className="muted concern-flow-source">From names one change defines and another uses. Click a change to go to it.</p>
     </details>
   );
 };

@@ -46,11 +46,10 @@ async page => {
     assert(list.includes('StorageCleanupReport'), 'The links don\'t name their symbols');
     assert(list.includes('through member names only'), 'Loose matches are not said to be loose');
     assert(list.includes('reviewable on its own'), 'No concern is said to stand alone');
-    assert(text('.generated-missing').includes('how it was tested, and what could break'), 'The view does not say what it can\'t know');
 
-    // The way back.
-    document.querySelector('.generated-missing .link-button').click();
-    await wait(() => toggle('Written by')?.getAttribute('aria-pressed') === 'true', 'The link back did not show the author\'s description');
+    // Back to the author's.
+    toggle('Written by').click();
+    await wait(() => document.querySelector('.description .card-body') && !document.querySelector('.generated-description'), 'The toggle did not go back to the author\'s description');
   });
 
   // Files: a concern's flow, and a click on a change. The harness keeps the guide it saved, so this is a reopened one.

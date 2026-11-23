@@ -31,7 +31,7 @@ The guide saves the relations (`SavedReview.relations` in `extension/src/review/
 
 ## What it can't know
 
-The orange line at the bottom says it to the reader:
+The page doesn't say these; reviewers compare it with the author's description:
 
 - **How the change was tested.** Only the author knows. Test files in the diff are a partial answer.
 - **What could break.** The Infra view covers Terraform. For code, nothing in the diff says so.
