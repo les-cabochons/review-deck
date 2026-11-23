@@ -33,7 +33,6 @@ async page => {
     const head = text('.infra-card-head');
     for (const count of ['1 destroy likely', '1 replace likely', '2 may follow', '1 added'])
       assert(head.includes(count), `The card's summary lacks "${count}": "${head}"`);
-    assert(text('.infra-card-foot').includes('not from a terraform plan'), 'The card did not say it is read from the code');
     await wait(() => document.querySelector('.infra-card-thumb svg'), 'The card has no thumbnail of the diagram');
     assert(tabs().some(t => t.startsWith('Infra')), `No Infra tab: ${tabs()}`);
     document.querySelector('.infra-card-head .link-button').click();

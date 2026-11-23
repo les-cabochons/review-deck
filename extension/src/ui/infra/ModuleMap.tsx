@@ -14,6 +14,9 @@ interface Props {
   onSelect: (dir: string) => void;
 }
 
+/** Room the full map takes before the rest is reached by dragging, and the Overview thumbnail's. */
+const HEIGHT = { full: 440, compact: 150 };
+
 /** Rows a module lists before "and N more": the module's section below has them all. */
 const MAX_ROWS = 6;
 const EDGE_MARK = { added: "+ ", removed: "− ", touched: "~ ", same: "" };
@@ -32,6 +35,12 @@ export const ModuleMap: React.FC<Props> = ({ modules, onSelect }) => {
       {narrow ? <ModuleOutline map={map} onSelect={onSelect} /> : <ModuleDrawing map={map} onSelect={onSelect} />}
     </section>
   );
+};
+
+/** The Overview card's thumbnail of the map: the modules and their arrows, fitted whole, without their lists. */
+export const ModuleThumbnail: React.FC<{ modules: InfraModule[] }> = ({ modules }) => {
+  const map = React.useMemo(() => moduleMap(modules), [modules]);
+  return <ModuleDrawing map={map} compact />;
 };
 
 /** What a changed module lists: its resources, data sources and module calls that changed or are at risk, then its inputs and outputs. */
@@ -60,13 +69,14 @@ function tone(node: ModuleNode): string {
   return `tone-${first ? verdict(first).tone : "same"}`;
 }
 
-const ModuleDrawing: React.FC<{ map: Map_; onSelect: (dir: string) => void }> = ({ map, onSelect }) => {
+const ModuleDrawing: React.FC<{ map: Map_; onSelect?: (dir: string) => void; compact?: boolean }> = ({ map, onSelect, compact }) => {
   const nodes = React.useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map]);
   const links = React.useMemo(() => new Map(map.links.map((l) => [`${l.from}\u0000${l.to}`, l])), [map]);
   const items = React.useMemo(
     () =>
       map.nodes.map((node) => {
-        const blocks = node.module ? listed(node.module) : [];
+        // A thumbnail is too small to read the lists: its cards are their names.
+        const blocks = node.module && !compact ? listed(node.module) : [];
         const rows = blocks.slice(0, MAX_ROWS).map(row);
         if (blocks.length > MAX_ROWS) rows.push({ mark: "", text: `and ${blocks.length - MAX_ROWS} more` });
         return {
@@ -77,7 +87,7 @@ const ModuleDrawing: React.FC<{ map: Map_; onSelect: (dir: string) => void }> = 
           rows,
         };
       }),
-    [map],
+    [map, compact],
   );
   const relations = React.useMemo(() => map.links.map((l) => ({ from: l.from, to: l.to, symbols: l.names })), [map]);
   return (
@@ -85,7 +95,8 @@ const ModuleDrawing: React.FC<{ map: Map_; onSelect: (dir: string) => void }> = 
       items={items}
       links={relations}
       apartCaption="Not linked to the others by a changed file"
-      height={440}
+      height={compact ? HEIGHT.compact : HEIGHT.full}
+      compact={compact}
       label="Map of the modules this pull request changes"
       cardClass={(id) => tone(nodes.get(id)!)}
       selectable={(id) => nodes.get(id)?.kind === "changed"}

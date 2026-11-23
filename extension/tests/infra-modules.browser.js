@@ -16,7 +16,16 @@ async page => {
   });
 
   await page.setViewportSize({ width: 1400, height: 1000 });
-  await page.goto('http://127.0.0.1:5173/test-dist/index.html?snapshot=demo-473#infra');
+  // The Overview card's thumbnail is the module map, not one folder's diagram.
+  await page.goto('http://127.0.0.1:5173/test-dist/index.html?snapshot=demo-473#overview');
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    await wait(() => document.querySelector('.infra-card-thumb .relation-node'), 'The Infrastructure card has no thumbnail');
+    const cards = [...document.querySelectorAll('.infra-card-thumb .relation-node-title')].map(t => t.textContent);
+    assert(cards.includes('modules/storage') && cards.includes('envs/prod'), `The thumbnail is not the module map: ${cards}`);
+    assert(!document.querySelector('.infra-card-foot'), 'The card still has its footnote');
+    document.querySelector('.infra-card-head .link-button').click();
+  });
   await page.evaluate(async () => {
     const { wait, assert } = check;
     await wait(() => document.querySelector('.infra-module-map .relation-map svg'), 'The Infra tab did not draw its module map');

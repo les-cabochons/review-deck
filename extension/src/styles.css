@@ -4856,12 +4856,6 @@ span.artifact-toggle {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.infra-card-foot {
-  margin: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--line-soft);
-  font-size: 12px;
-}
 
 /* The tab */
 .infra-tab {
