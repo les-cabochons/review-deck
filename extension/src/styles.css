@@ -1362,19 +1362,24 @@ kbd {
   white-space: nowrap;
   font-size: 13px;
 }
-/* The PR description is read like a document: one size up from comments, and lines capped
-   near 100 characters so a wide screen doesn't stretch them. Headings and code scale with it. */
-.description .markdown {
+/* The PR description and comment threads (timeline, inline in diffs, pending drafts) are read
+   like a document: one size up from the shared markdown style, and lines capped near 100
+   characters so a wide screen doesn't stretch them. Headings and code scale with them. */
+.description .markdown,
+.thread .markdown {
   font-size: 15px;
   max-width: 100ch;
 }
-.description .markdown h2 {
+.description .markdown h2,
+.thread .markdown h2 {
   font-size: 17px;
 }
-.description .markdown h3 {
+.description .markdown h3,
+.thread .markdown h3 {
   font-size: 15px;
 }
-.description .markdown code {
+.description .markdown code,
+.thread .markdown code {
   font-size: 13px;
 }
 .timeline {
