@@ -1362,6 +1362,21 @@ kbd {
   white-space: nowrap;
   font-size: 13px;
 }
+/* The PR description is read like a document: one size up from comments, and lines capped
+   near 100 characters so a wide screen doesn't stretch them. Headings and code scale with it. */
+.description .markdown {
+  font-size: 15px;
+  max-width: 100ch;
+}
+.description .markdown h2 {
+  font-size: 17px;
+}
+.description .markdown h3 {
+  font-size: 15px;
+}
+.description .markdown code {
+  font-size: 13px;
+}
 .timeline {
   list-style: none;
   padding: 4px 0 0 28px;
