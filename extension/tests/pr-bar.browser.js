@@ -87,7 +87,8 @@ async page => {
 
   // Given a window wide enough for the page to center (the dev shell leaves it 1360px of 1600px), the toolbar is on
   // its own line under the tabs and starts where the diffs do, at the page's side margin, while the tabs are
-  // centered; the navigator was measured under both lines. On the Overview, the tabs are where they were.
+  // centered; the navigator was measured under both lines. The Overview check at the end finds the tabs where they
+  // were.
   const left = selector => f.locator(selector).first().evaluate(el => Math.round(el.getBoundingClientRect().left));
   await page.setViewportSize({ width: 1600, height: 720 });
   await scrollTo(1500);
@@ -101,30 +102,9 @@ async page => {
   const wideRow = await box('.pr-tabs');
   const wideNavigator = await box('.navigator');
   assert(wideNavigator.top >= wideRow.bottom - 1 && wideNavigator.top <= wideRow.bottom + 16, `The navigator (${wideNavigator.top}px) is not right under the tab row (${wideRow.bottom}px)`);
-  await f.getByRole('tab', { name: 'Overview' }).click();
-  await f.locator('.overview').waitFor();
-  const overviewTab = await left('.pr-tabs [role=tab]');
-  assert(overviewTab === lefts.tab, `The tabs moved between Files (${lefts.tab}px) and Overview (${overviewTab}px)`);
-  await f.getByRole('tab', { name: /^Files/ }).click();
-  await f.locator('.files-toolbar').waitFor();
-  result.wide = { ...lefts, overviewTab, tabRow: wideRow.bottom, navigator: wideNavigator.top };
+  result.wide = { ...lefts, tabRow: wideRow.bottom, navigator: wideNavigator.top };
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // The gear's diff views apply one after the other: a pick closes the menu, so the next click opens it again.
-  const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
-  const diffView = async () => {
-    await gear();
-    const split = await f.getByRole('menuitem', { name: 'Side-by-side', exact: true }).evaluate(el => el.classList.contains('menu-item-selected'));
-    await page.keyboard.press('Escape');
-    return split ? 'Side-by-side' : 'Inline';
-  };
-  const picks = (await diffView()) === 'Inline' ? ['Side-by-side', 'Inline'] : ['Inline', 'Side-by-side'];
-  for (const pick of picks) {
-    await gear();
-    await f.getByRole('menuitem', { name: pick, exact: true }).click();
-    assert((await diffView()) === pick, `The gear did not switch the diff view to ${pick}`);
-  }
-  result.diffPicks = picks;
 
   // Given a review started in the full header, the compact header's Review opens on the same summary and verdict.
   await scrollTo(0);
@@ -148,8 +128,13 @@ async page => {
   await pause();
   assert(!(await shown()), 'The compact header stayed at the top after closing its review panel');
 
-  // On the Overview tab, the tab bar sticks under the compact header.
+  // On the Overview tab, the tabs are where they were on the Files tab, and the tab bar sticks under the compact header.
+  await page.setViewportSize({ width: 1600, height: 720 });
   await f.getByRole('tab', { name: 'Overview' }).click();
+  await f.locator('.overview').waitFor();
+  result.wide.overviewTab = await left('.pr-tabs [role=tab]');
+  assert(result.wide.overviewTab === lefts.tab, `The tabs moved between Files (${lefts.tab}px) and Overview (${result.wide.overviewTab}px)`);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await scrollTo(100000);
   await pause();
   if (await shown()) {
@@ -157,6 +142,29 @@ async page => {
     assert(tabs.top >= bar.bottom - 1, `The tab bar (${tabs.top}px) sticks under the compact header (${bar.bottom}px)`);
     result.overviewTabs = tabs.top;
   } else result.overviewTabs = 'page too short to scroll past the header';
+
+  // Back on the Files tab, the gear's diff views apply one after the other: a pick closes the menu, so the next click
+  // opens it again.
+  await f.getByRole('tab', { name: /^Files/ }).click();
+  await f.locator('.files-toolbar').waitFor();
+  // Each step waits for the menu to be gone before the next click.
+  const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
+  const menuGone = () => f.locator('[role=menuitem]').first().waitFor({ state: 'detached' });
+  const diffView = async () => {
+    await gear();
+    const split = await f.getByRole('menuitem', { name: 'Side-by-side', exact: true }).evaluate(el => el.classList.contains('menu-item-selected'));
+    await page.keyboard.press('Escape');
+    await menuGone();
+    return split ? 'Side-by-side' : 'Inline';
+  };
+  const picks = (await diffView()) === 'Inline' ? ['Side-by-side', 'Inline'] : ['Inline', 'Side-by-side'];
+  for (const pick of picks) {
+    await gear();
+    await f.getByRole('menuitem', { name: pick, exact: true }).click();
+    await menuGone();
+    assert((await diffView()) === pick, `The gear did not switch the diff view to ${pick}`);
+  }
+  result.diffPicks = picks;
 
   if (size) await page.setViewportSize(size);
   if (errors.length) throw new Error(errors.join('\n'));
