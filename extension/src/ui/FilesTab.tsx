@@ -852,7 +852,8 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
       </div>
       {open && (
         <>
-          {group.rationale && <p className="rationale">{group.rationale}</p>}
+          {/* "Other changes" has no rationale worth reading. Guides saved before it was dropped still hold one. */}
+          {group.rationale && group.kind !== "misc" && <p className="rationale">{group.rationale}</p>}
           {group.kind === "semantic" && <ConcernFlow group={group} result={review.result} color={groupColor(review.result.groups, group)} />}
           {hunks.map((h) => (
             <HunkCard key={h.hunk.id} info={h} mode={mode} threads={fileThreads.get(h.file.path) ?? []}

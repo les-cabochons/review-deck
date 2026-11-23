@@ -26,7 +26,8 @@ export function describeGroup({ group, hunks, pairs }: TitleInput): GroupTitle {
     };
   }
   if (group.kind === "misc") {
-    return { title: "Other changes", rationale: "Changes with no strong link to the rest of the pull request.", source };
+    // The title says it all: a sentence under it would only repeat it.
+    return { title: "Other changes", rationale: "", source };
   }
 
   const code = hunks.filter((h) => !h.isTest);
