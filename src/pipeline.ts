@@ -5,6 +5,7 @@ import type { PipelineConfig } from "./core/config.js";
 import type { FileProvider, Group, HunkInfo, ReviewResult } from "./core/types.js";
 import { parseDiff } from "./diff/parse.js";
 import { orderGroups } from "./order/topo.js";
+import { relationsOf } from "./relations/relations.js";
 import type { SyntaxParsers } from "./parse/treesitter.js";
 import { type Embedder, scorePairs } from "./score/index.js";
 import { titlesFromDescription } from "./title/fromDescription.js";
@@ -77,6 +78,7 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
   const titler = deps.titler ?? new HeuristicTitler();
   const storyPositions = await time("title", () => applyTitles(groups, hunks, pairs, titler, input, warnings));
   groups = orderByStory(groups, storyPositions);
+  const relations = await time("relate", () => relationsOf(groups, hunks));
 
   return {
     title: input.title,
@@ -85,6 +87,7 @@ export async function runPipeline(input: PrInput, config: PipelineConfig, deps: 
     hunks,
     pairs,
     groups,
+    relations,
     merges,
     timings,
     options: { semantic: !!embedder, titler: titler.name, weights: config.weights, minEdgeWeight: config.minEdgeWeight },

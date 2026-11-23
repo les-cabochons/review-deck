@@ -7,8 +7,9 @@
 // A guide published from Ajour (`madeWith.app`) shows whatever the reader's settings and is never replaced on its own:
 // a reader who regroups keeps their guide for the session, and only Publish puts theirs in its place (keepsPublished).
 // Nor is it dropped to make room for another comparison: a guide that doesn't fit beside it isn't saved (GuideTooLarge).
-import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewResult, TitleSource } from "../../../src/core/types";
+import type { FileDiff, Group, HunkInfo, MechanicalInfo, ReviewRelations, ReviewResult, TitleSource } from "../../../src/core/types";
 import { parseDiff } from "../../../src/diff/parse";
+import { readRelations } from "../../../src/relations/relations";
 
 /**
  * Bump when the saved shape changes, or to have every PR grouped again (saved views outlive extension versions).
@@ -119,6 +120,11 @@ export interface SavedReview {
   options: ReviewResult["options"];
   /** The hunk facts the page shows, only for hunks that have any (most have none). */
   hunks: Record<string, { symbol?: string; isTest?: true; mechanical?: MechanicalInfo }>;
+  /**
+   * How the concerns connect (src/relations). Optional, so the format stays 4: guides saved before it, and guides
+   * another app published without it, show their concerns without links, and the page says why.
+   */
+  relations?: ReviewRelations;
 }
 
 /** What `result` needs saved, made in `mode`; one that fell back somewhere (backend down, titles failed) says so. */
@@ -130,7 +136,8 @@ export function packReview(result: ReviewResult, mode: ReviewMode, now = Date.no
   }
   const madeWith = { title: result.title, description: result.description };
   const fellBack = result.warnings.length > 0 ? { fellBack: true as const } : {};
-  return { format: FORMAT, mode, madeWith, savedAt: now, ...fellBack, groups: result.groups, merges: result.merges, options: result.options, hunks };
+  const relations = result.relations ? { relations: result.relations } : {};
+  return { format: FORMAT, mode, madeWith, savedAt: now, ...fellBack, groups: result.groups, merges: result.merges, options: result.options, hunks, ...relations };
 }
 
 /** Where `review` came from, if another app published it (see SavedReview.madeWith). */
@@ -296,6 +303,8 @@ export function restoreReview(saved: unknown, mode: ReviewMode, diff: string, no
     options: s.options!,
     warnings: [],
   };
+  const relations = readRelations(s.relations, new Set(groups.map((g) => g.id)), new Set(hunks.keys()));
+  if (relations) result.relations = relations;
   const summary = readSummary(s.summary, new Set(hunks.keys()));
   return { result, ...(published && { published }), ...(summary && { summary }) };
 }
