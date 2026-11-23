@@ -39,9 +39,29 @@ async page => {
     assert(document.querySelectorAll('.infra-module').length === 3, 'Each changed folder should keep its section');
   });
 
-  await page.getByRole('button', { name: /^modules\/storage: .*Show it\.$/ }).click();
+  // Expand shows the map over the whole page, fitted whole; Escape puts it back.
+  await page.locator('.infra-module-map .diagram-canvas-controls button', { hasText: 'Expand' }).click();
   await page.evaluate(async () => {
     const { wait, assert } = check;
+    await wait(() => document.querySelector('.diagram-expanded .relation-node'), 'Expand did not show the map over the page');
+    const box = document.querySelector('.diagram-expanded .diagram-canvas').getBoundingClientRect();
+    const cards = [...document.querySelectorAll('.diagram-expanded .relation-node')].map(n => n.getBoundingClientRect());
+    assert(cards.every(c => c.left >= box.left && c.right <= box.right && c.top >= box.top && c.bottom <= box.bottom), 'The expanded map does not show every card');
+    assert(document.querySelector('.infra-module-map .diagram-canvas-away'), 'The page lost the place the map came from');
+  });
+  await page.keyboard.press('Escape');
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    await wait(() => !document.querySelector('.diagram-expanded'), 'Escape did not close the expanded map');
+    assert(document.querySelector('.infra-module-map .relation-map svg'), 'The map did not come back to the page');
+  });
+
+  // A pick in the expanded map closes it, and the page shows what was picked.
+  await page.locator('.infra-module-map .diagram-canvas-controls button', { hasText: 'Expand' }).click();
+  await page.locator('.diagram-expanded').getByRole('button', { name: /^modules\/storage: .*Show it\.$/ }).click();
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    await wait(() => !document.querySelector('.diagram-expanded'), 'A pick did not close the expanded map');
     await wait(() => document.activeElement?.classList.contains('infra-module'), 'Picking a module did not move to its section');
     const heading = document.activeElement.querySelector('h3').textContent;
     assert(heading === 'modules/storage/', `Picking storage moved to ${heading}`);

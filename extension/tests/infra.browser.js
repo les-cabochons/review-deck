@@ -57,9 +57,6 @@ async page => {
 
     // The diagram draws the changed resources, and a click on one leads to its row.
     const drawn = [...document.querySelectorAll('.infra-tab .relation-node')].map(n => n.querySelector('title').textContent);
-    // In the relations map's columns: what the account defines on the left, what uses it on the right.
-    const headings = [...document.querySelectorAll('.infra-tab .relation-heading')].map(h => h.textContent);
-    assert(headings.join() === 'Defined here,Uses them', `Column headings: ${headings}`);
     // The values' changed words are marked, like a diff.
     const marks = [...document.querySelectorAll('.infra-attributes del, .infra-attributes ins')].map(m => `${m.tagName}:${m.textContent}`);
     assert(marks.includes('DEL:Standard') && marks.includes('INS:Premium'), `The tier's change is not marked: ${marks}`);

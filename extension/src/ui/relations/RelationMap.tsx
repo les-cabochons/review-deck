@@ -79,11 +79,6 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
               </marker>
             ))}
           </defs>
-          {map.headings.map((h) => (
-            <text key={h.text} className="relation-heading" x={h.x} y={h.y}>
-              {h.text}
-            </text>
-          ))}
           {map.edges.map((edge) => {
             const info = edgeInfo?.(edge.from, edge.to);
             const head = info?.className && HEADS.includes(info.className) ? `-${info.className}` : "";

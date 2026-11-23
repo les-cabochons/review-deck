@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   /** The diagram's own size, in pixels at scale 1. */
@@ -20,6 +21,8 @@ const DRAG_THRESHOLD = 4;
 const KEY_PAN = 40;
 /** Pixels of the diagram that always stay on the canvas, however far it is dragged. */
 const KEEP_VISIBLE = 80;
+/** Room the expanded view's title bar and margins take from the window's height. */
+const EXPANDED_CHROME = 72;
 
 interface View {
   x: number;
@@ -39,9 +42,84 @@ interface Drag {
  * A diagram on a canvas the reader moves by dragging, like draw.io: press anywhere and drag. A press that doesn't
  * move clicks what is under it, so cards and connectors still work. Ctrl (or ⌘) and the wheel, or a trackpad pinch,
  * zoom around the pointer; the buttons zoom around the middle, and Fit puts it back. With the canvas focused, the
- * arrow keys move it and + and − zoom. The plain wheel still scrolls the page.
+ * arrow keys move it and + and − zoom. The plain wheel still scrolls the page. Expand opens the canvas over the
+ * whole page, fitted whole, for a diagram too big to explore in its place; Escape or Close puts it back.
  */
-export const DiagramCanvas: React.FC<Props> = ({ contentWidth, contentHeight, maxHeight, label, children }) => {
+export const DiagramCanvas: React.FC<Props> = (props) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const opener = React.useRef<HTMLButtonElement | null>(null);
+  const close = React.useCallback(() => {
+    setExpanded(false);
+    // Back on the page, focus returns to the button that opened it.
+    setTimeout(() => opener.current?.focus(), 0);
+  }, []);
+  if (!expanded) return <Canvas {...props} onExpand={() => setExpanded(true)} expandRef={opener} />;
+  return (
+    <>
+      <div className="diagram-canvas-away" style={{ height: Math.min(props.contentHeight, props.maxHeight) }}>
+        Shown over the page.{" "}
+        <button type="button" className="link-button" onClick={close}>
+          Put it back
+        </button>
+      </div>
+      {createPortal(<Expanded {...props} onClose={close} />, document.body)}
+    </>
+  );
+};
+
+/** The canvas over the whole page, with a title bar. The page behind doesn't scroll while it is open. */
+const Expanded: React.FC<Props & { onClose: () => void }> = ({ onClose, ...props }) => {
+  const [room, setRoom] = React.useState(() => window.innerHeight - EXPANDED_CHROME);
+  const closeButton = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    const resize = () => setRoom(window.innerHeight - EXPANDED_CHROME);
+    window.addEventListener("resize", resize);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButton.current?.focus();
+    return () => {
+      window.removeEventListener("resize", resize);
+      document.body.style.overflow = overflow;
+    };
+  }, []);
+  return (
+    <div
+      className="diagram-expanded"
+      role="dialog"
+      aria-modal="true"
+      aria-label={props.label}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onClose();
+        } else if ((e.key === "Enter" || e.key === " ") && picks(e.target)) onClose();
+      }}
+      // A card or connector picked here acts on the page behind: the page comes back to show it.
+      onClick={(e) => picks(e.target) && onClose()}
+    >
+      <div className="diagram-expanded-bar">
+        <span>{props.label}</span>
+        <button type="button" ref={closeButton} onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <Canvas {...props} maxHeight={room} fill />
+    </div>
+  );
+};
+
+/** Whether `target` is in a card or connector that does something when picked. */
+const picks = (target: EventTarget) => target instanceof Element && !!target.closest(".relation-node.selectable, .relation-edge.selectable");
+
+interface CanvasProps extends Props {
+  /** Shows the Expand button. */
+  onExpand?: () => void;
+  expandRef?: React.Ref<HTMLButtonElement>;
+  /** Expanded: the canvas takes all of `maxHeight`, and Fit shows the whole diagram, however small. */
+  fill?: boolean;
+}
+
+const Canvas: React.FC<CanvasProps> = ({ contentWidth, contentHeight, maxHeight, label, children, onExpand, expandRef, fill }) => {
   const [viewport, setViewport] = React.useState<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(0);
   React.useLayoutEffect(() => {
@@ -53,13 +131,14 @@ export const DiagramCanvas: React.FC<Props> = ({ contentWidth, contentHeight, ma
     return () => observer.disconnect();
   }, [viewport]);
 
-  const fit = Math.max(MIN_FIT, Math.min(1, width / contentWidth));
-  const height = Math.min(Math.ceil(contentHeight * fit), maxHeight);
-  /** Null while the reader hasn't moved or zoomed it: the diagram sits fitted at the top left. */
+  const fit = fill ? Math.max(MIN_ZOOM, Math.min(1, width / contentWidth, maxHeight / contentHeight)) : Math.max(MIN_FIT, Math.min(1, width / contentWidth));
+  const height = fill ? maxHeight : Math.min(Math.ceil(contentHeight * fit), maxHeight);
+  /** Null while the reader hasn't moved or zoomed it: the diagram sits fitted. */
   const [moved, setMoved] = React.useState<View | null>(null);
   // A new diagram, or a canvas resized, starts fitted again.
   React.useEffect(() => setMoved(null), [contentWidth, contentHeight, width]);
-  const view = moved ?? { x: 0, y: 0, scale: fit };
+  // Fitted, it sits at the top left; expanded, in the middle of the page.
+  const view = moved ?? (fill ? { x: Math.max(0, (width - contentWidth * fit) / 2), y: Math.max(0, (height - contentHeight * fit) / 2), scale: fit } : { x: 0, y: 0, scale: fit });
   const viewNow = React.useRef(view);
   viewNow.current = view;
 
@@ -194,6 +273,11 @@ export const DiagramCanvas: React.FC<Props> = ({ contentWidth, contentHeight, ma
         <button type="button" title="Fit the diagram to the canvas, and put it back at the start" disabled={!moved} onClick={() => setMoved(null)}>
           Fit
         </button>
+        {onExpand && (
+          <button type="button" ref={expandRef} title="Show the diagram over the whole page" onClick={onExpand}>
+            Expand
+          </button>
+        )}
       </div>
     </div>
   );

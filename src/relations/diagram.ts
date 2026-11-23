@@ -63,8 +63,6 @@ export interface RelationMap {
   /** Items with a drawn link, in columns. */
   nodes: MapNode[];
   edges: MapEdge[];
-  /** Headings over the first and last columns. */
-  headings: { text: string; x: number; y: number }[];
   /** Items without a link, in rows under the others. */
   apart: MapNode[];
   /** Where the rows of items without a link start, for their caption. Null when there are none, or nothing else. */
@@ -72,7 +70,8 @@ export interface RelationMap {
 }
 
 const MARGIN = 12;
-const HEADING_HEIGHT = 22;
+/** An empty strip over the cards, where the canvas puts its zoom buttons (ui/relations/DiagramCanvas.tsx). */
+const BUTTONS_HEIGHT = 22;
 const CARD_HEIGHT = 44;
 /** Space between two connectors entering or leaving one side of a card. */
 const PORT_GAP = 14;
@@ -183,7 +182,7 @@ interface Hop {
   y2: number;
 }
 
-function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "height" | "nodes" | "edges" | "headings"> {
+function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "height" | "nodes" | "edges"> {
   const column = columnsOf(items.map((i) => i.id), edges);
   const slots = new Map<string, Slot>();
   for (const item of items) slots.set(item.id, { id: item.id, item, column: column.get(item.id)!, order: 0, x: 0, y: 0, width: cardWidth(item), height: baseHeight(item) });
@@ -244,7 +243,7 @@ function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "heig
   // Columns are stacked from the top and centred on the tallest.
   const heights = columns.map((col) => col.reduce((sum, slot) => sum + slot.height, 0) + ROW_GAP * (col.length - 1));
   const tallest = Math.max(...heights);
-  const top = MARGIN + HEADING_HEIGHT;
+  const top = MARGIN + BUTTONS_HEIGHT;
   columns.forEach((col, c) => {
     let y = top + (tallest - heights[c]) / 2;
     for (const slot of col) {
@@ -309,8 +308,7 @@ function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "heig
     };
   });
 
-  const headings = count > 1 ? [{ text: "Defined here", x: MARGIN, y: MARGIN + 10 }, { text: "Uses them", x: last[0].x, y: MARGIN + 10 }] : [];
-  return { width: Math.ceil(width), height: Math.ceil(top + tallest + MARGIN), nodes, edges: mapEdges, headings };
+  return { width: Math.ceil(width), height: Math.ceil(top + tallest + MARGIN), nodes, edges: mapEdges };
 }
 
 /**
@@ -322,7 +320,7 @@ export function layoutRelations(items: MapItem[], links: Link[], fit: { width: n
   const edges = pairs(links, new Map(items.map((i) => [i.id, i])));
   const linked = new Set(edges.flatMap((e) => [e.from, e.to]));
   const drawn = items.filter((i) => linked.has(i.id));
-  const main = drawn.length === 0 ? { width: 0, height: 0, nodes: [], edges: [], headings: [] } : lay(drawn, edges);
+  const main = drawn.length === 0 ? { width: 0, height: 0, nodes: [], edges: [] } : lay(drawn, edges);
 
   const rowWidth = Math.max(main.width, Math.min(fit.width, 720));
   const apartTop = drawn.length > 0 && drawn.length < items.length ? main.height + 4 : null;
