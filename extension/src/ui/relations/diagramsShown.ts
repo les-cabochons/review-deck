@@ -4,7 +4,7 @@ import { preferencesLoaded, readPreference, writePreference } from "../preferenc
 /**
  * Whether the reader wants the change diagrams: the map of concerns in Overview and the map inside each concern in
  * Files. Saved with the user's preferences, so hiding them follows the user to other browsers. One value for the
- * page: hiding a diagram anywhere hides them all, and the PR's ⋯ menu brings them back.
+ * page: hiding a diagram anywhere hides them all, and the Files tab's settings menu (the gear) brings them back.
  */
 const KEY = "changeDiagrams";
 type Value = "shown" | "hidden";

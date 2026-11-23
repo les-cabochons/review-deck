@@ -8,7 +8,6 @@ import { MoreMenu, type MenuOption } from "./controls";
 import { ModalDialog } from "./ModalDialog";
 import { useReviewActions } from "./ReviewActions";
 import { useSearch } from "./useSearch";
-import { useDiagramsShown } from "./relations/diagramsShown";
 import { Avatar, cx } from "./util";
 
 /** Links the menu offers, from the host. */
@@ -57,7 +56,6 @@ export const PrMenu: React.FC<{ pr: PullRequest; links: PrMenuLinks; onToast: (m
     }
   };
 
-  const [diagramsShown, setDiagramsShown] = useDiagramsShown();
   const active = pr.status === "active";
   const native = links.native ?? undefined;
   const options: MenuOption[] = [
@@ -66,8 +64,6 @@ export const PrMenu: React.FC<{ pr: PullRequest; links: PrMenuLinks; onToast: (m
     ...(native ? [{ id: "copy-native", text: "Copy pull request link", icon: "Link", onSelect: () => copy(native, "Pull request link") }] : []),
     { id: "d1", text: "", divider: true },
     { id: "follow", text: following ? "Unfollow" : "Follow", icon: following ? "RingerOff" : "Ringer", disabled, onSelect: toggleFollow },
-    // For every pull request, saved with the user's preferences: the way back after "Hide diagrams".
-    { id: "diagrams", text: "Show change diagrams", icon: "Org", checked: diagramsShown, onSelect: () => setDiagramsShown(!diagramsShown) },
     { id: "d2", text: "", divider: true },
     ...(native && active
       ? [

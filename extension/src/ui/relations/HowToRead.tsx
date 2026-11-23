@@ -61,7 +61,7 @@ export const DiagramControls: React.FC<{ reading: boolean; onReading: (open: boo
     <button className="link-button" aria-expanded={reading} onClick={() => onReading(!reading)}>
       {reading ? "Close the explanation" : "How to read it"}
     </button>
-    <button className="link-button" onClick={onHide} title="Hide the change diagrams on every pull request. The ⋯ menu brings them back.">
+    <button className="link-button" onClick={onHide} title="Hide the change diagrams on every pull request. The settings menu (the gear) in Files brings them back.">
       Hide diagrams
     </button>
   </span>

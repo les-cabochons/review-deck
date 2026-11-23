@@ -15,6 +15,7 @@ import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
 import { ConcernFlow, type FlowFocus } from "./relations/ConcernFlow";
+import { useDiagramsShown } from "./relations/diagramsShown";
 import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
@@ -301,10 +302,14 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
       : []),
   ];
   const grouping = !!review && !review.analyzed;
+  const [diagramsShown, setDiagramsShown] = useDiagramsShown();
   const settings: MenuOption[] = [
     { id: "inline", text: "Inline", selected: mode === "inline", onSelect: () => onMode("inline") },
     { id: "split", text: "Side-by-side", selected: mode === "split", onSelect: () => onMode("split") },
     { id: "modes", text: "", divider: true },
+    // Every pull request, saved with the user's preferences (relations/diagramsShown.ts).
+    { id: "diagrams", text: diagramsShown ? "Hide change diagrams" : "Show change diagrams", icon: "Org", onSelect: () => setDiagramsShown(!diagramsShown) },
+    { id: "diagrams-end", text: "", divider: true },
     // Grouping again needs a finished one; a published or own guide stays for everyone else either way.
     { id: "regroup", text: "Regroup", icon: "Refresh", disabled: !review?.analyzed || !!progress, onSelect: onRegroup },
     ...(review?.ownGuide

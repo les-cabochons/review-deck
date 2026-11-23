@@ -96,7 +96,7 @@ async page => {
     assert(!boxes.some(t => /\.test\.|\/tests?\//.test(t)), `A test file is in a concern's map: ${boxes.filter(t => /test/.test(t))}`);
   });
 
-  // How to read it, then Hide diagrams: every map goes, after a reload too, and the ⋯ menu brings them back.
+  // How to read it, then Hide diagrams: every map goes, after a reload too, and the gear in Files brings them back.
   await page.evaluate(async () => {
     const { wait, assert } = check;
     const link = label => [...document.querySelectorAll('.concern-flow .diagram-controls button')].find(b => b.textContent === label);
@@ -113,10 +113,10 @@ async page => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     assert(!document.querySelector('.concern-flow'), 'A map came back after a reload');
   });
-  await page.click('.pr-header .more-menu');
+  await page.click('.files-toolbar [aria-label="File view settings"]');
   await page.click('text=Show change diagrams');
   await page.evaluate(async () => {
-    await check.wait(() => document.querySelector('.concern-flow .relation-map svg'), 'The ⋯ menu did not bring the maps back');
+    await check.wait(() => document.querySelector('.concern-flow .relation-map svg'), 'The settings menu did not bring the maps back');
   });
 
   // A guide saved before relations were recorded: concerns without links, and the page says why.
