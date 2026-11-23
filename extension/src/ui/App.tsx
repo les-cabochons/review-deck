@@ -369,6 +369,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
                       onOpenThread={(id) => {
+                        // The PR's full comparison has every file it changes, so the comment's card is there even
+                        // after "update N" or the picker narrowed the Files tab.
+                        setSelection(latestComparison(data));
                         setFocusThread(id);
                         selectTab("files");
                       }}

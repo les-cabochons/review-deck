@@ -21,6 +21,7 @@ import { FileHeader } from "./FileHeader";
 import { HostLinks } from "./App";
 import { ModalDialog } from "./ModalDialog";
 import { GuideSummaryCard } from "./GuideSummary";
+import { sameComparison } from "./comparison";
 
 export type FileView = "grouped" | "alpha";
 
@@ -116,9 +117,10 @@ const FilesContent: React.FC<Props> = (props) => {
   // comments have loaded. The request is then cleared, so opening the tab again later doesn't scroll back to it.
   // A comment on a file the "Show" filter hides stays out of sight.
   const { setCollapsed, setGroupCollapsed } = useFileReview();
-  const { focusThread, onThreadFocused } = props;
+  const { focusThread, onThreadFocused, selection } = props;
   React.useEffect(() => {
-    if (!focusThread || !review) return;
+    // The Overview may have just picked another comparison: wait for its changes, not the ones still shown.
+    if (!focusThread || !review || !sameComparison(review.comparison, selection)) return;
     const thread = props.threads.find((t) => t.id === focusThread);
     if (!thread?.file) return;
     onThreadFocused?.();
@@ -142,7 +144,7 @@ const FilesContent: React.FC<Props> = (props) => {
     setGroupCollapsed(card.group, false);
     setCollapsed([card.info.hunk.id], false);
     requestAnimationFrame(() => scrollToThread(`hunk-${card.info.hunk.id}`, thread.id));
-  }, [focusThread, review, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
+  }, [focusThread, review, selection, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
   const navigatorProps = (review: ReviewModel): NavigatorProps => ({
     review,
