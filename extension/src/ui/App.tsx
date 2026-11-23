@@ -7,7 +7,7 @@ import { hubPatch, prFromRow, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
 import type { AnalysisProgress, ReviewModel } from "../review/engine";
-import { followLatest, latestComparison } from "./comparison";
+import { followLatest, latestComparison, threadComparison } from "./comparison";
 import { Breadcrumb } from "./Breadcrumb";
 import { CommitsTab } from "./CommitsTab";
 import type { DiffMode } from "./DiffHunk";
@@ -49,9 +49,11 @@ const InfraTab = React.lazy(() => import("./infra/InfraTab").then((module) => ({
 export const HostLinks = React.createContext<{
   commentUrl: (threadId: number, commentId: number) => string;
   fileUrl: (path: string, commit: string) => string | null;
+  commitUrl: (commit: string) => string | null;
 }>({
   commentUrl: (threadId, commentId) => `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
   fileUrl: () => null,
+  commitUrl: () => null,
 });
 
 /** One pull request: Overview / Files / Commits, with review controls in the header. */
@@ -87,6 +89,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [fileThreads, setFileThreads] = React.useState<Thread[]>([]);
   const [threadError, setThreadError] = React.useState<string | null>(null);
   const [focusGroup, setFocusGroup] = React.useState<string | null>(null);
+  /** A comment the Overview asked the Files tab to show (thread id). The Files tab clears it once shown. */
+  const [focusThread, setFocusThread] = React.useState<number | null>(null);
+  /** That comment was shown on the A–Z preview: grouping finishing then keeps the preview, so it stays in sight. */
+  const commentOnPreview = React.useRef(false);
   const [view, setView] = usePreference<FileView>("fileView", "grouped");
   const [mode, setMode] = usePreference<DiffMode>("diffMode", "inline");
   const [progress, setProgress] = React.useState<AnalysisProgress | null>(null);
@@ -201,10 +207,14 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       })
       .then((r) => {
         if (cancelled || !r) return;
+        // First, so a hold on the preview applies before the grouped review does: React 16 renders each update of a
+        // promise callback on its own, and the guided view would replace the preview for a render, remounting it.
+        const keepPlace = commentOnPreview.current;
+        commentOnPreview.current = false;
+        if (previewAt !== null && (keepPlace || Date.now() - previewAt >= ANNOUNCE_AFTER_MS)) announceGrouped(r, keepPlace);
         setReview(r);
         setGroupedWith({ title: r.result.title, description: r.result.description });
         setProgress(null);
-        if (previewAt !== null && Date.now() - previewAt >= ANNOUNCE_AFTER_MS) announceGrouped(r);
       })
       .catch((e: Error) => !cancelled && setReviewError(`Could not analyze changes: ${e.message}`))
       .finally(() => !cancelled && setReviewLoading(false));
@@ -265,12 +275,13 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     document.querySelector(".files-tab")?.scrollIntoView({ block: "start" });
   };
 
-  function announceGrouped(r: ReviewModel) {
+  /** `keepPlace`: the reader was sent to a comment on the preview, so it stays whatever the scroll. */
+  function announceGrouped(r: ReviewModel, keepPlace = false) {
     const concerns = r.result.groups.filter((g) => g.kind === "semantic").length;
     const message = `Grouped ${plural(r.result.files.length, "file")} into ${plural(concerns, "concern")}.`;
     const { tab, view } = live.current;
     if (tab !== "files") setToast({ message, callToAction: "View files", onCallToAction: () => selectTab("files") });
-    else if (view === "grouped" && window.scrollY > KEEP_PREVIEW_SCROLL) {
+    else if (view === "grouped" && (keepPlace || window.scrollY > KEEP_PREVIEW_SCROLL)) {
       setHoldPreview(true);
       setToast({ message, callToAction: "Show guided", onCallToAction: showGrouped });
     } else setToast({ message });
@@ -288,6 +299,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       commentUrl: (threadId: number, commentId: number) =>
         native && host.kind === "ado" ? `${native}?discussionId=${threadId}` : `${location.href.split("#")[0]}#comment-${threadId}-${commentId}`,
       fileUrl: (path: string, commit: string) => host.fileUrl(route, path, commit),
+      commitUrl: (commit: string) => host.commitUrl(route, commit),
     }),
     [native, host, route],
   );
@@ -363,7 +375,20 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       onOpenInfra={() => selectTab("infra")}
                       building={!!progress}
                       sidebarTop={stack && <StackPanel view={stack} onOpen={openLayer} onRestack={(pr) => host.restack(pr)} />}
-                      onOpenFiles={() => selectTab("files")}
+                      onOpenThread={(thread) => {
+                        // The comparison the comment was written on holds it, wherever the Files tab was. Without
+                        // one, the PR's full comparison.
+                        setSelection(threadComparison(thread) ?? latestComparison(data));
+                        setFocusThread(thread.id);
+                        selectTab("files");
+                      }}
+                      onOpenUpdate={(id) => {
+                        // What that update pushed: its head against the update before it (the base for update 1).
+                        setFocusThread(null);
+                        commentOnPreview.current = false;
+                        setSelection({ iteration: id, compareTo: id - 1 });
+                        selectTab("files");
+                      }}
                       onOpenGroup={(id) => {
                         setView("grouped");
                         setFocusGroup(id);
@@ -381,12 +406,22 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
                       threads={fileThreads}
                       iterations={data.iterations}
                       selection={selection}
-                      onSelection={setSelection}
+                      onSelection={(s) => {
+                        // Picking another comparison drops a comment request the last one never showed.
+                        setFocusThread(null);
+                        commentOnPreview.current = false;
+                        setSelection(s);
+                      }}
                       view={view}
                       onView={setView}
                       mode={mode}
                       onMode={setMode}
                       focusGroup={focusGroup}
+                      focusThread={focusThread}
+                      onThreadFocused={(onPreview) => {
+                        commentOnPreview.current = onPreview;
+                        setFocusThread(null);
+                      }}
                       progress={progress}
                       holdPreview={holdPreview}
                       onShowGrouped={showGrouped}

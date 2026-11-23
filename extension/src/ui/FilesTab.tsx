@@ -8,7 +8,7 @@ import { type DiffMode, DiffHunk, estimateHunkHeight, type ThreadIndex } from ".
 import { ThreadCard } from "./ThreadCard";
 import { LineCommentContext, lineThreadInput } from "./LineComments";
 import { useReviewActions } from "./ReviewActions";
-import { DropdownButton, ModeToggle } from "./controls";
+import { DropdownButton, type MenuOption, MoreMenu } from "./controls";
 import { TitleSourceIcon } from "./TitleSource";
 import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
@@ -21,6 +21,7 @@ import { FileHeader } from "./FileHeader";
 import { HostLinks } from "./App";
 import { ModalDialog } from "./ModalDialog";
 import { GuideSummaryCard } from "./GuideSummary";
+import { comparisonLabel, sameComparison } from "./comparison";
 
 export type FileView = "grouped" | "alpha";
 
@@ -39,6 +40,10 @@ interface Props {
   onMode: (m: DiffMode) => void;
   /** Scroll target requested by another tab (group id). */
   focusGroup?: string | null;
+  /** A comment the Overview asked to show (thread id), until `onThreadFocused` says it was. */
+  focusThread?: number | null;
+  /** `onPreview`: shown on the A–Z preview that grouping replaces when it finishes. */
+  onThreadFocused?: (onPreview: boolean) => void;
   /** Grouping progress while the worker runs; null once done. Only the PR header shows it; here it hides Regroup. */
   progress: AnalysisProgress | null;
   /** Grouping is done but the reader is mid-way through the A–Z preview, so it stays until they switch. */
@@ -108,6 +113,42 @@ const FilesContent: React.FC<Props> = (props) => {
   React.useEffect(() => {
     if (props.focusGroup && review) scrollToId(`group-${props.focusGroup}`);
   }, [props.focusGroup, review]);
+
+  // A comment picked on the Overview: unfold the card it sits on, then scroll to it, as soon as the comparison and its
+  // comments have loaded. The request is then cleared, so opening the tab again later doesn't scroll back to it.
+  // A comment on a file the "Show" filter hides stays out of sight.
+  const { setCollapsed, setGroupCollapsed } = useFileReview();
+  const { focusThread, onThreadFocused, selection } = props;
+  React.useEffect(() => {
+    // The Overview may have just picked another comparison: wait for its changes, not the ones still shown.
+    if (!focusThread || !review || !sameComparison(review.comparison, selection)) return;
+    const thread = props.threads.find((t) => t.id === focusThread);
+    if (!thread?.file) return;
+    onThreadFocused?.(!review.analyzed);
+    const { path } = thread.file;
+    if (!shown(path)) return;
+    const { result } = review;
+    const anchor = isLineAnchor(thread.file) ? thread.file : null;
+    if (shownView === "alpha") {
+      // The file's card, then the chunk with the comment's line: each chunk's diff mounts on its own.
+      const file = result.files.find((f) => f.path === path);
+      setCollapsed(file?.hunks.map((h) => h.id) ?? [], false);
+      const hunk = anchor && file?.hunks.find((h) => hunkHasLine(h, anchor.side, anchor.endLine));
+      requestAnimationFrame(() => scrollToThread([...(hunk ? [`diff-${hunk.id}`] : []), `file-${path}`], thread.id));
+      return;
+    }
+    // Guided view: the chunk with the comment's line. A comment on the whole file sits on the file's first chunk once
+    // that is unfolded. One outside the changed lines has its own section, always rendered.
+    const cards = result.groups.flatMap((g) => g.hunkIds.map((id) => ({ group: g.id, info: result.hunks.get(id)! }))).filter((c) => c.info.file.path === path);
+    const card = anchor ? cards.find((c) => hunkHasLine(c.info.hunk, anchor.side, anchor.endLine)) : cards[0];
+    if (!card) {
+      requestAnimationFrame(() => scrollToThread([], thread.id));
+      return;
+    }
+    setGroupCollapsed(card.group, false);
+    setCollapsed([card.info.hunk.id], false);
+    requestAnimationFrame(() => scrollToThread([`hunk-${card.info.hunk.id}`], thread.id));
+  }, [focusThread, review, selection, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
   const navigatorProps = (review: ReviewModel): NavigatorProps => ({
     review,
@@ -132,8 +173,8 @@ const FilesContent: React.FC<Props> = (props) => {
       ready={props.holdPreview && view === "grouped" ? groups : null}
     />
   );
-  // Beside the tabs, in the row that sticks under the compact PR header. On phones it would wrap to three rows
-  // there, so it stays at the top of the tab and scrolls away.
+  // Under the tabs, in the row that sticks under the compact PR header. On phones that row would take too much of the
+  // screen, so the toolbar stays at the top of the tab and scrolls away.
   const tabRow = useMediaQuery(WIDE_SCREEN) ? props.toolbarSlot : null;
 
   return (
@@ -207,7 +248,18 @@ function useTreeOpen(): [boolean, (open: boolean) => void] {
   return [shown !== "hidden", update];
 }
 
-/** `ready`: concern count when grouping finished but the A–Z preview is still shown. */
+/** The Files toolbar's Guided / A–Z toggle. */
+const FILE_VIEWS: { value: FileView; text: string; icon: string }[] = [
+  { value: "grouped", text: "Guided", icon: "ViewListGroup" },
+  { value: "alpha", text: "Files A–Z", icon: "SortLines" },
+];
+
+/**
+ * The Files tab's bar, laid out like GitHub's "Files changed" one: on the left what to compare and the Guided / A–Z
+ * toggle, then on the right what the guide is, how many files are viewed, and a gear with the diff view, Regroup and
+ * Publish.
+ * `ready`: concern count when grouping finished but the A–Z preview is still shown.
+ */
 const Toolbar: React.FC<Props & { ready: number | null }> = ({
   review,
   iterations,
@@ -229,113 +281,106 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
   const { viewedFiles } = useFileReview();
   const stats = review ? diffStats(review) : null;
   const viewedCount = review ? review.result.files.filter((f) => viewedFiles.has(f.path)).length : 0;
+  const latest = iterations.at(-1)?.id ?? 0;
+  const all = { iteration: latest, compareTo: 0 };
+  // Every update, or what one update pushed. With a single update both are the same, so only "All changes" is listed.
+  const comparisons: MenuOption[] = [
+    { id: "all", text: "All changes", selected: sameComparison(selection, all), onSelect: () => onSelection(all) },
+    ...(iterations.length > 1
+      ? [...iterations].reverse().map((it) => {
+          const pushed = { iteration: it.id, compareTo: it.id - 1 };
+          return {
+            id: String(it.id),
+            text: `Update ${it.id}`,
+            secondaryText: it.description ? it.description.slice(0, 48) : undefined,
+            selected: sameComparison(selection, pushed),
+            onSelect: () => onSelection(pushed),
+          };
+        })
+      : []),
+  ];
   const grouping = !!review && !review.analyzed;
-  const latest = iterations.at(-1)?.id;
-  const updateName = (id: number) => (id === 0 ? "Base" : `Update ${id}${id === latest ? " (latest)" : ""}`);
+  const settings: MenuOption[] = [
+    { id: "inline", text: "Inline", selected: mode === "inline", onSelect: () => onMode("inline") },
+    { id: "split", text: "Side-by-side", selected: mode === "split", onSelect: () => onMode("split") },
+    { id: "modes", text: "", divider: true },
+    // Grouping again needs a finished one; a published or own guide stays for everyone else either way.
+    { id: "regroup", text: "Regroup", icon: "Refresh", disabled: !review?.analyzed || !!progress, onSelect: onRegroup },
+    ...(review?.ownGuide
+      ? [{ id: "publish", text: publishing ? "Publishing…" : "Publish guide", icon: "Upload", disabled: publishing, onSelect: onPublish }]
+      : []),
+  ];
   return (
     <div className="files-toolbar">
-      <ModeToggle
-        options={[
-          { value: "grouped", text: "Guided", icon: "ViewListGroup" },
-          { value: "alpha", text: "Files A–Z", icon: "SortLines" },
-        ]}
-        value={view}
-        onChange={onView}
-        menuLabel="File view"
-        tooltip={view === "grouped" && grouping ? "Grouping is still running. Click to toggle to 'Files A–Z' mode." : undefined}
+      <DropdownButton
+        className="compare-select"
+        text={comparisonLabel(selection, latest)}
+        icon="BranchCompare"
+        disabled={disabled}
+        ariaLabel={`Changes to show: ${comparisonLabel(selection, latest)}`}
+        options={comparisons}
       />
-      <ModeToggle
-        options={[
-          { value: "inline", text: "Inline", icon: "DiffInline" },
-          { value: "split", text: "Side-by-side", icon: "DiffSideBySide" },
-        ]}
-        value={mode}
-        onChange={onMode}
-        menuLabel="Diff view"
-      />
-      <span className="compare">
-        <DropdownButton
-          text={updateName(selection.compareTo)}
-          icon="BranchCompare"
-          disabled={disabled}
-          ariaLabel="Compare from"
-          options={[0, ...iterations.filter((it) => it.id < selection.iteration).map((it) => it.id)].map((id) => ({
-            id: String(id),
-            text: updateName(id),
-            checked: id === selection.compareTo,
-            onSelect: () => onSelection({ ...selection, compareTo: id }),
-          }))}
-        />
-        <Icon iconName="Forward" />
-        <DropdownButton
-          text={updateName(selection.iteration)}
-          disabled={disabled}
-          ariaLabel="Compare to"
-          options={iterations.map((it) => ({
-            id: String(it.id),
-            text: updateName(it.id),
-            secondaryText: it.description ? it.description.slice(0, 48) : undefined,
-            checked: it.id === selection.iteration,
-            onSelect: () => onSelection({ iteration: it.id, compareTo: Math.min(selection.compareTo, it.id - 1) }),
-          }))}
-        />
-      </span>
-      {ready !== null && (
-        <span className="grouping-status ready" role="status">
-          <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}
-          <button className="link-button" onClick={onShowGrouped}>
-            Show guided
-          </button>
-        </span>
-      )}
-      {review?.analyzed && !progress && (
-        <span className={cx("regroup", groupingStale && "stale")} role={groupingStale ? "status" : undefined}>
-          {review.published && (
-            <span className="guide-source" title="Published from Ajour for this comparison. It stays for everyone until someone publishes another guide.">
-              <Icon iconName="Share" /> Published from Ajour ·
-            </span>
-          )}
-          {review.ownGuide && (
-            <span className="guide-source">
-              Your guide, for this session ·{" "}
-              <button
-                className="link-button"
-                onClick={onPublish}
-                disabled={publishing}
-                title="Replace the guide published from Ajour with yours, for everyone who opens this comparison"
-              >
-                <Icon iconName="Upload" /> {publishing ? "Publishing…" : "Publish"}
-              </button>{" "}
-              ·
-            </span>
-          )}
-          {groupingStale && <span className="regroup-hint">Description changed ·</span>}
+      <div className="view-toggle" role="group" aria-label="File view">
+        {FILE_VIEWS.map((v) => (
           <button
-            className="link-button"
-            onClick={onRegroup}
-            title={
-              review.published || review.ownGuide
-                ? "Group the changes yourself, for this session. The published guide stays for everyone else."
-                : "Group the changes again, using the current title and description"
-            }
+            key={v.value}
+            type="button"
+            aria-pressed={view === v.value}
+            onClick={() => onView(v.value)}
+            title={v.value === "grouped" && grouping ? "Grouping is still running: the A–Z list shows until it is done" : undefined}
           >
-            <Icon iconName="Refresh" /> Regroup
+            <Icon iconName={v.icon} /> {v.text}
           </button>
-        </span>
-      )}
-      {stats && (
-        <span className="stats">
-          <span className="viewed-progress" role="status" aria-label={`${viewedCount} of ${stats.files} files viewed`}>
-            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <circle className="viewed-progress-track" cx="8" cy="8" r="6" />
-              <circle className="viewed-progress-fill" cx="8" cy="8" r="6" pathLength="1"
-                strokeDasharray={`${stats.files ? viewedCount / stats.files : 0} 1`} />
-            </svg>
-            {viewedCount} / {stats.files} viewed
+        ))}
+      </div>
+      <span className="toolbar-end">
+        {ready !== null && (
+          <span className="grouping-status ready" role="status">
+            <Icon iconName="CheckMark" /> Grouped into {plural(ready, "concern")} ·{" "}
+            <button className="link-button" onClick={onShowGrouped}>
+              Show guided
+            </button>
           </span>
-          {" · "}<span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
-        </span>
-      )}
+        )}
+        {review?.analyzed && !progress && (review.published || review.ownGuide || groupingStale) && (
+          <span className={cx("regroup", groupingStale && "stale")} role={groupingStale ? "status" : undefined}>
+            {review.published && (
+              <span className="guide-source" title="Published from Ajour for this comparison. It stays for everyone until someone publishes another guide.">
+                <Icon iconName="Share" /> Published from Ajour
+              </span>
+            )}
+            {review.ownGuide && (
+              <span className="guide-source" title="Publish guide, in the settings menu, replaces the guide published from Ajour with yours, for everyone who opens this comparison">
+                Your guide, for this session
+              </span>
+            )}
+            {/* Edited since grouping: the one case where Regroup stays in sight, outside the settings menu. */}
+            {groupingStale && (
+              <>
+                <span className="regroup-hint">Description changed ·</span>
+                <button className="link-button" onClick={onRegroup} title="Group the changes again, using the current title and description">
+                  <Icon iconName="Refresh" /> Regroup
+                </button>
+              </>
+            )}
+          </span>
+        )}
+        {stats && (
+          <span className="stats">
+            <span className="viewed-progress" role="status" aria-label={`${viewedCount} of ${stats.files} files viewed`}>
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <circle className="viewed-progress-track" cx="8" cy="8" r="6" />
+                <circle className="viewed-progress-fill" cx="8" cy="8" r="6" pathLength="1"
+                  strokeDasharray={`${stats.files ? viewedCount / stats.files : 0} 1`} />
+              </svg>
+              {viewedCount} / {stats.files} viewed
+            </span>
+            {" · "}<span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
+          </span>
+        )}
+        {/* The name says the diff view in use: inside the menu, `selected` only highlights it. */}
+        <MoreMenu label={`File view settings: ${mode === "split" ? "Side-by-side" : "Inline"}`} icon="Settings" options={settings} />
+      </span>
     </div>
   );
 };
@@ -347,6 +392,31 @@ function scrollToId(id: string) {
   const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
   go();
   setTimeout(go, 300);
+}
+
+/**
+ * Scrolls to a comment. Cards, and a file's chunks inside them, mount only near the viewport (LazyMount), so until the
+ * comment has rendered each frame scrolls to the first of `targets` (innermost first) that has, which brings the next
+ * one in range. Then it centers the comment, and again once the content above it has settled. It gives up after 2s.
+ */
+function scrollToThread(targets: string[], threadId: number) {
+  const started = performance.now();
+  // Only in the Files tab: the Overview, if the reader went back to it meanwhile, shows the same comment.
+  const find = (id: string) => {
+    const element = document.getElementById(id);
+    return element?.closest(".files-tab") ? element : null;
+  };
+  const step = () => {
+    const thread = find(`thread-${threadId}`);
+    if (thread) {
+      thread.scrollIntoView({ block: "center" });
+      setTimeout(() => find(`thread-${threadId}`)?.scrollIntoView({ block: "center" }), 300);
+      return;
+    }
+    targets.map(find).find((el) => el)?.scrollIntoView({ block: "start" });
+    if (performance.now() - started < 2000) requestAnimationFrame(step);
+  };
+  step();
 }
 
 /**
@@ -897,6 +967,11 @@ function visibleLines(files: FileDiff[]): Map<string, Set<string>> {
     out.set(f.path, set);
   }
   return out;
+}
+
+/** Whether a chunk shows `line` on that side, as visibleLines counts it. */
+function hunkHasLine(hunk: HunkInfo["hunk"], side: FileAnchor["side"], line: number): boolean {
+  return hunk.lines.some((l) => (side === "right" ? l.newLine === line && l.kind !== "del" : l.oldLine === line && l.kind !== "add"));
 }
 
 function isVisible(t: LineThread, visible: Set<string> | undefined): boolean {

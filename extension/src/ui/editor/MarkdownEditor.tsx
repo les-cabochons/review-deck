@@ -165,25 +165,32 @@ export const MarkdownEditor = React.forwardRef<
   );
 });
 
+/**
+ * No one found. One shared array, so setting it again changes nothing and React skips the render. A new `[]` made the
+ * effect below re-render the editor right after it mounted, and React 16 runs pending effects before it handles a
+ * keystroke: text typed in that window was overwritten with the old value before `onChange` could see it.
+ */
+const NO_PEOPLE: Identity[] = [];
+
 /** `@` suggestions: known people first, then a debounced directory search. */
 function useMentions(s: EditState) {
   const source = React.useContext(MentionContext);
   const query = mentionQuery(s);
-  const [found, setFound] = React.useState<Identity[]>([]);
+  const [found, setFound] = React.useState<Identity[]>(NO_PEOPLE);
   const [active, setActive] = React.useState(0);
   const q = query?.query.toLowerCase() ?? null;
 
   React.useEffect(() => {
     setActive(0);
     if (q === null || q.length < 2 || !source.search) {
-      setFound([]);
+      setFound(NO_PEOPLE);
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
       source.search!(q)
         .then((people) => !cancelled && setFound(people))
-        .catch(() => !cancelled && setFound([]));
+        .catch(() => !cancelled && setFound(NO_PEOPLE));
     }, 200);
     return () => {
       cancelled = true;

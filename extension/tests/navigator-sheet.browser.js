@@ -12,8 +12,9 @@ async page => {
   await page.locator('.file-header').first().waitFor();
   await page.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
-  const view = page.locator('.mode-toggle').first();
-  if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => page.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
+  await showView('Guided');
   await page.waitForTimeout(500);
 
   const button = page.locator('.navigator-sheet-button');
@@ -66,7 +67,7 @@ async page => {
   assert(await button.evaluate(el => el === document.activeElement), 'Focus did not come back to the button');
 
   // Files A–Z: the sheet is the file tree, and a file jumps to its card.
-  await view.locator('button').first().click();
+  await showView('Files A–Z');
   await page.waitForTimeout(500);
   const files = page.getByRole('dialog', { name: 'Files' });
   await button.click();
@@ -81,7 +82,7 @@ async page => {
   let alphaInView = false;
   for (const id of alphaCards) alphaInView ||= await inView(`[id="${id}"]`);
   assert(alphaInView, `Picking ${alphaName} in Files A–Z did not bring its card on screen`);
-  await view.locator('button').first().click();
+  await showView('Guided');
 
   await page.setViewportSize({ width: 1280, height: 900 });
   assert(!(await button.isVisible()), 'The navigator button shows on a wide screen');

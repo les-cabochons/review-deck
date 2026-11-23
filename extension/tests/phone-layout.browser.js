@@ -12,8 +12,9 @@ async page => {
   await page.locator('.file-header').first().waitFor();
   await page.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
-  const view = page.locator('.mode-toggle').first();
-  if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => page.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
+  await showView('Guided');
   await page.waitForTimeout(500);
 
   const layout = await page.evaluate(() => {

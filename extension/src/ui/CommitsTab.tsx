@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { PrOverview } from "../data/model";
-import { Time } from "./util";
+import { HostLinks } from "./App";
+import { CommitLink, Time } from "./util";
 
 /** Commits grouped by the update (iteration) that pushed them, newest first, like the native Commits tab. */
 export const CommitsTab: React.FC<{ data: PrOverview }> = ({ data }) => {
@@ -41,20 +42,30 @@ export const CommitsTab: React.FC<{ data: PrOverview }> = ({ data }) => {
   );
 };
 
-const CommitList: React.FC<{ commits: PrOverview["commits"] }> = ({ commits }) => (
-  <ul className="commit-list">
-    {commits.length === 0 && <li className="muted">No commit details for this update.</li>}
-    {commits.map((c) => {
-      const [subject, ...body] = c.message.split("\n");
-      return (
-        <li key={c.id}>
-          <div className="commit-subject">{subject}</div>
-          {body.join("\n").trim() && <details className="commit-body"><summary>…</summary><pre>{body.join("\n").trim()}</pre></details>}
-          <div className="commit-meta muted">
-            <code>{c.id.slice(0, 8)}</code> · {c.authorName} · <Time date={c.date} />
-          </div>
-        </li>
-      );
-    })}
-  </ul>
-);
+/** Each commit's title and id link to the host's commit page. */
+const CommitList: React.FC<{ commits: PrOverview["commits"] }> = ({ commits }) => {
+  const links = React.useContext(HostLinks);
+  return (
+    <ul className="commit-list">
+      {commits.length === 0 && <li className="muted">No commit details for this update.</li>}
+      {commits.map((c) => {
+        const [subject, ...body] = c.message.split("\n");
+        const url = links.commitUrl(c.id);
+        return (
+          <li key={c.id}>
+            <div className="commit-subject">
+              <CommitLink url={url}>{subject}</CommitLink>
+            </div>
+            {body.join("\n").trim() && <details className="commit-body"><summary>…</summary><pre>{body.join("\n").trim()}</pre></details>}
+            <div className="commit-meta muted">
+              <CommitLink url={url}>
+                <code>{c.id.slice(0, 8)}</code>
+              </CommitLink>{" "}
+              · {c.authorName} · <Time date={c.date} />
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};

@@ -47,6 +47,19 @@ export const Markdown: React.FC<{ text: string; className?: string }> = ({ text,
   return <div className={`markdown ${className ?? ""}`} dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
+/**
+ * A commit's id or title, linked to the host's commit page (HostLinks.commitUrl), plain text when the host has none.
+ * `_top` leaves Azure DevOps' iframe for its own commit page, as the Changelog's commit links do.
+ */
+export const CommitLink: React.FC<{ url: string | null }> = ({ url, children }) =>
+  url ? (
+    <a href={url} target="_top" className="commit-link">
+      {children}
+    </a>
+  ) : (
+    <>{children}</>
+  );
+
 /** A person's picture, or their initials when there is none. `tooltip` false drops the name on hover, where a card already shows it. */
 export const Avatar: React.FC<{ who: Pick<Identity, "displayName" | "imageUrl">; size?: number; tooltip?: boolean }> = ({ who, size = 24, tooltip = true }) => {
   const title = tooltip ? who.displayName : undefined;

@@ -9,10 +9,10 @@ async page => {
   await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
   const result = {};
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
   for (const view of ['Guided', 'Files A–Z']) {
-    const toggle = f.getByRole('button', { name: 'File view', exact: true });
-    const current = await f.locator('.mode-toggle').first().innerText();
-    if (!current.includes(view)) await f.locator('.mode-toggle').first().locator('button').first().click();
+    await showView(view);
     await page.waitForTimeout(500);
     // Deleted files start folded: header only.
     const deleted = f.locator('article', { has: f.locator('.file-status-deleted') }).first();

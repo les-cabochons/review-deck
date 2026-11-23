@@ -33,7 +33,10 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-callout: 0 6.4px 14.4px rgba(0, 0, 0, 0.13), 0 1.2px 3.6px rgba(0, 0, 0, 0.11);
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
-  --page-x: 24px;
+  /* The page's side margin. .review-page widens it past --page-max so the PR page stays centered. */
+  --page-gutter: 24px;
+  --page-x: var(--page-gutter);
+  --page-max: 1280px;
 }
 
 /* ---------- base ---------- */
@@ -1021,7 +1024,13 @@ kbd {
 }
 
 /* ---------- PR page shell ---------- */
+/* Like GitHub, the PR page stops growing at --page-max and centers. Each full-width row (breadcrumb, header,
+   compact header, the tab row's tabs, tab content but the Files tab's) pads its sides by --page-x, so its content
+   lines up with the others while its background and borders still span the window. The 100% resolves against each
+   row's own width when the variable is used, which is the page's width for every row that uses it, and the
+   window's for the fixed .pr-bar. */
 .review-page {
+  --page-x: max(var(--page-gutter), (100% - var(--page-max)) / 2);
   width: 100%;
   min-height: 100vh;
 }
@@ -1057,7 +1066,7 @@ kbd {
 }
 /* The compact header (GitHub's sticky one): fixed to the top once .pr-header scrolls behind it. What else sticks on
    the page sits under it: the tab row --pr-bar-h lower, and the file tree --pr-tabs-h lower again. App.tsx keeps
-   --pr-tabs-h at the tab row's height, which is two lines when the Files tab's toolbar doesn't fit beside the tabs. */
+   --pr-tabs-h at the tab row's height, which is two lines on the Files tab, where the toolbar has the second. */
 .review-page {
   --pr-bar-h: 48px;
   --pr-tabs-h: 43px;
@@ -1183,39 +1192,39 @@ kbd {
   border-radius: 3px;
   padding: 1px 6px;
 }
-/* The tab row. On the Files tab it also holds the files toolbar (.tab-row-controls, filled by FilesTab.tsx), so
-   one row sticks under the compact header and the tabs stay in reach. Short of room, the toolbar takes a second
-   line, and wraps inside it when that is too short as well. */
+/* The tab row. On the Files tab it also holds the files toolbar (.tab-row-controls, filled by FilesTab.tsx) on a
+   line of its own under the tabs, so one block sticks under the compact header and the tabs stay in reach. The tabs
+   stay centered with the rest of the page on every tab; the toolbar spans the window, like the Files tab's diffs. */
 .pr-tabs {
   flex-wrap: wrap;
-  padding: 0 calc(var(--page-x) - 8px);
   border-bottom: 1px solid var(--line);
   background: var(--canvas);
 }
-/* azure-devops-ui lets the tabs take the whole row; the toolbar gets what they don't use. */
+/* The tab list's 100% (in --page-x) is the row's width, the page's. Each tab's own 8px padding lines up its label. */
 .pr-tabs .bolt-tabbar-tabs {
-  flex-grow: 0;
+  padding: 0 calc(var(--page-x) - 8px);
 }
-/* A divider after the last tab, on the tabs' side so it stays on their line when the toolbar wraps. */
-.pr-tabs:has(.files-toolbar) .bolt-tabbar-tabs::after {
-  content: "";
-  flex: none;
-  align-self: center;
-  width: 1px;
-  height: 20px;
-  background: var(--line);
-}
-/* The 8px margins line the toolbar up with the page's content, as the tabs' own padding does for their labels. */
 .tab-row-controls {
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   min-width: 0;
-  margin: 0 8px;
+  box-sizing: border-box;
+  padding: 0 var(--page-gutter);
+  border-top: 1px solid var(--line-soft);
+}
+/* Empty on the other tabs. */
+.tab-row-controls:empty {
+  display: none;
 }
 .tab-row-controls .files-toolbar {
-  padding: 5px 0;
+  padding: 6px 0;
 }
 .tab-content {
   padding: 16px var(--page-x) 64px;
+}
+/* The Files tab's diffs take the whole window, as GitHub's "Files changed" does; the header and tabs stay centered. */
+.tab-content.tab-files {
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
 }
 
 /* review submit panel */
@@ -1360,6 +1369,26 @@ kbd {
 .description-edit {
   margin-left: auto;
   white-space: nowrap;
+  font-size: 13px;
+}
+/* The PR description and comment threads (timeline, inline in diffs, pending drafts) are read
+   like a document: one size up from the shared markdown style, and lines capped near 100
+   characters so a wide screen doesn't stretch them. Headings and code scale with them. */
+.description .markdown,
+.thread .markdown {
+  font-size: 15px;
+  max-width: 100ch;
+}
+.description .markdown h2,
+.thread .markdown h2 {
+  font-size: 17px;
+}
+.description .markdown h3,
+.thread .markdown h3 {
+  font-size: 15px;
+}
+.description .markdown code,
+.thread .markdown code {
   font-size: 13px;
 }
 .timeline {
@@ -2088,15 +2117,6 @@ kbd {
   flex-wrap: wrap;
   padding: 0 0 12px;
 }
-.compare {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-}
-.compare > [class*="ms-Icon"] {
-  color: var(--fg2);
-}
 .stats {
   margin-left: auto;
   font-size: 13px;
@@ -2173,8 +2193,51 @@ kbd {
     animation-duration: 2.4s;
   }
 }
-.files-toolbar .grouping-status {
+/* Guided or A–Z: two joined buttons, the current one filled. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--fg2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.view-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+.view-toggle button[aria-pressed="true"] {
+  background: var(--surface-3);
+  color: var(--fg);
+  font-weight: 600;
+}
+.view-toggle button:hover:not([aria-pressed="true"]) {
+  background: var(--surface-2);
+}
+.view-toggle button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+/* The right side: the guide's status, the viewed count, the settings gear. */
+.files-toolbar .toolbar-end {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+}
+.files-toolbar .grouping-status {
   font-size: 13px;
 }
 .grouping-status.ready {
@@ -2183,12 +2246,8 @@ kbd {
 .grouping-status.ready .fabric-icon {
   color: var(--ok);
 }
-.files-toolbar .grouping-status + .stats {
-  margin-left: 16px;
-}
 /* Sits on the right, before the stats; stale = the description was edited after grouping. */
 .files-toolbar .regroup {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2293,10 +2352,6 @@ kbd {
 .side-section .guide-source {
   margin: 0 0 6px;
   font-size: 12px;
-}
-.files-toolbar .regroup + .stats,
-.files-toolbar .grouping-status + .regroup {
-  margin-left: 16px;
 }
 .grouping-status {
   display: inline-flex;
@@ -2846,6 +2901,15 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* As a link to the file's page it still reads as the card's title, and shows it is a link on hover. */
+a.file-path {
+  color: inherit;
+  text-decoration: none;
+}
+a.file-path:hover .name {
+  color: var(--link);
+  text-decoration: underline;
+}
 .file-path .dir {
   flex: 0 1 auto;
   color: var(--fg2);
@@ -2910,6 +2974,15 @@ kbd {
   font-weight: 600;
   font-size: 13px;
 }
+/* Commit links read as text, like GitHub's commit lists, and show they are links on hover. */
+.commit-link {
+  color: inherit;
+  text-decoration: none;
+}
+.commit-link:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
 .commit-meta {
   font-size: 12px;
   margin-top: 2px;
@@ -2967,7 +3040,7 @@ kbd {
   }
   /* phones: title on its own line, actions wrap below it */
   :root {
-    --page-x: 12px;
+    --page-gutter: 12px;
   }
   .pr-title-row {
     flex-wrap: wrap;

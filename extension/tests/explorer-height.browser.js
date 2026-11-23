@@ -11,9 +11,10 @@ async page => {
   await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1000);
   const result = {};
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
   for (const view of ['Guided', 'Files A–Z']) {
-    const toggle = f.locator('.mode-toggle').first();
-    if (!(await toggle.innerText()).includes(view)) await toggle.locator('button').first().click();
+    await showView(view);
     await page.waitForTimeout(500);
     for (const y of [0, 100, 3000]) {
       await f.locator('body').evaluate((_, y) => window.scrollTo(0, y), y);

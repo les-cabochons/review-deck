@@ -11,8 +11,9 @@ async page => {
   };
   await page.reload();
   await settle();
-  const view = f.locator('.mode-toggle').first();
-  if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
+  await showView('Guided');
   // Start from a clean slate: nothing viewed.
   // Mixed concerns need two clicks. The first marks every chunk and the second clears them.
   for (const box of await f.locator('.group-header-row .viewed-control input').all())

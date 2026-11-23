@@ -5,12 +5,13 @@ import type { ReviewModel } from "../review/engine";
 import { groupColor } from "./groupColors";
 import { GuideSummaryCard } from "./GuideSummary";
 import type { InfraState } from "./infra/useInfra";
+import { HostLinks } from "./App";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
 import { Reviewers, Tags } from "./MetadataEditors";
 import { OthersOnPr } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
-import { Avatar, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
+import { Avatar, CommitLink, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
 
 const InfraCard = React.lazy(() => import("./infra/InfraCard").then(({ InfraCard }) => ({ default: InfraCard })));
 
@@ -23,12 +24,15 @@ interface Props {
   /** The analysis is running; until then the files load, and a saved guided view needs nothing more. */
   building: boolean;
   onOpenGroup: (groupId: string) => void;
-  onOpenFiles: () => void;
+  /** Shows a code comment where it sits on the Files tab. */
+  onOpenThread: (thread: Thread) => void;
+  /** Shows what one update pushed on the Files tab. */
+  onOpenUpdate: (iterationId: number) => void;
   /** Shown first in the sidebar (the stack panel). */
   sidebarTop?: React.ReactNode;
 }
 
-export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra, building, onOpenGroup, onOpenFiles, sidebarTop }) => {
+export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra, building, onOpenGroup, onOpenThread, onOpenUpdate, sidebarTop }) => {
   const { actions } = useReviewActions();
   return (
     <div className="overview">
@@ -40,7 +44,7 @@ export const OverviewTab: React.FC<Props> = ({ data, review, infra, onOpenInfra,
             <InfraCard infra={infra} onOpen={onOpenInfra} />
           </React.Suspense>
         )}
-        <Timeline data={data} onOpenFiles={onOpenFiles} />
+        <Timeline data={data} onOpenThread={onOpenThread} onOpenUpdate={onOpenUpdate} />
         <CommentComposer label="Add a comment" onSave={(content) => actions.createThread({ content })} />
       </div>
       <aside className="overview-side">
@@ -89,7 +93,12 @@ const DescriptionCard: React.FC<{ data: PrOverview }> = ({ data: { pr } }) => {
 
 type TimelineItem = { date: Date; key: string; node: React.ReactNode };
 
-const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ data, onOpenFiles }) => {
+const Timeline: React.FC<{
+  data: PrOverview;
+  onOpenThread: (thread: Thread) => void;
+  onOpenUpdate: (iterationId: number) => void;
+}> = ({ data, onOpenThread, onOpenUpdate }) => {
+  const links = React.useContext(HostLinks);
   const commitById = new Map(data.commits.map((c) => [c.id, c]));
   const items: TimelineItem[] = [];
 
@@ -110,14 +119,20 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
               <ul className="event-commits">
                 {commits.map((c) => (
                   <li key={c!.id}>
-                    <code>{c!.id.slice(0, 7)}</code> {c!.message.split("\n")[0]}
+                    <CommitLink url={links.commitUrl(c!.id)}>
+                      <code>{c!.id.slice(0, 7)}</code> {c!.message.split("\n")[0]}
+                    </CommitLink>
                   </li>
                 ))}
               </ul>
             )
           }
         >
-          {it.id === 1 ? "created update 1" : `pushed update ${it.id}`} with {plural(Math.max(count, 1), "commit")}
+          {it.id === 1 ? "created " : "pushed "}
+          <button className="link-button" onClick={() => onOpenUpdate(it.id)} title={`Show the changes of update ${it.id} on the Files tab`}>
+            update {it.id}
+          </button>{" "}
+          with {plural(Math.max(count, 1), "commit")}
         </Event>
       ),
     });
@@ -157,7 +172,7 @@ const Timeline: React.FC<{ data: PrOverview; onOpenFiles: () => void }> = ({ dat
               thread={t}
               fileLabel={
                 t.file ? (
-                  <button className="link-button" onClick={onOpenFiles}>
+                  <button className="link-button" onClick={() => onOpenThread(t)}>
                     <Icon iconName="FileCode" /> {t.file.path}{isLineAnchor(t.file) && `:${t.file.line}`}
                   </button>
                 ) : undefined

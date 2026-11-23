@@ -7,6 +7,7 @@ import type { CompletionOptions, NewThread, ThreadStatus, Vote } from "../src/da
 import { identityImageUrl } from "../src/data/model";
 import type { PrSnapshot } from "../src/data/snapshot";
 import { lineThreadInput } from "../src/ui/LineComments";
+import { threadComparison } from "../src/ui/comparison";
 
 function snapshot(): PrSnapshot {
   return {
@@ -236,6 +237,19 @@ test("Given a local thread, when replying and resolving it, then reload returns 
   assert.equal((await source.getThreads(2, 0)).length, 0);
   assert.notEqual(thread.comments[1].id, thread.comments[0].id);
   await assert.rejects(source.actions.reply(thread.id, 999, "Lost parent"), /parent comment/);
+});
+
+test("Given comments written on an update against an earlier one and against the base, then each opens on a comparison that holds it", async () => {
+  const source = new MockPrSource(snapshot());
+  await source.actions.createThread(anchored("right", 1));
+  await source.actions.createThread(anchored("right"));
+  const [onUpdate, onBase] = (await source.load()).threads;
+  assert.deepEqual(threadComparison(onUpdate), { iteration: 2, compareTo: 1 });
+  assert.deepEqual(threadComparison(onBase), { iteration: 2, compareTo: 0 });
+  for (const thread of [onUpdate, onBase]) {
+    const { iteration, compareTo } = threadComparison(thread)!;
+    assert.ok((await source.getThreads(iteration, compareTo)).some((t) => t.id === thread.id));
+  }
 });
 
 test("Given all thread states, then each mock update round-trips through the normalized mapper", async () => {

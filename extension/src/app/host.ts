@@ -158,8 +158,10 @@ export interface AppHost {
   nativePrUrl(route: Extract<Route, { view: "pr" }>): string | null;
   /** The native page for creating a pull request from `source` into `target` (branch names). */
   createPrUrl(route: Extract<Route, { view: "pr" }>, source: string, target: string): string | null;
-  /** The native page for a file at a commit, for "View file" links. */
+  /** The native page for a file at a commit, for "View file" links and the file paths on the Files tab. */
   fileUrl(route: Extract<Route, { view: "pr" }>, path: string, commit: string): string | null;
+  /** The native page for a commit, for the commit links on the Overview and Commits tabs. */
+  commitUrl(route: Extract<Route, { view: "pr" }>, commit: string): string | null;
 }
 
 /** Starred repository ids. `load` resolves to none when they can't be read. */
