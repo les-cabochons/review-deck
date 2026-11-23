@@ -33,7 +33,10 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-callout: 0 6.4px 14.4px rgba(0, 0, 0, 0.13), 0 1.2px 3.6px rgba(0, 0, 0, 0.11);
   --mono: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
-  --page-x: 24px;
+  /* The page's side margin. .review-page widens it past --page-max so the PR page stays centered. */
+  --page-gutter: 24px;
+  --page-x: var(--page-gutter);
+  --page-max: 1280px;
 }
 
 /* ---------- base ---------- */
@@ -1021,7 +1024,12 @@ kbd {
 }
 
 /* ---------- PR page shell ---------- */
+/* Like GitHub, the PR page stops growing at --page-max and centers. Each full-width row (breadcrumb, header,
+   compact header, tab row, tab content) pads its sides by --page-x, so its content lines up with the others while
+   its background and borders still span the window. The 100% resolves against each row's own width when the
+   variable is used, which is the page's width for every row that uses it, and the window's for the fixed .pr-bar. */
 .review-page {
+  --page-x: max(var(--page-gutter), (100% - var(--page-max)) / 2);
   width: 100%;
   min-height: 100vh;
 }
@@ -2987,7 +2995,7 @@ kbd {
   }
   /* phones: title on its own line, actions wrap below it */
   :root {
-    --page-x: 12px;
+    --page-gutter: 12px;
   }
   .pr-title-row {
     flex-wrap: wrap;
