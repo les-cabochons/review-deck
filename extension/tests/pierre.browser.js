@@ -12,7 +12,7 @@ async page => {
     // current one.
     const viewButton = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true });
     const showView = name => viewButton(name).click();
-    const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const gear = () => f.getByRole('button', { name: /^File view settings/ }).click();
     const isCurrent = item => item.evaluate(el => el.classList.contains('menu-item-selected'));
     const setting = async name => {
       await gear();

@@ -378,7 +378,8 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
             {" · "}<span className="adds">+{stats.adds.toLocaleString()}</span> <span className="dels">−{stats.dels.toLocaleString()}</span>
           </span>
         )}
-        <MoreMenu label="File view settings" icon="Settings" options={settings} />
+        {/* The name says the diff view in use: inside the menu, `selected` only highlights it. */}
+        <MoreMenu label={`File view settings: ${mode === "split" ? "Side-by-side" : "Inline"}`} icon="Settings" options={settings} />
       </span>
     </div>
   );

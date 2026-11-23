@@ -24,7 +24,7 @@ async page => {
       await tick();
     };
     // The gear holds the diff view (Inline or Side-by-side).
-    const gear = () => doc.querySelector('.files-toolbar [aria-label="File view settings"]');
+    const gear = () => doc.querySelector('.files-toolbar [aria-label^="File view settings"]');
     const menuItem = label => [...doc.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === label);
     const setting = async label => {
       gear().click();

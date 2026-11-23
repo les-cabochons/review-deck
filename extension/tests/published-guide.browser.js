@@ -18,7 +18,7 @@ async page => {
       // Regroup and Publish guide are in the Files toolbar's gear. Opens it and returns the item, or null.
       menuItem: async label => {
         const item = () => [...document.querySelectorAll('[role^="menuitem"]')].find(i => i.textContent.trim() === label);
-        if (!item()) document.querySelector('.files-toolbar [aria-label="File view settings"]').click();
+        if (!item()) document.querySelector('.files-toolbar [aria-label^="File view settings"]').click();
         for (let i = 0; i < 20 && !item(); i++) await new Promise(resolve => setTimeout(resolve, 50));
         return item() ?? null;
       },

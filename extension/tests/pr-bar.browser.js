@@ -148,7 +148,7 @@ async page => {
   await f.getByRole('tab', { name: /^Files/ }).click();
   await f.locator('.files-toolbar').waitFor();
   // Each step waits for the menu to be gone before the next click.
-  const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
+  const gear = () => f.getByRole('button', { name: /^File view settings/ }).click();
   const menuGone = () => f.locator('[role=menuitem]').first().waitFor({ state: 'detached' });
   const diffView = async () => {
     await gear();
