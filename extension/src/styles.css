@@ -5384,6 +5384,10 @@ span.artifact-toggle {
 .how-to-read li {
   margin: 2px 0;
 }
+/* Left out by a pick in the concern's map (FilesTab GroupSection). */
+.hunk-card[hidden] {
+  display: none;
+}
 .hunk-card.flash {
   box-shadow: 0 0 0 2px var(--focus-border-color, var(--accent));
 }

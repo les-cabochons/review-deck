@@ -16,7 +16,7 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 - A connector's text gives only the names the cards don't already show: no `StorageCleanup` on a connector from the card `StorageCleanup`.
 - On a phone, the same links show as an outline (`FlowOutline.tsx`): each function that uses others, then one row per thing it uses. Nothing to lay out, so it never scrolls sideways.
 - Past 12 cards, a line gives the count instead of a map nobody can read. The outline has no such limit.
-- Clicking a card shows only its changes. Clicking a connector, or a row of the outline, shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same card or connector again also shows them all.
+- Clicking a card shows only its changes. Clicking a connector, or a row of the outline, shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same card or connector again also shows them all. The changes left out are hidden, not removed, so a comment being typed on one of them is kept. Going to a hidden change from the navigator or a comment's link shows them all again.
 
 ## Reading and hiding the diagrams
 

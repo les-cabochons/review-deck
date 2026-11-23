@@ -845,7 +845,8 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
     return () => window.removeEventListener(REVEAL_HUNK, reveal);
   }, [focus, group]);
   const all = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
-  const hunks = focus ? all.filter((h) => focus.hunkIds.includes(h.hunk.id)) : all;
+  // The others stay mounted, hidden: a comment being typed on one of them must survive the pick.
+  const inFocus = (h: HunkInfo) => !focus || focus.hunkIds.includes(h.hunk.id);
   const files = new Set(all.map((h) => h.file.path)).size;
   return (
     <section
@@ -876,15 +877,15 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
           )}
           {focus && (
             <p className="flow-focus" role="status">
-              Showing {plural(hunks.length, "change")} of {all.length}: <strong>{focus.label}</strong> ·{" "}
+              Showing {plural(all.filter(inFocus).length, "change")} of {all.length}: <strong>{focus.label}</strong> ·{" "}
               <button className="link-button" onClick={() => setFocus(null)}>
                 Show all
               </button>
             </p>
           )}
-          {hunks.map((h) => (
+          {all.map((h) => (
             <HunkCard key={h.hunk.id} info={h} mode={mode} threads={fileThreads.get(h.file.path) ?? []}
-              showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} />
+              showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} hidden={!inFocus(h)} />
           ))}
         </>
       )}
@@ -892,19 +893,21 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   );
 };
 
-const HunkCard: React.FC<{ info: HunkInfo; mode: DiffMode; threads: Thread[]; showFileThreads: boolean; viewUrl: string | null }> = ({
-  info,
-  mode,
-  threads,
-  showFileThreads,
-  viewUrl,
-}) => {
+const HunkCard: React.FC<{
+  info: HunkInfo;
+  mode: DiffMode;
+  threads: Thread[];
+  showFileThreads: boolean;
+  viewUrl: string | null;
+  /** Left out by a pick in the concern's map. Still mounted, so what the reader has open in it is kept. */
+  hidden?: boolean;
+}> = ({ info, mode, threads, showFileThreads, viewUrl, hidden }) => {
   const { isCollapsed } = useFileReview();
   const collapsed = isCollapsed([info.hunk.id]);
   const adds = info.hunk.lines.filter((l) => l.kind === "add").length;
   const dels = info.hunk.lines.filter((l) => l.kind === "del").length;
   return (
-    <article className="hunk-card" id={`hunk-${info.hunk.id}`}>
+    <article className="hunk-card" id={`hunk-${info.hunk.id}`} hidden={hidden}>
       {/* The article stays as a scroll target; its contents mount near the viewport. */}
       <LazyMount estimate={FILE_HEADER_HEIGHT + (collapsed ? 0 : estimateHunkHeight(info.hunk, mode))}>
       <FileHeader file={info.file} hunk={info.hunk} adds={adds} dels={dels} threads={threads.filter((t) => !onLine(t))} showThreads={showFileThreads} viewUrl={viewUrl}>

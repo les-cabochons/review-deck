@@ -78,7 +78,7 @@ async page => {
     await wait(() => document.querySelector('.concern-flow .relation-map svg'), 'No concern showed how its changes connect');
     // A box shows only its changes; a second click, all of them. An arrow shows only the changes behind it.
     const section = document.querySelector('.concern-flow').closest('.group-section');
-    const cards = () => section.querySelectorAll('.hunk-card').length;
+    const cards = () => section.querySelectorAll('.hunk-card:not([hidden])').length;
     const all = cards();
     const box = [...section.querySelectorAll('.concern-flow .relation-node.selectable')].find(n => /· \d+ changes/.test(n.textContent));
     const count = Number(/· (\d+) changes/.exec(box.textContent)[1]);
@@ -100,13 +100,15 @@ async page => {
     const one = [...section.querySelectorAll('.concern-flow .relation-node.selectable')].find(n => !/· \d+ changes/.test(n.textContent));
     one.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await wait(() => cards() === 1, `One card left ${cards()} changes showing`);
-    const kept = section.querySelector('.hunk-card').id;
+    const kept = section.querySelector('.hunk-card:not([hidden])').id;
+    // The other changes are hidden, not removed: a comment being typed on one of them stays.
+    assert(section.querySelectorAll('.hunk-card[hidden]').length === all - 1, 'The changes a pick leaves out were removed from the page');
     const hidden = check.hiddenHunk(section.id.slice('group-'.length), kept);
     window.dispatchEvent(new CustomEvent('review-deck:reveal-hunk', { detail: kept.slice('hunk-'.length) }));
     await new Promise(resolve => setTimeout(resolve, 200));
     assert(cards() === 1, 'Going to a change already showing dropped the pick');
     window.dispatchEvent(new CustomEvent('review-deck:reveal-hunk', { detail: hidden }));
-    await wait(() => cards() === all && document.getElementById(`hunk-${hidden}`), 'Going to a hidden change did not show it');
+    await wait(() => cards() === all && !document.getElementById(`hunk-${hidden}`).hidden, 'Going to a hidden change did not show it');
     // An arrow answers the pointer anywhere along it, and its tooltip names both ends.
     const edge = document.querySelector('.concern-flow .relation-edge');
     const tooltip = edge.querySelector(':scope > title').textContent;
@@ -162,7 +164,7 @@ async page => {
     const all = section.querySelectorAll('.hunk-card').length;
     section.querySelector('.flow-outline-row').click();
     await wait(() => section.querySelector('.flow-focus'), 'A row of the outline did not pick its changes');
-    const shown = section.querySelectorAll('.hunk-card').length;
+    const shown = section.querySelectorAll('.hunk-card:not([hidden])').length;
     assert(shown >= 2 && shown < all, `A row left ${shown} of ${all} changes showing`);
     assert(section.querySelector('.flow-outline-row.selected'), 'The picked row is not shown as picked');
     assert(section.querySelector('.flow-outline').scrollWidth <= section.querySelector('.flow-outline').clientWidth, 'The outline scrolls sideways');
