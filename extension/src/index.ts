@@ -42,7 +42,8 @@ async function renderHosted() {
   // A link with only the PR id (from the browser extension) waits for one REST call to find its repository: the PR's
   // skeleton shows meanwhile, not the hub's.
   const showPr = (id: number) => {
-    if (isReview) root.innerHTML = prSkeleton({ id });
+    // The page keeps its tab in its own hash (ui/App.tsx), so a reload on the Files tab shows that tab selected.
+    if (isReview) root.innerHTML = prSkeleton({ id }, location.hash.slice(1));
   };
   const host = await withTimeout(
     adoHost.then(({ AdoHost }) => AdoHost.create(showPr)),

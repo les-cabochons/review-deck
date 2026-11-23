@@ -2,6 +2,8 @@ import { Toggle } from "azure-devops-ui/Toggle";
 import * as React from "react";
 import type { AppHost, ProjectSettings } from "../../app/host";
 import { fetchUsage, type Usage } from "../../review/backend";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 interface State {
   settings: ProjectSettings;
@@ -43,7 +45,8 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
     };
   }, [host]);
 
-  if (!state) return null;
+  // On the settings page, its place in gray until it loads; elsewhere it shows only once a backend answers.
+  if (!state) return alwaysShow ? <SkeletonHtml html={SETTINGS_BODIES.ai} /> : null;
   const on = state.allowed && state.settings.aiTitles;
   // Turning titles on needs the backend to confirm a model; turning them off is always allowed.
   const model = state.usage?.model ?? null;

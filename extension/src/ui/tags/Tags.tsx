@@ -5,11 +5,15 @@ import { Panel } from "azure-devops-ui/Panel";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { defaultTagColor, parseColor, randomTagColor, sidebarTags, TAG_COLORS, type TagDef, tagKey, tagNameError, tagPillStyle, tagTextColor } from "../../data/tags";
+import { tagListSkeleton } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 import { usePierreTheme } from "../pierre/theme";
 import { cx, plural } from "../util";
 
 interface ProjectTags {
   tags: TagDef[];
+  /** The first list has arrived (or failed): until then, an empty `tags` means "not known yet", not "none". */
+  loaded: boolean;
   /** By tagKey(name). */
   byKey: Map<string, TagDef>;
   reload: () => void;
@@ -29,6 +33,7 @@ interface ProjectTags {
 
 const TagContext = React.createContext<ProjectTags>({
   tags: [],
+  loaded: false,
   byKey: new Map(),
   reload: () => {},
   revision: 0,
@@ -42,6 +47,7 @@ export const useProjectTags = () => React.useContext(TagContext);
 /** Loads the project's tags once for both pages; editors call reload() after a change. */
 export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.ReactNode }> = ({ host, children }) => {
   const [tags, setTags] = React.useState<TagDef[]>([]);
+  const [loaded, setLoaded] = React.useState(false);
   /**
    * Hide and Show clicks so far, and the count at each tag's last click. A reload keeps the on-screen flag of a
    * tag clicked after it started, since it may have read the styles before that click's save.
@@ -60,7 +66,8 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
             return next.map((t) => (clickedAfter(tagKey(t.name)) ? { ...t, hidden: hidden.get(tagKey(t.name)) ?? t.hidden } : t));
           }),
         (e) => console.warn("[review-deck] tags unavailable:", e),
-      );
+      )
+      .finally(() => setLoaded(true));
   }, [host]);
   React.useEffect(reload, [reload]);
   const [revision, setRevision] = React.useState(0);
@@ -86,8 +93,8 @@ export const ProjectTagsProvider: React.FC<{ host: AppHost; children: React.Reac
     [host, reload],
   );
   const value = React.useMemo(
-    () => ({ tags, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),
-    [tags, reload, revision, changed, dark, host, setTagHidden],
+    () => ({ tags, loaded, byKey: new Map(tags.map((t) => [tagKey(t.name), t])), reload, revision, changed, dark, host, setTagHidden }),
+    [tags, loaded, reload, revision, changed, dark, host, setTagHidden],
   );
   return <TagContext.Provider value={value}>{children}</TagContext.Provider>;
 };
@@ -112,7 +119,7 @@ export const TagPill: React.FC<{ name: string; color?: string; className?: strin
 
 /** Hub sidebar: every tag not hidden, with its open pull request count; a click filters the list. */
 export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string | null; onSelect: (name: string | null) => void }> = ({ counts, active, onSelect }) => {
-  const { tags } = useProjectTags();
+  const { tags, loaded } = useProjectTags();
   const [managing, setManaging] = React.useState(false);
   const shown = sidebarTags(tags, active);
   const hiddenCount = tags.filter((t) => t.hidden).length;
@@ -124,7 +131,9 @@ export const SidebarTags: React.FC<{ counts: Map<string, number>; active: string
           <Icon iconName="Edit" /> Manage
         </button>
       </div>
-      {tags.length === 0 ? (
+      {!loaded ? (
+        <SkeletonHtml html={tagListSkeleton()} />
+      ) : tags.length === 0 ? (
         <p className="hub-sidebar-note muted">No tags yet.</p>
       ) : (
         <ul className="hub-tag-list">

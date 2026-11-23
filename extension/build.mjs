@@ -47,14 +47,19 @@ const startupHtml = {
         .map((file) => `<link rel="modulepreload" href="${file}" />`)
         .join("\n    ");
       const skeletons = await loadSkeletons();
-      const byName = { hub: skeletons.hubSkeleton, settings: skeletons.settingsSkeleton };
+      const byName = {
+        hub: skeletons.hubSkeleton,
+        settings: skeletons.settingsSkeleton,
+        "org-settings": skeletons.orgSettingsSkeleton,
+        changelog: skeletons.changelogSkeleton,
+      };
       for (const file of readdirSync(join(here, "static")).filter((f) => f.endsWith(".html"))) {
         const source = readFileSync(join(here, "static", file), "utf8");
         if (!source.includes("<!-- modulepreload -->")) continue;
         const html = source
           .replace("<!-- theme -->", () => `<script>${skeletons.themeBootScript()}</script>`)
           .replace("<!-- modulepreload -->", () => preload)
-          .replace(/<!-- skeleton:(\w+) -->/, (_, name) => {
+          .replace(/<!-- skeleton:([\w-]+) -->/, (_, name) => {
             if (!byName[name]) throw new Error(`static/${file}: no skeleton named ${name} in src/skeletons.ts`);
             return byName[name]();
           });

@@ -92,20 +92,20 @@ function hostHtml(query, handshake, data, apiRoot, tab) {
   </script></body></html>`;
 }
 
-/** What the page shows at each landmark. */
+/** What the page shows at each landmark. The skeletons use the loaded pages' markup, so React's landmarks exclude them. */
 const LANDMARKS = {
   skeleton: ".skeleton-page, .inbox-section.skeleton, .page-loading",
-  hubReact: ".hub-toolbar input[type=search]",
-  hubRows: ".pr-row",
+  hubReact: ".hub:not(.skeleton-page) .hub-toolbar input[type=search]",
+  hubRows: ".pr-row[data-pr]",
   prSkeleton: ".review-page",
   // The PR's page with its data, from the copy kept in this browser (data/prCache.ts), the PR and its updates
   // ahead of the rest (data/adoOverview.ts), or the whole load.
-  prReact: ".pr-actions button",
+  prReact: ".review-page:not(.skeleton-page) .pr-actions button",
   // Loaded, so its buttons work (they wait while the kept copy or the partial shows).
   prLive: ".vote-button button:not([disabled]):not(.disabled):not([aria-disabled=true])",
   // The Files tab shows the diff, so the update's changes and both sides of every file are in (review/engine.ts).
   prDiff: ".file-header",
-  settled: ".inbox-section:not(.skeleton), .error-box, .pr-actions button",
+  settled: ".inbox-section:not(.skeleton), .error-box, .review-page:not(.skeleton-page) .pr-actions button",
 };
 
 /** Inside every frame: when each landmark first appears, as epoch milliseconds. */
@@ -602,6 +602,18 @@ async function screenshots(browser, origin, dir) {
   await hub.page.screenshot({ path: join(dir, "1-hub-skeleton-before-handshake.png") });
   await hub.page.close();
 
+  // React's hub with its list on the way, then loaded: the three should line up.
+  const listing = await open(context, origin, "/host?api=8000", true);
+  await listing.waitFor("hubReact");
+  await listing.page.waitForTimeout(500);
+  await listing.page.screenshot({ path: join(dir, "1b-hub-listing.png") });
+  await listing.page.close();
+  const loaded = await open(context, origin, "/host", true);
+  await loaded.waitFor("hubRows");
+  await loaded.page.waitForTimeout(800);
+  await loaded.page.screenshot({ path: join(dir, "1c-hub-loaded.png") });
+  await loaded.page.close();
+
   const pr = await open(context, origin, "/host?pr=471&repo=users-sdk&handshake=500&api=8000", true);
   await pr.waitFor("prSkeleton");
   await pr.page.waitForTimeout(1500);
@@ -637,7 +649,7 @@ async function screenshots(browser, origin, dir) {
     await new Promise((ok) => setTimeout(ok, 3000));
     await route.continue();
   });
-  await local.page.locator(".pr-row").first().click();
+  await local.page.locator(".pr-row[data-pr]").first().click();
   await local.page.waitForTimeout(600);
   await local.page.screenshot({ path: join(dir, "6-local-pr-opening.png") });
   await local.waitFor("prReact");

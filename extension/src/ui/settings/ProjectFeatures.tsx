@@ -3,6 +3,8 @@ import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { describeAccess, enabledFor, FEATURE_NAMES, type Feature, FEATURES, locked, type OrganizationSettings, VisibilityNotSynced, withProject } from "../../data/access";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 /**
  * Project settings → Review Deck: this project's Deck and Changelog. Project administrators switch them here unless
@@ -26,7 +28,7 @@ export const ProjectFeatures: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [host]);
 
-  if (!settings) return null;
+  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.features} />;
 
   const change = (feature: Feature, on: boolean) => {
     setStatus("saving");

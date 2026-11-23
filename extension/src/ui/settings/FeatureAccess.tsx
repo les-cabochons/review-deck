@@ -16,6 +16,8 @@ import {
 } from "../../data/access";
 import { DropdownButton } from "../controls";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 const MODE_NAMES: Record<FeatureMode, string> = {
   "default-on": "On by default, projects choose",
@@ -64,7 +66,7 @@ export const FeatureAccess: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [host]);
 
-  if (!settings) return null;
+  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.orgFeatures} />;
 
   /** Saves, then shows or hides the hub in the projects affected (every project when `projectIds` is unset). */
   const save = (feature: Feature, change: (s: OrganizationSettings) => OrganizationSettings, projectIds?: string[]) => {

@@ -5,6 +5,8 @@ import * as React from "react";
 import { invalidTrunkPattern, shortBranch } from "../../../../src/stack/branches";
 import type { AppHost, ProjectSettings } from "../../app/host";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 interface Row {
   id: number;
@@ -51,7 +53,7 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     focusRow.current = null;
   });
 
-  if (!settings) return null;
+  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.stacks} />;
 
   const save = async (change: Partial<ProjectSettings>) => {
     setStatus("saving");

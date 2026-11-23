@@ -26,6 +26,8 @@ import {
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { usePreference } from "../usePreference";
 import { cx, Markdown, plural, Time } from "../util";
+import { changelogBodySkeleton, tagCardSkeleton, tagExplorerSkeleton } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 type View = "releases" | "tags";
 
@@ -141,7 +143,7 @@ export const ChangelogPage: React.FC<{ host: AppHost }> = ({ host }) => {
         </div>
       )}
       {source && settings && <TagList key={source.repository.id} source={source} convention={settings.tagConvention} pipelineId={settings.pipelineId} view={view} query={query} />}
-      {!error && !(source && settings) && <div className="loading">Loading…</div>}
+      {!error && !(source && settings) && <SkeletonHtml html={tagExplorerSkeleton(VIEWS[view].list)} />}
     </div>
   );
 };
@@ -245,7 +247,7 @@ const TagList: React.FC<{ source: ReleaseSource; convention: string; pipelineId:
         {error} {retry}
       </div>
     );
-  if (!sorted) return <div className="loading">Loading tags…</div>;
+  if (!sorted) return <SkeletonHtml html={tagExplorerSkeleton(VIEWS[view].list)} />;
   if (!sorted.length)
     return (
       <div className="changelog-empty muted">
@@ -310,7 +312,7 @@ const TagList: React.FC<{ source: ReleaseSource; convention: string; pipelineId:
           </div>
         )}
       </nav>
-      <main className="tag-explorer-main">{shown ? <TagView key={shown.tag.name} info={shown} sorted={sorted} source={source} /> : <div className="loading">Loading tags…</div>}</main>
+      <main className="tag-explorer-main">{shown ? <TagView key={shown.tag.name} info={shown} sorted={sorted} source={source} /> : <SkeletonHtml html={tagCardSkeleton()} />}</main>
     </div>
   );
 };
@@ -425,7 +427,7 @@ const Changelog: React.FC<{ source: ReleaseSource; tag: GitTag; previous: GitTag
         {error}
       </p>
     );
-  if (!sections) return <div className="loading">Loading changelog…</div>;
+  if (!sections) return <SkeletonHtml html={changelogBodySkeleton()} />;
   return (
     <section className="changelog">
       {!sections.length && <p className="muted">No changes since {previous?.name ?? "the first commit"}.</p>}

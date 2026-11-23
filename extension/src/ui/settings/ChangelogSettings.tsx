@@ -4,6 +4,8 @@ import type { AppHost } from "../../app/host";
 import { DEFAULT_TAG_CONVENTION, type Pipeline, type ReleaseCatalog, type ReleaseSettings, type RepoReleaseSettings, type Repository } from "../../data/releases";
 import { DropdownButton } from "../controls";
 import { SaveStatus } from "./SaveStatus";
+import { SETTINGS_BODIES } from "../../skeletons";
+import { SkeletonHtml } from "../SkeletonHtml";
 
 /**
  * Project settings for the Changelog hub: the tag convention, and per repository an override of it and the
@@ -56,7 +58,7 @@ export const ChangelogSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [repoId, settings === null, catalog]);
 
-  if (!settings) return null;
+  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.changelog} />;
 
   const save = (releases: ReleaseSettings) => {
     setStatus("saving");
