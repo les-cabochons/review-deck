@@ -26,8 +26,6 @@ export interface MapEdge {
   to: string;
   /** Each end uses the other: one line, an arrowhead at both ends. */
   both: boolean;
-  /** Only tests link them. */
-  tests: boolean;
   /** The names behind the link, best first, both directions merged. */
   symbols: string[];
   points: { x: number; y: number }[];
@@ -64,13 +62,8 @@ function pairs(links: Link[], ids: ReadonlySet<string>): Omit<MapEdge, "points" 
     const [a, b] = link.from < link.to ? [link.from, link.to] : [link.to, link.from];
     const key = `${a}\u0000${b}`;
     let edge = byPair.get(key);
-    if (!edge) byPair.set(key, (edge = { from: link.from, to: link.to, both: false, tests: true, symbols: [], names: [], directions: new Set() }));
+    if (!edge) byPair.set(key, (edge = { from: link.from, to: link.to, both: false, symbols: [], names: [], directions: new Set() }));
     edge.directions.add(`${link.from}>${link.to}`);
-    if (link.kind === "uses") {
-      // A code link sets the direction: the arrow goes from what is defined to what uses it.
-      if (edge.tests) Object.assign(edge, { from: link.from, to: link.to });
-      edge.tests = false;
-    }
     for (const s of link.symbols) if (!edge.names.includes(s)) edge.names.push(s);
   }
   return [...byPair.values()].map(({ names, directions, ...edge }) => ({ ...edge, both: directions.size > 1, symbols: names.filter((s) => !s.startsWith(".")).concat(names.filter((s) => s.startsWith("."))) }));
@@ -141,7 +134,7 @@ export function layoutRelations(items: MapItem[], links: Link[], fit: { width: n
  * or through others. Null when every item uses another (a cycle) or nothing is drawn.
  */
 export function startOf(map: RelationMap): string | null {
-  const code = map.edges.filter((e) => !e.tests);
+  const code = map.edges;
   const users = new Set(code.flatMap((e) => (e.both ? [e.from, e.to] : [e.to])));
   const next = new Map<string, string[]>();
   for (const e of code) (next.get(e.from) ?? next.set(e.from, []).get(e.from)!).push(e.to);

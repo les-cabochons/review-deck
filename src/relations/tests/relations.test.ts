@@ -12,20 +12,20 @@ const concern = (id: string, hunkIds: string[]): Group => ({ id, kind: "semantic
 test("Given a concern that uses a name another concern defines, then they are linked by that name", () => {
   const hunks = [hunk("a#0", ["TagFields", ".hide"], []), hunk("b#0", ["updateStyles"], ["TagFields", ".hide", "unrelated"])];
   const relations = relationsOf([concern("g1", ["a#0"]), concern("g2", ["b#0"])], new Map(hunks.map((h) => [h.hunk.id, h])));
-  assert.deepEqual(relations.links, [{ from: "g1", to: "g2", kind: "uses", symbols: ["TagFields", ".hide"] }]);
+  assert.deepEqual(relations.links, [{ from: "g1", to: "g2", symbols: ["TagFields", ".hide"] }]);
 });
 
-test("Given a test that uses another concern's code, then the link is a test link, and code never uses a test", () => {
-  const hunks = [hunk("src#0", ["parse"], ["helper"]), hunk("test#0", ["helper"], ["parse"], true)];
-  const relations = relationsOf([concern("g1", ["src#0"]), concern("g2", ["test#0"])], new Map(hunks.map((h) => [h.hunk.id, h])));
-  assert.deepEqual(relations.links, [{ from: "g1", to: "g2", kind: "tests", symbols: ["parse"] }]);
+test("Given test files, then they are left out: a test calling the code it tests links nothing", () => {
+  const hunks = [hunk("src#0", ["parse"], []), hunk("other#0", [], ["parse"]), hunk("test#0", ["helper"], ["parse"], true)];
+  const relations = relationsOf([concern("g1", ["src#0"]), concern("g2", ["other#0"]), concern("g3", ["test#0"])], new Map(hunks.map((h) => [h.hunk.id, h])));
+  assert.deepEqual(relations.links, [{ from: "g1", to: "g2", symbols: ["parse"] }]);
 });
 
 test("Given changes inside one concern that use each other, then they are its flow, not a link between concerns", () => {
   const hunks = [hunk("ids#0", ["createRequestId"], []), hunk("client#0", ["request"], ["createRequestId"]), hunk("errors#0", ["HttpError"], [])];
   const relations = relationsOf([concern("g1", ["ids#0", "client#0", "errors#0"])], new Map(hunks.map((h) => [h.hunk.id, h])));
   assert.deepEqual(relations.links, []);
-  assert.deepEqual(relations.flows, { g1: [{ from: "ids#0", to: "client#0", kind: "uses", symbols: ["createRequestId"] }] });
+  assert.deepEqual(relations.flows, { g1: [{ from: "ids#0", to: "client#0", symbols: ["createRequestId"] }] });
 });
 
 test("Given misc and mechanical groups, then they are left out of the links", () => {
@@ -41,22 +41,22 @@ test("Given a concern with too many internal links to draw, then it has no flow"
   assert.equal(relations.flows.g1, undefined);
 });
 
-test("Given saved relations, then links to unknown groups or hunks and malformed ones are dropped", () => {
+test("Given saved relations, then links to unknown groups or hunks, test links saved before tests were left out, and malformed ones are dropped", () => {
   const raw = {
-    links: [{ from: "g1", to: "g2", kind: "uses", symbols: ["a"] }, { from: "g1", to: "gone", kind: "uses", symbols: [] }, { from: "g1", to: "g2", kind: "calls", symbols: [] }],
-    flows: { g1: [{ from: "a#0", to: "b#0", kind: "tests", symbols: ["x"] }, { from: "a#0", to: "zzz#9", kind: "uses", symbols: [] }], gone: [] },
+    links: [{ from: "g1", to: "g2", symbols: ["a"] }, { from: "g1", to: "gone", symbols: [] }, { from: "g2", to: "g1", kind: "tests", symbols: ["t"] }, { from: "g1", to: "g2", symbols: "no" }],
+    flows: { g1: [{ from: "a#0", to: "b#0", symbols: ["x"] }, { from: "a#0", to: "zzz#9", symbols: [] }], gone: [] },
   };
   assert.deepEqual(readRelations(raw, new Set(["g1", "g2"]), new Set(["a#0", "b#0"])), {
-    links: [{ from: "g1", to: "g2", kind: "uses", symbols: ["a"] }],
-    flows: { g1: [{ from: "a#0", to: "b#0", kind: "tests", symbols: ["x"] }] },
+    links: [{ from: "g1", to: "g2", symbols: ["a"] }],
+    flows: { g1: [{ from: "a#0", to: "b#0", symbols: ["x"] }] },
   });
   assert.equal(readRelations({ links: "no" }, new Set(), new Set()), null);
   assert.equal(readRelations(undefined, new Set(), new Set()), null);
 });
 
 test("Given a link that rests only on member names, then it is loose", () => {
-  assert.equal(isLoose({ from: "g1", to: "g2", kind: "uses", symbols: [".hide", ".tags"] }), true);
-  assert.equal(isLoose({ from: "g1", to: "g2", kind: "uses", symbols: ["TagFields", ".hide"] }), false);
+  assert.equal(isLoose({ from: "g1", to: "g2", symbols: [".hide", ".tags"] }), true);
+  assert.equal(isLoose({ from: "g1", to: "g2", symbols: ["TagFields", ".hide"] }), false);
 });
 
 test("Given a concern of fewer than three changes, then it has no flow", () => {
@@ -70,9 +70,9 @@ test("Given linked and unlinked concerns, then the map draws the linked ones, me
   const map = layoutRelations(
     items,
     [
-      { from: "g1", to: "g2", kind: "uses", symbols: ["TagFields"] },
-      { from: "g2", to: "g1", kind: "tests", symbols: ["AdoTagStore"] },
-      { from: "g2", to: "g3", kind: "uses", symbols: [".hide"] },
+      { from: "g1", to: "g2", symbols: ["TagFields"] },
+      { from: "g2", to: "g1", symbols: ["AdoTagStore"] },
+      { from: "g2", to: "g3", symbols: [".hide"] },
     ],
     { width: 700, height: 300 },
   );
@@ -80,7 +80,7 @@ test("Given linked and unlinked concerns, then the map draws the linked ones, me
   assert.deepEqual(map.nodes.map((n) => n.id).sort(), ["g1", "g2"]);
   // g2 to g3 rests on a member name only: not drawn, so g3 is apart with g4.
   assert.deepEqual(map.apart.map((n) => n.id), ["g3", "g4"]);
-  assert.deepEqual(map.edges.map((e) => [e.from, e.to, e.both, e.tests, e.symbols]), [["g1", "g2", true, false, ["TagFields", "AdoTagStore"]]]);
+  assert.deepEqual(map.edges.map((e) => [e.from, e.to, e.both, e.symbols]), [["g1", "g2", true, ["TagFields", "AdoTagStore"]]]);
   assert.equal(startOf(map), null);
   for (const n of [...map.nodes, ...map.apart]) assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.width <= map.width && n.y + n.height <= map.height, n.id);
 });
@@ -91,7 +91,7 @@ test("Given a chain of uses, then reading starts at the one change everything el
   // d also uses nothing, but only c depends on it; a leads to b and c.
   const map = layoutRelations(
     [...items, { id: "d", title: "d", subtitle: null }],
-    [{ from: "a", to: "b", kind: "uses", symbols: ["x"] }, { from: "b", to: "c", kind: "uses", symbols: ["y"] }, { from: "d", to: "c", kind: "uses", symbols: ["z"] }],
+    [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }, { from: "d", to: "c", symbols: ["z"] }],
     { width: 700, height: 300 },
   );
   assert.equal(startOf(map!), "a");
@@ -111,9 +111,9 @@ test("Given many changes inside one function of one file, then the concern's flo
     ["src/env.ts#0", inFile("src/env.ts#0", "src/env.ts", "make")],
   ]);
   const links = [
-    ...ids.slice(0, 3).map((from) => ({ from, to: "src/layer.ts#0", kind: "uses" as const, symbols: ["make"] })),
-    { from: "src/cleanup.ts#0", to: "src/cleanup.ts#2", kind: "uses" as const, symbols: ["reason"] },
-    { from: "src/env.ts#0", to: "src/layer.ts#0", kind: "uses" as const, symbols: ["make"] },
+    ...ids.slice(0, 3).map((from) => ({ from, to: "src/layer.ts#0", symbols: ["make"] })),
+    { from: "src/cleanup.ts#0", to: "src/cleanup.ts#2", symbols: ["reason"] },
+    { from: "src/env.ts#0", to: "src/layer.ts#0", symbols: ["make"] },
   ];
   const flow = concernFlow(concern("g1", ids), { links: [], flows: { g1: links } }, hunks);
   // Two `make`s in two files: the file goes in the title. The link inside the first box is left out.
@@ -131,7 +131,7 @@ test("Given more boxes than a map can show, then the flow says so instead of dra
   const { concernFlow, MAX_FLOW_BOXES } = await import("../flow.js");
   const ids = Array.from({ length: MAX_FLOW_BOXES + 1 }, (_, i) => `src/f${i}.ts#0`);
   const hunks = new Map([["src/def.ts#0", inFile("src/def.ts#0", "src/def.ts", "def")], ...ids.map((id, i) => [id, inFile(id, `src/f${i}.ts`, `user${i}`)] as const)]);
-  const links = ids.map((to) => ({ from: "src/def.ts#0", to, kind: "uses" as const, symbols: ["def"] }));
+  const links = ids.map((to) => ({ from: "src/def.ts#0", to, symbols: ["def"] }));
   const flow = concernFlow(concern("g1", ["src/def.ts#0", ...ids]), { links: [], flows: { g1: links } }, hunks);
   assert.equal(flow.tooMany, true);
 });

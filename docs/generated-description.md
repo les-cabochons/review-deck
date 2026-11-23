@@ -5,8 +5,8 @@ The description card in Overview has a toggle: **Written by \<author\>**, and **
 ## What it shows
 
 - **Why.** The commit messages, as a changelog: subjects grouped by conventional-commit type, like the Changelog hub (`buildChangelog` in `extension/src/data/releases.ts`). Merges from the target branch are left out by their subject, because the PR's commits don't say how many parents they have.
-- **What changed.** A map of the guide's concerns. An arrow goes from the concern that defines a name to the one that uses it, both ways when each uses the other. A dashed line means only tests link them. Each arrow shows the name behind it. Concerns without a link sit apart, under "On their own".
-- **How they connect.** The same, in sentences, per concern: what it uses from which concern, which concerns use it, which test it, where to start, and "reviewable on its own" when nothing links it. This is what a screen reader and a phone get.
+- **What changed.** A map of the guide's concerns. An arrow goes from the concern that defines a name to the one that uses it, both ways when each uses the other. Each arrow shows the name behind it. Concerns without a link sit apart, under "On their own".
+- **How they connect.** The same, in sentences, per concern: what it uses from which concern, which concerns use it, where to start, and "reviewable on its own" when nothing links it. This is what a screen reader and a phone get.
 
 In **Files**, a concern of three changes or more whose changes use each other's names shows **How these changes connect** (`src/relations/flow.ts`):
 
@@ -19,8 +19,10 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 
 `src/relations` reads what the pipeline already records for each hunk: the names it defines and the names its changed lines use (`HunkInfo.defines` and `.references`). The guide's ordering used them, and dropped them. Now they are kept:
 
-- **Between concerns**: a concern uses a name another concern defines. `tests` when the user is a test.
+- **Between concerns**: a concern uses a name another concern defines.
 - **Inside a concern**: the same, between its changes.
+
+**Test files are left out.** A test calling the code it tests says nothing about how the change fits together, and it put test files in most maps.
 
 Names are matched as text, like the grouping's structural signal. Two different things with the same name look linked, which is why each link shows its names.
 

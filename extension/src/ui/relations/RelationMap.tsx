@@ -27,7 +27,7 @@ let maps = 0;
 /**
  * A map of items (concerns, or the changes in one concern) and the names that link them, laid out by
  * src/relations/diagram.ts. An arrow goes from what defines a name to what uses it, both ways when each uses the
- * other; a dashed line, only tests link them. Loose links (member names only) aren't drawn.
+ * other. Loose links (member names only) aren't drawn.
  */
 const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, showStart, onSelect, height, label }) => {
   const [box, setBox] = React.useState<HTMLDivElement | null>(null);
@@ -57,7 +57,7 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
             </marker>
           </defs>
           {map.edges.map((edge) => (
-            <g key={`${edge.from}>${edge.to}`} className={cx("relation-edge", edge.tests && "tests")}>
+            <g key={`${edge.from}>${edge.to}`} className="relation-edge">
               <title>{`${edge.from} ${edge.both ? "and" : "→"} ${edge.to}: ${edge.symbols.join(", ")}`}</title>
               <path d={smooth(edge.points)} markerEnd={`url(#${id}-end)`} markerStart={edge.both ? `url(#${id}-end)` : undefined} />
               {edge.label && (

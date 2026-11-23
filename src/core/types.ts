@@ -106,11 +106,10 @@ export interface Group {
  */
 export type TitleSource = "llm" | "description" | "heuristic";
 
-/** How concerns connect (src/relations): `to` uses something `from` defines or changes. `tests`: `to` is a test. */
+/** How concerns connect (src/relations): `to` uses something `from` defines or changes. Test files are left out. */
 export interface Link {
   from: string;
   to: string;
-  kind: "uses" | "tests";
   /** The names behind the link, best first: named symbols, then members (`.hide`), which match the loosest. */
   symbols: string[];
 }

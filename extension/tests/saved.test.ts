@@ -397,10 +397,10 @@ test("Given a guide saved with its relations, then reopening restores them, with
   const result = analyzed();
   result.relations = {
     links: [],
-    flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", kind: "tests", symbols: ["fetchJson"] }, { from: "src/api.ts#0", to: "src/gone.ts#0", kind: "uses", symbols: ["x"] }] },
+    flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", symbols: ["fetchJson"] }, { from: "src/api.ts#0", to: "src/gone.ts#0", symbols: ["x"] }] },
   };
   const saved = JSON.parse(JSON.stringify(packReview(result, mode)));
-  assert.deepEqual(restored(saved, mode).relations, { links: [], flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", kind: "tests", symbols: ["fetchJson"] }] } });
+  assert.deepEqual(restored(saved, mode).relations, { links: [], flows: { g1: [{ from: "src/api.ts#0", to: "src/api.test.ts#0", symbols: ["fetchJson"] }] } });
 });
 
 test("Given a guide saved before relations were recorded, then it still restores, without relations", () => {

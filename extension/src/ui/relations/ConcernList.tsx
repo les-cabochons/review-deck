@@ -13,7 +13,7 @@ interface Props {
 
 /**
  * How each concern connects to the others, in sentences, in guide order: what it uses from which concern, which
- * concerns use it, which test it, and "reviewable on its own" when nothing does. The map shows the same, drawn;
+ * concerns use it, and "reviewable on its own" when nothing does. Test files aren't linked (src/relations). The map shows the same, drawn;
  * this list is what a screen reader and a phone get.
  */
 export const ConcernList: React.FC<Props> = ({ groups, links: known, onOpenGroup }) => {
@@ -39,12 +39,10 @@ export const ConcernList: React.FC<Props> = ({ groups, links: known, onOpenGroup
     <ol className="concern-list">
       {concerns.map((g, i) => {
         const strong = links.filter((l) => !isLoose(l));
-        const uses = strong.filter((l) => l.kind === "uses" && l.to === g.id);
-        const usedBy = strong.filter((l) => l.kind === "uses" && l.from === g.id);
-        const testedIn = strong.filter((l) => l.kind === "tests" && l.from === g.id);
-        const tests = strong.filter((l) => l.kind === "tests" && l.to === g.id);
+        const uses = strong.filter((l) => l.to === g.id);
+        const usedBy = strong.filter((l) => l.from === g.id);
         const loose = links.filter((l) => isLoose(l) && (l.from === g.id || l.to === g.id));
-        const alone = known !== null && uses.length + usedBy.length + testedIn.length + tests.length === 0;
+        const alone = known !== null && uses.length + usedBy.length === 0;
         return (
           <li key={g.id} style={{ borderLeftColor: groupColor(groups, g) }}>
             <button className="concern-list-title link-button" onClick={() => onOpenGroup(g.id)}>
@@ -64,16 +62,6 @@ export const ConcernList: React.FC<Props> = ({ groups, links: known, onOpenGroup
               {usedBy.map((l) => (
                 <li key={`b${l.to}`}>
                   {badge(l.to)} uses its {names(l.symbols)}
-                </li>
-              ))}
-              {testedIn.map((l) => (
-                <li key={`t${l.to}`}>
-                  Tested by changes in {badge(l.to)}, through {names(l.symbols)}
-                </li>
-              ))}
-              {tests.map((l) => (
-                <li key={`s${l.from}`}>
-                  Tests {badge(l.from)}, through {names(l.symbols)}
                 </li>
               ))}
               {loose.length > 0 && <LooseLine concernId={g.id} links={loose} badge={badge} />}

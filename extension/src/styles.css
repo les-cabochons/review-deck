@@ -5406,9 +5406,6 @@ span.artifact-toggle {
   stroke: var(--fg2);
   stroke-width: 1.5;
 }
-.relation-edge.tests path {
-  stroke-dasharray: 5 4;
-}
 .relation-arrowhead {
   fill: var(--fg2);
 }

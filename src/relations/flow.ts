@@ -17,7 +17,7 @@ export interface ConcernFlowMap {
   links: Link[];
   /** More boxes than MAX_FLOW_BOXES: summarize, don't draw. */
   tooMany: boolean;
-  /** Changes of the concern in no box: nothing links them. */
+  /** Changes of the concern in no box, test files aside: nothing links them. */
   unlinked: number;
 }
 
@@ -67,8 +67,8 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
     const from = boxOf.get(l.from);
     const to = boxOf.get(l.to);
     if (!from || !to || from === to) continue;
-    const key = `${from}\u0001${to}\u0001${l.kind}`;
-    const link = merged.get(key) ?? { from, to, kind: l.kind, symbols: [] };
+    const key = `${from}\u0001${to}`;
+    const link = merged.get(key) ?? { from, to, symbols: [] };
     for (const s of l.symbols) if (!link.symbols.includes(s)) link.symbols.push(s);
     merged.set(key, link);
   }
@@ -78,6 +78,6 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
     boxes: shown,
     links: [...merged.values()],
     tooMany: shown.length > MAX_FLOW_BOXES,
-    unlinked: group.hunkIds.length - shown.reduce((n, b) => n + b.hunkIds.length, 0),
+    unlinked: group.hunkIds.filter((id) => !hunks.get(id)?.isTest).length - shown.reduce((n, b) => n + b.hunkIds.length, 0),
   };
 }

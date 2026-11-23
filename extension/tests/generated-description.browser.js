@@ -46,6 +46,7 @@ async page => {
     assert(list.includes('StorageCleanupReport'), 'The links don\'t name their symbols');
     assert(list.includes('through member names only'), 'Loose matches are not said to be loose');
     assert(list.includes('reviewable on its own'), 'No concern is said to stand alone');
+    assert(!/Tests |Tested by/.test(list), 'Test files still link concerns');
 
     // Back to the author's.
     toggle('Written by').click();
@@ -64,6 +65,8 @@ async page => {
     node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await wait(() => document.querySelector('.hunk-card.flash'), `A click on "${target}" did not point at its change`);
     assert(document.querySelector('.concern-flow .relation-start'), 'No change is marked as where to start');
+    const boxes = [...document.querySelectorAll('.concern-flow .relation-node title')].map(t => t.textContent);
+    assert(!boxes.some(t => /\.test\.|\/tests?\//.test(t)), `A test file is in a concern's map: ${boxes.filter(t => /test/.test(t))}`);
   });
 
   // A guide saved before relations were recorded: concerns without links, and the page says why.
