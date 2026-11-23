@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { Link } from "../../../../src/core/types";
-import { boxTitle, layoutRelations, type MapItem, type MapNode, startsOf } from "../../../../src/relations/diagram";
+import { boxTitle, layoutRelations, type MapItem, type MapNode, startOf } from "../../../../src/relations/diagram";
 import { cx } from "../util";
 
 interface Props {
@@ -12,8 +12,8 @@ interface Props {
   badge?: (id: string) => string | null;
   /** Caption of the row of items without a link. */
   apartCaption: string;
-  /** Mark where to start reading. */
-  showStarts?: boolean;
+  /** Mark the item to start reading from. */
+  showStart?: boolean;
   onSelect?: (id: string) => void;
   /** Height the map may take before it scrolls. */
   height: number;
@@ -29,7 +29,7 @@ let maps = 0;
  * src/relations/diagram.ts. An arrow goes from what defines a name to what uses it, both ways when each uses the
  * other; a dashed line, only tests link them. Loose links (member names only) aren't drawn.
  */
-const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, showStarts, onSelect, height, label }) => {
+const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, showStart, onSelect, height, label }) => {
   const [box, setBox] = React.useState<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(0);
   const [id] = React.useState(() => `relmap${++maps}`);
@@ -44,7 +44,7 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
   const measured = width > 0;
   const fit = { width: Math.max(width - 8, 240), height };
   const map = React.useMemo(() => (measured ? layoutRelations(items, links, fit) : null), [items, links, measured, fit.width, fit.height]);
-  const starts = React.useMemo(() => new Set(map && showStarts ? startsOf(map) : []), [map, showStarts]);
+  const start = React.useMemo(() => (map && showStart ? startOf(map) : null), [map, showStart]);
   const scale = map ? Math.max(MIN_SCALE, Math.min(1, fit.width / map.width, fit.height / map.height)) : 1;
 
   return (
@@ -68,7 +68,7 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
             </g>
           ))}
           {map.nodes.map((node) => (
-            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} start={starts.has(node.id)} onSelect={onSelect} />
+            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} start={node.id === start} onSelect={onSelect} />
           ))}
           {map.apartTop !== null && (
             <text className="relation-apart-caption" x={12} y={map.apartTop + 14}>

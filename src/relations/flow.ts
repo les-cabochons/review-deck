@@ -1,0 +1,83 @@
+// The boxes of a concern's flow map: its changes, merged per function and file, and the links between them.
+import type { Group, HunkInfo, Link, ReviewRelations } from "../core/types.js";
+import type { MapItem } from "./diagram.js";
+import { isLoose } from "./relations.js";
+
+/** Past this many boxes a flow map can't be read; the concern then gets a one-line summary instead. */
+export const MAX_FLOW_BOXES = 12;
+
+export interface FlowBox extends MapItem {
+  /** The changes in the box, in diff order: a click goes to the first. */
+  hunkIds: string[];
+}
+
+export interface ConcernFlowMap {
+  boxes: FlowBox[];
+  /** Between boxes, both directions kept, a box's own changes linking each other left out. */
+  links: Link[];
+  /** More boxes than MAX_FLOW_BOXES: summarize, don't draw. */
+  tooMany: boolean;
+  /** Changes of the concern in no box: nothing links them. */
+  unlinked: number;
+}
+
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * The flow of `group`: changes linked through a named symbol, one box per function and file. Changes inside the same
+ * function of the same file share a box ("make · storageCleanup.ts · 12 changes"), so a large function edited in many
+ * places is one box, not many boxes with its name. A change outside any function gets its own box.
+ */
+export function concernFlow(group: Group, relations: ReviewRelations | undefined, hunks: Map<string, HunkInfo>): ConcernFlowMap {
+  const links = (relations?.flows[group.id] ?? []).filter((l) => !isLoose(l) && hunks.has(l.from) && hunks.has(l.to));
+  const linked = new Set(links.flatMap((l) => [l.from, l.to]));
+  const boxOf = new Map<string, string>();
+  const members = new Map<string, HunkInfo[]>();
+  for (const id of group.hunkIds) {
+    if (!linked.has(id)) continue;
+    const h = hunks.get(id)!;
+    const box = h.symbol ? `${h.file.path}\u0000${h.symbol}` : id;
+    boxOf.set(id, box);
+    (members.get(box) ?? members.set(box, []).get(box)!).push(h);
+  }
+
+  const boxes: FlowBox[] = [...members].map(([id, hs]) => {
+    const file = basename(hs[0].file.path);
+    const count = hs.length > 1 ? ` · ${plural(hs.length, "change")}` : "";
+    return {
+      id,
+      title: hs[0].symbol ?? `${file} · change ${hs[0].hunk.index + 1}`,
+      subtitle: `${file}${count}`,
+      path: hs[0].file.path,
+      hunkIds: hs.map((h) => h.hunk.id),
+    };
+  });
+  // Two boxes with one name (two `make`s in two files): the file goes in the title, where it isn't cut.
+  const titles = new Map<string, number>();
+  for (const b of boxes) titles.set(b.title, (titles.get(b.title) ?? 0) + 1);
+  for (const b of boxes) {
+    if ((titles.get(b.title) ?? 0) < 2) continue;
+    b.title = `${b.title} · ${basename(b.path!)}`;
+    b.subtitle = b.hunkIds.length > 1 ? plural(b.hunkIds.length, "change") : null;
+  }
+
+  const merged = new Map<string, Link>();
+  for (const l of links) {
+    const from = boxOf.get(l.from);
+    const to = boxOf.get(l.to);
+    if (!from || !to || from === to) continue;
+    const key = `${from}\u0001${to}\u0001${l.kind}`;
+    const link = merged.get(key) ?? { from, to, kind: l.kind, symbols: [] };
+    for (const s of l.symbols) if (!link.symbols.includes(s)) link.symbols.push(s);
+    merged.set(key, link);
+  }
+  const drawn = new Set([...merged.values()].flatMap((l) => [l.from, l.to]));
+  const shown = boxes.filter((b) => drawn.has(b.id));
+  return {
+    boxes: shown,
+    links: [...merged.values()],
+    tooMany: shown.length > MAX_FLOW_BOXES,
+    unlinked: group.hunkIds.length - shown.reduce((n, b) => n + b.hunkIds.length, 0),
+  };
+}

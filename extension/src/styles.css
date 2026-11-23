@@ -5330,6 +5330,12 @@ span.artifact-toggle {
   margin: 0 0 8px;
   padding: 0 14px 8px;
 }
+.concern-flow-summary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg2);
+  padding-top: 4px;
+}
 .concern-flow summary {
   cursor: pointer;
   font-size: 12px;

@@ -136,10 +136,22 @@ export function layoutRelations(items: MapItem[], links: Link[], fit: { width: n
   return { width: Math.ceil(right), height: Math.ceil(bottom), nodes: main.nodes, edges: main.edges, apart, apartTop };
 }
 
-/** Where to start reading: drawn items that use nothing else drawn, but that something uses. */
-export function startsOf(map: RelationMap): string[] {
-  const used = new Set(map.edges.filter((e) => !e.tests).map((e) => e.to));
-  const users = new Set(map.edges.filter((e) => !e.tests).flatMap((e) => (e.both ? [e.from, e.to] : [e.to])));
-  const defines = new Set(map.edges.filter((e) => !e.tests).map((e) => e.from));
-  return map.nodes.filter((n) => defines.has(n.id) && !used.has(n.id) && !users.has(n.id)).map((n) => n.id);
+/**
+ * Where to start reading: of the drawn items that use nothing else drawn, the one the most others depend on, directly
+ * or through others. Null when every item uses another (a cycle) or nothing is drawn.
+ */
+export function startOf(map: RelationMap): string | null {
+  const code = map.edges.filter((e) => !e.tests);
+  const users = new Set(code.flatMap((e) => (e.both ? [e.from, e.to] : [e.to])));
+  const next = new Map<string, string[]>();
+  for (const e of code) (next.get(e.from) ?? next.set(e.from, []).get(e.from)!).push(e.to);
+  const reach = (id: string) => {
+    const seen = new Set<string>();
+    const stack = [id];
+    while (stack.length) for (const n of next.get(stack.pop()!) ?? []) if (!seen.has(n) && n !== id) stack.push((seen.add(n), n));
+    return seen.size;
+  };
+  const candidates = map.nodes.filter((n) => next.has(n.id) && !users.has(n.id)).map((n) => ({ id: n.id, reach: reach(n.id) }));
+  candidates.sort((a, b) => b.reach - a.reach);
+  return candidates[0]?.id ?? null;
 }
