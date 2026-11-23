@@ -31,7 +31,7 @@ async page => {
 
     // Why: the commits as a changelog.
     const why = text('.generated-description section:first-child');
-    assert(why.includes('make worktree cleanup work and show why it skipped') && why.includes('From the 9 commit messages'), `Why: "${why}"`);
+    assert(why.includes('make worktree cleanup work and show why it skipped') && why.includes('simplify cleanup settings and results'), `Why: "${why}"`);
 
     // The map: linked concerns drawn, the docs concern apart.
     await wait(() => document.querySelector('.generated-description .relation-map svg'), 'The map was not drawn');

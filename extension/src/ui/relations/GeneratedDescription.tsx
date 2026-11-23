@@ -70,7 +70,6 @@ const Why: React.FC<{ data: PrOverview }> = ({ data }) => {
           </ul>
         </div>
       ))}
-      <p className="generated-source muted">From the {plural(commits.length, "commit message")}.</p>
     </>
   );
 };
