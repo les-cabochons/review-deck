@@ -15,6 +15,8 @@ Everything is read in the browser from the files the review already holds. Revie
 
 The diagram draws the changed resources, data sources and modules, plus what the change involves around them: what a changed block uses through a changed line, what uses a changed block, and the changed variables, locals and outputs wired to them (`src/infra/diagram.ts`). It uses the same map as the change diagrams (`docs/generated-description.md`): columns from left to right, what is used before what uses it, square connectors, on a canvas the reader drags. Each card has its state's colour, border and symbol, and a connector is green when the pull request adds the reference, red and dashed when it removes it, and amber when the line holding it changed.
 
+When the pull request changes more than one folder, the tab starts with a map of the modules (`src/infra/modules.ts`). Each changed folder is a card that lists its changed resources, data sources, module calls, inputs and outputs, riskiest first. A module a changed folder calls but the pull request doesn't change is a grey card, and so is a registry or git module, which is never read. An arrow goes from a module to what reads one of its outputs, through the folder that calls them both, and is labelled with the outputs. A module whose outputs nothing reads hangs off the folder that calls it, without a label. A click on a changed module goes to its section, with its own diagram. On a phone the map is an outline: each folder no changed folder calls, then the modules it calls, indented, each with the outputs it gets. With one folder changed, there is no map: its diagram says it all.
+
 In the list, each changed attribute shows its value before and after as a word diff (`src/infra/valueDiff.ts`): the words that changed are marked on each side, and a long value keeps only what surrounds a change.
 
 ## What may be destroyed or replaced
@@ -62,7 +64,8 @@ The pages are kept in `.cache/providers` and read as text. Nothing in the provid
 The tab's **How this works** says the same to the reader.
 
 - **What the provider does.** Whether a change updates in place, what a default resolves to, and what a different provider version does are only in `terraform plan`.
-- **Files the pull request doesn't change.** They aren't read. A resource they declare shows as a grey neighbour, known by its address alone. A resource in them that uses a changed one isn't shown, so "may follow" misses it.
+- **Files the pull request doesn't change.** They aren't read. A resource they declare shows as a grey neighbour, known by its address alone. A resource in them that uses a changed one isn't shown, so "may follow" misses it. A module call in such a file isn't seen either, so the module map misses its arrows, and a module declared there is known by its name, not its folder.
+- **Risks across modules.** "May follow" stays inside a folder. A module that reads an output of a replaced resource in another module isn't flagged.
 - **Values.** Variables, `tfvars`, the number of instances `count` and `for_each` make, and what is inside a called module are not evaluated.
 - **The docs' gaps.** The list is as good as the documentation. The docs name a nested block without its parents, so two blocks of the same name in one resource share their entries.
 
@@ -75,14 +78,16 @@ A pipeline that publishes its plan could turn these readings into facts. Nothing
 | `src/infra/terraform.ts` | `TerraformReader`: the changed files in, one `InfraModule` per directory out. |
 | `src/infra/blocks.ts` | Small readings of a block that need neither the parser nor the layout: what counts as changed, its rank by risk, its name. |
 | `src/infra/diagram.ts` | What the diagram draws, and where. |
+| `src/infra/modules.ts` | The module map: the folders, the modules they call, and the outputs that pass between them. |
 | `src/infra/lib/` | The HCL reader, the diff and the risk rules. |
 | `extension/src/review/infra.ts` | Loads the parser on first use and reads a comparison's files. |
 | `extension/src/ui/infra/` | The card, the tab and the diagram. |
 
 ## Checks
 
-- `src/infra/tests/terraform.test.ts` covers the diff and every risk rule against real HCL (`npm test`).
+- `src/infra/tests/terraform.test.ts` covers the diff and every risk rule against real HCL (`npm test`). `module-map.test.ts` covers the module map.
 - `extension/tests/infra.browser.js` opens demo pull request !472 in the write harness and checks the card, the tab, the order of the list, the sources shown, and that a pull request without Terraform gets neither (`npm run ext:demo`, `npm run ext:test:browser`, with `npm run ext:dev` running).
+- `extension/tests/infra-modules.browser.js` opens demo pull request !473 and checks the module map, a pick that leads to a module's section, and the phone outline.
 - `extension/tests/manifest.test.ts` checks the Terraform grammar is packaged.
 
-To see it locally, run `npm run ext:demo` and `npm run ext:dev`, then open pull request !472. Its files are in `fixtures/demo/infra-pr`.
+To see it locally, run `npm run ext:demo` and `npm run ext:dev`, then open pull request !472. Its files are in `fixtures/demo/infra-pr`. Pull request !473 changes three folders and shows the module map. Its files are in `fixtures/demo/infra-modules-pr`.

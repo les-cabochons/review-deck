@@ -16,6 +16,19 @@ export interface MapItem {
   /** Lines the item adds and removes, shown as counts and five squares. */
   adds?: number;
   dels?: number;
+  /** Lines listed under the title, one per change: the Infra view's module cards. The card grows to hold them. */
+  rows?: MapRow[];
+}
+
+/** One line of a card's list: `−/+ Storage account this`. */
+export interface MapRow {
+  /** The change's symbol, in its own column. */
+  mark: string;
+  text: string;
+  /** Written after `text` in a quieter monospace: an address or a name. */
+  name?: string;
+  /** A class for the mark's colour, such as `tone-replace`. */
+  tone?: string;
 }
 
 export interface MapNode extends MapItem {
@@ -72,13 +85,23 @@ const CORNER = 6;
 const MAX_TITLE = 34;
 /** Room the line counts and their five squares take on a card's second line. */
 const STATS_WIDTH = 112;
+/** A card with rows: its title and subtitle, then one row per line. */
+export const ROWS_TOP = 48;
+export const ROW_HEIGHT = 19;
+/** Where a row's text starts, after its mark. */
+export const ROW_TEXT = 46;
+
+/** A card's height before connectors: two lines of text, or those and its rows. */
+const baseHeight = (item: MapItem) => (item.rows?.length ? ROWS_TOP + item.rows.length * ROW_HEIGHT + 4 : CARD_HEIGHT);
 
 /** A title cut to fit its card: the full one is the card's tooltip. */
 export const boxTitle = (title: string) => (title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE - 1)}…` : title);
 
 const cardWidth = (item: MapItem) => {
   const stats = item.adds !== undefined ? STATS_WIDTH : 0;
-  return Math.max(170, Math.min(340, Math.max(Math.min(item.title.length, MAX_TITLE) * 7.2, (item.subtitle ?? "").length * 6.4 + stats) + 40));
+  // A row: its mark's column, its text at 11.5 px, a space, its name at 10.5 px monospace, and the right padding.
+  const rows = Math.max(0, ...(item.rows ?? []).map((r) => ROW_TEXT + (r.text.length + 1) * 6.8 + (r.name?.length ?? 0) * 6.5 + 14));
+  return Math.max(170, Math.min(340, Math.max(Math.min(item.title.length, MAX_TITLE) * 7.2 + 40, (item.subtitle ?? "").length * 6.4 + stats + 40, rows)));
 };
 
 /**
@@ -163,7 +186,7 @@ interface Hop {
 function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "height" | "nodes" | "edges" | "headings"> {
   const column = columnsOf(items.map((i) => i.id), edges);
   const slots = new Map<string, Slot>();
-  for (const item of items) slots.set(item.id, { id: item.id, item, column: column.get(item.id)!, order: 0, x: 0, y: 0, width: cardWidth(item), height: CARD_HEIGHT });
+  for (const item of items) slots.set(item.id, { id: item.id, item, column: column.get(item.id)!, order: 0, x: 0, y: 0, width: cardWidth(item), height: baseHeight(item) });
 
   // Every connector as hops between neighbouring columns, through pass-through slots where it spans more than one.
   const hops: Hop[] = [];
@@ -215,7 +238,7 @@ function lay(items: MapItem[], edges: Pair[]): Pick<RelationMap, "width" | "heig
   for (const slot of slots.values()) {
     if (!slot.item) continue;
     const ports = Math.max(hops.filter((h) => h.to === slot).length, hops.filter((h) => h.from === slot).length);
-    slot.height = Math.max(CARD_HEIGHT, 22 + ports * PORT_GAP);
+    slot.height = Math.max(baseHeight(slot.item), 22 + ports * PORT_GAP);
   }
 
   // Columns are stacked from the top and centred on the tallest.
@@ -305,17 +328,24 @@ export function layoutRelations(items: MapItem[], links: Link[], fit: { width: n
   const apartTop = drawn.length > 0 && drawn.length < items.length ? main.height + 4 : null;
   let x = MARGIN;
   let y = (apartTop ?? 0) + (apartTop === null ? MARGIN : 22);
+  /** The tallest card of the row being filled. */
+  let tall = 0;
   const apart: MapNode[] = [];
   for (const item of items.filter((i) => !linked.has(i.id))) {
-    const w = Math.max(130, Math.min(260, Math.min(item.title.length, MAX_TITLE) * 7.2 + 44));
+    // A card with rows keeps them, and its subtitle: they are what it says. The others shrink to their title.
+    const full = !!item.rows?.length;
+    const w = full ? cardWidth(item) : Math.max(130, Math.min(260, Math.min(item.title.length, MAX_TITLE) * 7.2 + 44));
+    const h = full ? baseHeight(item) : APART_HEIGHT;
     if (x > MARGIN && x + w > rowWidth - MARGIN) {
       x = MARGIN;
-      y += APART_HEIGHT + ROW_GAP / 2;
+      y += tall + ROW_GAP / 2;
+      tall = 0;
     }
-    apart.push({ ...item, subtitle: null, x, y, width: w, height: APART_HEIGHT });
+    apart.push({ ...item, subtitle: full ? item.subtitle : null, x, y, width: w, height: h });
+    tall = Math.max(tall, h);
     x += w + ROW_GAP;
   }
   const right = Math.max(main.width, ...apart.map((n) => n.x + n.width + MARGIN));
-  const bottom = apart.length ? y + APART_HEIGHT + MARGIN : main.height;
+  const bottom = apart.length ? y + tall + MARGIN : main.height;
   return { ...main, width: Math.ceil(right), height: Math.ceil(bottom), apart, apartTop };
 }
