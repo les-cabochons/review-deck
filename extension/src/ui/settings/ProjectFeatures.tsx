@@ -2,6 +2,7 @@ import { Toggle } from "azure-devops-ui/Toggle";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { describeAccess, enabledFor, FEATURE_NAMES, type Feature, FEATURES, locked, type OrganizationSettings, VisibilityNotSynced, withProject } from "../../data/access";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -12,6 +13,7 @@ import { SkeletonHtml } from "../SkeletonHtml";
  */
 export const ProjectFeatures: React.FC<{ host: AppHost }> = ({ host }) => {
   const [settings, setSettings] = React.useState<OrganizationSettings | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [status, setStatus] = React.useState<"saving" | "saved" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -22,12 +24,13 @@ export const ProjectFeatures: React.FC<{ host: AppHost }> = ({ host }) => {
       if (cancelled) return;
       setSettings(s);
       setCanManage(manage);
-    });
+    }, loadFailed("project's Deck and Changelog", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
   }, [host]);
 
+  if (loadError) return <LoadError message={loadError} />;
   if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.features} />;
 
   const change = (feature: Feature, on: boolean) => {

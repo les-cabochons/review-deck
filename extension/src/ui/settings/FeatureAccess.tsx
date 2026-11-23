@@ -15,6 +15,7 @@ import {
   withProject,
 } from "../../data/access";
 import { DropdownButton } from "../controls";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -40,6 +41,7 @@ const SEARCH_FROM = 8;
  */
 export const FeatureAccess: React.FC<{ host: AppHost }> = ({ host }) => {
   const [settings, setSettings] = React.useState<OrganizationSettings | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [projects, setProjects] = React.useState<{ id: string; name: string }[] | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [filter, setFilter] = React.useState("");
@@ -52,7 +54,7 @@ export const FeatureAccess: React.FC<{ host: AppHost }> = ({ host }) => {
       if (cancelled) return;
       setSettings(s);
       setCanManage(manage);
-    });
+    }, loadFailed("organization's Deck and Changelog", () => cancelled, setLoadError));
     host.organizationProjects().then(
       (list) => !cancelled && setProjects(list),
       (e: Error) => {
@@ -66,6 +68,7 @@ export const FeatureAccess: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [host]);
 
+  if (loadError) return <LoadError message={loadError} />;
   if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.orgFeatures} />;
 
   /** Saves, then shows or hides the hub in the projects affected (every project when `projectIds` is unset). */

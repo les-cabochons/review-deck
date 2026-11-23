@@ -3,6 +3,7 @@ import * as React from "react";
 import type { AppHost, ProjectSettings } from "../../app/host";
 import { fetchUsage, type Usage } from "../../review/backend";
 import { SETTINGS_BODIES } from "../../skeletons";
+import { LoadError, loadFailed } from "../settings/LoadError";
 import { SkeletonHtml } from "../SkeletonHtml";
 
 interface State {
@@ -25,6 +26,7 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
   const [state, setState] = React.useState<State | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -39,13 +41,15 @@ export const AiTitlesSetting: React.FC<{ host: AppHost; /** Show (disabled) even
           if (!cancelled) setState((s) => s && { ...s, usageFailed: true });
         },
       );
-    });
+    }, loadFailed("AI group titles", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
   }, [host]);
 
   // On the settings page, its place in gray until it loads; elsewhere it shows only once a backend answers.
+  // Elsewhere than the settings page, a failed load leaves it hidden, as it is without a backend.
+  if (loadError) return alwaysShow ? <LoadError message={loadError} /> : null;
   if (!state) return alwaysShow ? <SkeletonHtml html={SETTINGS_BODIES.ai} /> : null;
   const on = state.allowed && state.settings.aiTitles;
   // Turning titles on needs the backend to confirm a model; turning them off is always allowed.

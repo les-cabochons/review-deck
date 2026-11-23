@@ -4,6 +4,7 @@ import { Toggle } from "azure-devops-ui/Toggle";
 import * as React from "react";
 import { invalidTrunkPattern, shortBranch } from "../../../../src/stack/branches";
 import type { AppHost, ProjectSettings } from "../../app/host";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -23,6 +24,7 @@ const toRows = (patterns: string[]): Row[] => patterns.map((value) => ({ id: ++r
  */
 export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
   const [settings, setSettings] = React.useState<ProjectSettings | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [hasBackend, setHasBackend] = React.useState(false);
   const [rows, setRows] = React.useState<Row[]>([]);
@@ -41,7 +43,7 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
       setRows(toRows(s.trunkBranches));
       setCanManage(manage);
       setHasBackend(!!backend);
-    });
+    }, loadFailed("stacked pull requests", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
@@ -53,6 +55,7 @@ export const StackSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     focusRow.current = null;
   });
 
+  if (loadError) return <LoadError message={loadError} />;
   if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.stacks} />;
 
   const save = async (change: Partial<ProjectSettings>) => {

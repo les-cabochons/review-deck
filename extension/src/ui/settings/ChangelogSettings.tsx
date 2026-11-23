@@ -3,6 +3,7 @@ import * as React from "react";
 import type { AppHost } from "../../app/host";
 import { DEFAULT_TAG_CONVENTION, type Pipeline, type ReleaseCatalog, type ReleaseSettings, type RepoReleaseSettings, type Repository } from "../../data/releases";
 import { DropdownButton } from "../controls";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -14,6 +15,7 @@ import { SkeletonHtml } from "../SkeletonHtml";
 export const ChangelogSettings: React.FC<{ host: AppHost }> = ({ host }) => {
   const [catalog, setCatalog] = React.useState<ReleaseCatalog | null>(null);
   const [settings, setSettings] = React.useState<ReleaseSettings | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [convention, setConvention] = React.useState("");
   const [repos, setRepos] = React.useState<Repository[]>([]);
@@ -35,7 +37,7 @@ export const ChangelogSettings: React.FC<{ host: AppHost }> = ({ host }) => {
       setCanManage(manage);
       setRepos(all);
       setRepoId(all[0]?.id ?? null);
-    });
+    }, loadFailed("Changelog", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
@@ -58,6 +60,7 @@ export const ChangelogSettings: React.FC<{ host: AppHost }> = ({ host }) => {
     };
   }, [repoId, settings === null, catalog]);
 
+  if (loadError) return <LoadError message={loadError} />;
   if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.changelog} />;
 
   const save = (releases: ReleaseSettings) => {

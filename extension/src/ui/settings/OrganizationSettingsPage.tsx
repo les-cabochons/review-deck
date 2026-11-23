@@ -4,6 +4,7 @@ import type { AppHost } from "../../app/host";
 import type { OrganizationSettings } from "../../data/access";
 import { BackendSetting } from "./BackendSetting";
 import { FeatureAccess } from "./FeatureAccess";
+import { LoadError, loadFailed } from "./LoadError";
 import { SaveStatus } from "./SaveStatus";
 import { SETTINGS_BODIES } from "../../skeletons";
 import { SkeletonHtml } from "../SkeletonHtml";
@@ -45,6 +46,7 @@ const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
   const [canManage, setCanManage] = React.useState(false);
   const [status, setStatus] = React.useState<"saving" | "saved" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -52,12 +54,13 @@ const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
       if (cancelled) return;
       setSettings(s);
       setCanManage(manage);
-    });
+    }, loadFailed("organization's AI group titles", () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
   }, [host]);
 
+  if (loadError) return <LoadError message={loadError} />;
   if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.orgAi} />;
 
   const change = (aiTitles: boolean) => {
