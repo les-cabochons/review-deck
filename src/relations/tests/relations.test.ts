@@ -123,6 +123,11 @@ test("Given many changes inside one function of one file, then the concern's flo
     ["make", "env.ts", 1],
   ]);
   assert.equal(flow.links.length, 2);
+  // The arrow from the cleanup.ts box involves only the changes that use make there, not the whole box.
+  const { pairKey } = await import("../flow.js");
+  const cleanup = flow.boxes.find((b) => b.subtitle === "cleanup.ts · 3 changes")!.id;
+  const layer = flow.boxes.find((b) => b.title === "StorageLayer")!.id;
+  assert.deepEqual(flow.arrowHunks[pairKey(cleanup, layer)], ["src/cleanup.ts#0", "src/cleanup.ts#1", "src/cleanup.ts#2", "src/layer.ts#0"]);
   assert.equal(flow.tooMany, false);
   assert.equal(flow.unlinked, 0);
 });

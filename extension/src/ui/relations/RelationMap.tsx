@@ -13,6 +13,10 @@ interface Props {
   /** Caption of the row of items without a link. */
   apartCaption: string;
   onSelect?: (id: string) => void;
+  /** An arrow was clicked, or activated with Enter or Space. Without it, arrows only have their tooltip. */
+  onSelectEdge?: (from: string, to: string) => void;
+  /** The box id, or the `pairKey` of an arrow's two boxes, drawn as selected. */
+  selected?: string | null;
   /** Height the map may take before it scrolls. */
   height: number;
   label: string;
@@ -27,7 +31,7 @@ let maps = 0;
  * src/relations/diagram.ts. An arrow goes from what defines a name to what uses it, both ways when each uses the
  * other. Loose links (member names only) aren't drawn.
  */
-const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, onSelect, height, label }) => {
+const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, onSelect, onSelectEdge, selected, height, label }) => {
   const [box, setBox] = React.useState<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(0);
   const [id] = React.useState(() => `relmap${++maps}`);
@@ -54,8 +58,27 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
               <path className="relation-arrowhead" d="M0,0 L10,5 L0,10 z" />
             </marker>
           </defs>
-          {map.edges.map((edge) => (
-            <g key={`${edge.from}>${edge.to}`} className="relation-edge">
+          {map.edges.map((edge) => {
+            const select = onSelectEdge ? () => onSelectEdge(edge.from, edge.to) : undefined;
+            const key = edge.from < edge.to ? `${edge.from}\u0001${edge.to}` : `${edge.to}\u0001${edge.from}`;
+            return (
+            <g
+              key={`${edge.from}>${edge.to}`}
+              className={cx("relation-edge", select && "selectable", selected === key && "selected")}
+              tabIndex={select ? 0 : undefined}
+              role={select ? "button" : undefined}
+              aria-pressed={select ? selected === key : undefined}
+              aria-label={select ? `${edgeTooltip(edge, titles)}. Show only these changes.` : undefined}
+              onClick={select}
+              onKeyDown={
+                select &&
+                ((e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  select();
+                })
+              }
+            >
               <title>{edgeTooltip(edge, titles)}</title>
               {/* The line is 1.5 px: a wide invisible copy under it is what the pointer finds. */}
               <path className="relation-edge-hit" d={smooth(edge.points)} />
@@ -66,9 +89,10 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
                 </text>
               )}
             </g>
-          ))}
+            );
+          })}
           {map.nodes.map((node) => (
-            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} />
+            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} selected={selected === node.id} />
           ))}
           {map.apartTop !== null && (
             <text className="relation-apart-caption" x={12} y={map.apartTop + 14}>
@@ -85,11 +109,12 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
 };
 export default RelationMap;
 
-const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart?: boolean; onSelect?: (id: string) => void }> = ({
+const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart?: boolean; selected?: boolean; onSelect?: (id: string) => void }> = ({
   node,
   color,
   badge,
   apart,
+  selected,
   onSelect,
 }) => {
   const { x, y, width, height } = node;
@@ -97,7 +122,8 @@ const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart
   const left = x + (badge ? 30 : 10);
   return (
     <g
-      className={cx("relation-node", apart && "apart", select && "selectable")}
+      className={cx("relation-node", apart && "apart", select && "selectable", selected && "selected")}
+      aria-pressed={select ? !!selected : undefined}
       style={color ? ({ "--node-color": color } as React.CSSProperties) : undefined}
       tabIndex={select ? 0 : undefined}
       role={select ? "button" : undefined}

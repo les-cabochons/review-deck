@@ -5454,6 +5454,32 @@ span.artifact-toggle {
 .relation-edge:hover text {
   fill: var(--link);
 }
+.relation-edge.selectable {
+  cursor: pointer;
+}
+.relation-edge.selectable:focus {
+  outline: none;
+}
+.relation-edge.selected path:not(.relation-edge-hit),
+.relation-edge.selectable:focus-visible path:not(.relation-edge-hit) {
+  stroke: var(--link);
+  stroke-width: 3;
+}
+.relation-edge.selected text {
+  fill: var(--link);
+  font-weight: 700;
+}
+.relation-node.selected rect {
+  stroke-width: 3.5;
+  fill: color-mix(in srgb, var(--node-color, var(--accent)) 14%, var(--card-bg, var(--surface)));
+}
+.flow-focus {
+  margin: 0 14px 8px;
+  padding: 5px 10px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  font-size: 12.5px;
+}
 .relation-arrowhead {
   fill: var(--fg2);
 }

@@ -19,7 +19,15 @@ export interface ConcernFlowMap {
   tooMany: boolean;
   /** Changes of the concern in no box, test files aside: nothing links them. */
   unlinked: number;
+  /**
+   * The changes behind each arrow, by `pairKey` of its two boxes: the change that defines a name and the change that
+   * uses it, for every name the arrow stands for. An arrow between two big boxes may involve only a few of their changes.
+   */
+  arrowHunks: Record<string, string[]>;
 }
+
+/** The key of an arrow between boxes `a` and `b`, whichever way it points. */
+export const pairKey = (a: string, b: string) => (a < b ? `${a}\u0001${b}` : `${b}\u0001${a}`);
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -54,10 +62,13 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
     };
   });
   const merged = new Map<string, Link>();
+  const arrowHunks: Record<string, string[]> = {};
   for (const l of links) {
     const from = boxOf.get(l.from);
     const to = boxOf.get(l.to);
     if (!from || !to || from === to) continue;
+    const involved = (arrowHunks[pairKey(from, to)] ??= []);
+    for (const id of [l.from, l.to]) if (!involved.includes(id)) involved.push(id);
     const key = `${from}\u0001${to}`;
     const link = merged.get(key) ?? { from, to, symbols: [] };
     for (const s of l.symbols) if (!link.symbols.includes(s)) link.symbols.push(s);
@@ -70,5 +81,7 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
     links: [...merged.values()],
     tooMany: shown.length > MAX_FLOW_BOXES,
     unlinked: group.hunkIds.filter((id) => !hunks.get(id)?.isTest).length - shown.reduce((n, b) => n + b.hunkIds.length, 0),
+    // In diff order, like the boxes' changes.
+    arrowHunks: Object.fromEntries(Object.entries(arrowHunks).map(([key, ids]) => [key, group.hunkIds.filter((id) => ids.includes(id))])),
   };
 }

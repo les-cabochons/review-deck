@@ -60,22 +60,34 @@ async page => {
     await wait(() => document.querySelector('.summary-groups'), 'The saved guide did not load');
     [...document.querySelectorAll('.pr-tabs [role=tab]')].find(t => t.textContent.startsWith('Files')).click();
     await wait(() => document.querySelector('.concern-flow .relation-map svg'), 'No concern showed how its changes connect');
-    const node = document.querySelector('.concern-flow .relation-node.selectable');
-    const target = node.querySelector('title').textContent.split('\n')[0];
-    node.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await wait(() => document.querySelector('.hunk-card.flash'), `A click on "${target}" did not point at its change`);
+    // A box shows only its changes; a second click, all of them. An arrow shows only the changes behind it.
+    const section = document.querySelector('.concern-flow').closest('.group-section');
+    const cards = () => section.querySelectorAll('.hunk-card').length;
+    const all = cards();
+    const box = [...section.querySelectorAll('.concern-flow .relation-node.selectable')].find(n => /· \d+ changes/.test(n.textContent));
+    const count = Number(/· (\d+) changes/.exec(box.textContent)[1]);
+    box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wait(() => cards() === count, `A box of ${count} changes left ${cards()} of ${all} showing`);
+    assert(section.querySelector('.flow-focus')?.textContent.startsWith(`Showing ${count} changes of ${all}`), `Focus line: "${section.querySelector('.flow-focus')?.textContent}"`);
+    assert(box.classList.contains('selected'), 'The picked box is not drawn as picked');
+    box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wait(() => cards() === all && !section.querySelector('.flow-focus'), 'A second click did not show every change again');
+    const arrow = section.querySelector('.concern-flow .relation-edge.selectable');
+    arrow.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wait(() => section.querySelector('.flow-focus'), 'An arrow click did not pick its changes');
+    assert(cards() >= 2 && cards() < all, `An arrow left ${cards()} of ${all} changes showing`);
+    section.querySelector('.flow-focus .link-button').click();
+    await wait(() => cards() === all, 'Show all did not show every change again');
     // An arrow answers the pointer anywhere along it, and its tooltip names both ends.
     const edge = document.querySelector('.concern-flow .relation-edge');
-    const tooltip = edge.querySelector('title').textContent;
+    const tooltip = edge.querySelector(':scope > title').textContent;
     assert(/ uses |use each other/.test(tooltip) && !tooltip.includes('\u0000') && !tooltip.includes('#'), `Arrow tooltip: "${tooltip}"`);
     const hit = edge.querySelector('.relation-edge-hit');
-    const box = hit.getBoundingClientRect();
     const middle = hit.getPointAtLength(hit.getTotalLength() / 2);
     const svg = hit.ownerSVGElement.getBoundingClientRect();
     const scale = svg.width / hit.ownerSVGElement.viewBox.baseVal.width;
     const found = document.elementFromPoint(svg.left + middle.x * scale + 4 * scale, svg.top + middle.y * scale);
     assert(found?.closest('.relation-edge') === edge, `The pointer 4 px off the line found ${found?.outerHTML.slice(0, 80)}`);
-    void box;
     // Every box: the function, then its file. No "start here", and no `make` linking two files.
     const subtitles = [...document.querySelectorAll('.concern-flow .relation-node-subtitle')].map(t => t.textContent);
     assert(subtitles.length > 0 && subtitles.every(t => /^[\w.-]+\.\w+( · \d+ changes)?$/.test(t)), `A box's second line isn't its file: ${subtitles}`);

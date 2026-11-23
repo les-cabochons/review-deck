@@ -1,21 +1,37 @@
 import * as React from "react";
 import type { Group, ReviewResult } from "../../../../src/core/types";
-import { concernFlow } from "../../../../src/relations/flow";
+import { concernFlow, pairKey } from "../../../../src/relations/flow";
 import { plural } from "../util";
 import { useDiagramsShown } from "./diagramsShown";
 import { DiagramControls, HowToRead } from "./HowToRead";
 
 const RelationMap = React.lazy(() => import("./RelationMap"));
 
+/** What the reader picked in a concern's map: a box or an arrow, and the changes it stands for. */
+export interface FlowFocus {
+  /** The box id, or the arrow's `pairKey`. */
+  key: string;
+  /** "make", or "sentence → make", for the line above the changes. */
+  label: string;
+  hunkIds: string[];
+}
+
 /**
  * Inside a concern of the Guided view: which of its changes use names another one defines, one box per function and
- * file (src/relations/flow.ts). Clicking a box goes to its first change. Past
+ * file (src/relations/flow.ts). Clicking a box shows only its changes, and clicking an arrow only the changes behind it:
+ * the change that defines each name and the one that uses it. Clicking it again shows them all. Past
  * MAX_FLOW_BOXES boxes, a line says so instead of a map nobody can read. None of it shows once the reader hid the
  * diagrams (diagramsShown.ts).
  */
-export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: string }> = ({ group, result, color }) => {
+export const ConcernFlow: React.FC<{
+  group: Group;
+  result: ReviewResult;
+  color: string;
+  focus: FlowFocus | null;
+  onFocus: (focus: FlowFocus | null) => void;
+}> = ({ group, result, color, focus, onFocus }) => {
   const flow = React.useMemo(() => concernFlow(group, result.relations, result.hunks), [group, result]);
-  const first = React.useMemo(() => new Map(flow.boxes.map((b) => [b.id, b.hunkIds[0]])), [flow]);
+  const boxes = React.useMemo(() => new Map(flow.boxes.map((b) => [b.id, b])), [flow]);
   const [shown, setShown] = useDiagramsShown();
   const [reading, setReading] = React.useState(false);
   if (!shown || flow.boxes.length < 2) return null;
@@ -26,11 +42,14 @@ export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: 
         How these changes connect: {flow.boxes.length} linked places, too many to draw{others}
       </p>
     );
-  const show = (box: string) => {
-    const card = document.getElementById(`hunk-${first.get(box)}`);
-    card?.scrollIntoView({ behavior: "smooth", block: "start" });
-    card?.classList.add("flash");
-    setTimeout(() => card?.classList.remove("flash"), 1500);
+  const toggle = (next: FlowFocus) => onFocus(focus?.key === next.key ? null : next);
+  const showBox = (id: string) => {
+    const box = boxes.get(id)!;
+    toggle({ key: id, label: box.title, hunkIds: box.hunkIds });
+  };
+  const showArrow = (from: string, to: string) => {
+    const key = pairKey(from, to);
+    toggle({ key, label: `${boxes.get(from)!.title} → ${boxes.get(to)!.title}`, hunkIds: flow.arrowHunks[key] ?? [] });
   };
   return (
     <div className="concern-flow">
@@ -48,7 +67,9 @@ export const ConcernFlow: React.FC<{ group: Group; result: ReviewResult; color: 
           links={flow.links}
           color={() => color}
           apartCaption=""
-          onSelect={show}
+          onSelect={showBox}
+          onSelectEdge={showArrow}
+          selected={focus?.key ?? null}
           height={260}
           label={`How the changes in concern ${group.title} connect`}
         />

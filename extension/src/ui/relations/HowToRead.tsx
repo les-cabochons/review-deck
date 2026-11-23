@@ -41,7 +41,8 @@ export const HowToRead: React.FC<{ kind: "concerns" | "changes" }> = ({ kind }) 
           <li>Start with the boxes nothing points into: they don't depend on the other changes.</li>
           <li>Follow the arrows. A box many arrows point into is where the pieces come together: read it last.</li>
           <li>A box with many arrows going out is something much of the change relies on: an error there spreads.</li>
-          <li>Click a box to go to its first change. "Other changes not linked" are in the diff below, but not in the map.</li>
+          <li>Click a box to show only its changes, or an arrow to show only the changes behind it. Click it again, or Show all, to see them all.</li>
+          <li>"Other changes not linked" are in the diff below, but not in the map.</li>
         </ul>
       </>
     )}

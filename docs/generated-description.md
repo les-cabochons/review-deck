@@ -14,7 +14,7 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 - Every box reads the same way: the function as its title, then its file, and the number of changes past one.
 - An arrow's label gives only the names the boxes don't already show: no `StorageCleanup` on an arrow from the box `StorageCleanup`.
 - Past 12 boxes, a line gives the count instead of a map nobody can read.
-- Clicking a box scrolls to its first change.
+- Clicking a box shows only its changes. Clicking an arrow shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same box or arrow again also shows them all.
 
 ## Reading and hiding the diagrams
 

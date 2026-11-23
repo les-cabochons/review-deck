@@ -14,7 +14,7 @@ import { cx, dirname, plural } from "./util";
 import { PierreTree } from "./pierre/PierreTree";
 import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
-import { ConcernFlow } from "./relations/ConcernFlow";
+import { ConcernFlow, type FlowFocus } from "./relations/ConcernFlow";
 import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
@@ -828,8 +828,11 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   const { groupCollapsed, setGroupCollapsed } = useFileReview();
   const open = !groupCollapsed(group.id, group.hunkIds, group.kind === "mechanical");
   const setOpen = (next: boolean) => setGroupCollapsed(group.id, !next);
-  const hunks = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
-  const files = new Set(hunks.map((h) => h.file.path)).size;
+  /** A box or an arrow picked in the concern's map: only its changes show, until it is picked again or cleared. */
+  const [focus, setFocus] = React.useState<FlowFocus | null>(null);
+  const all = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
+  const hunks = focus ? all.filter((h) => focus.hunkIds.includes(h.hunk.id)) : all;
+  const files = new Set(all.map((h) => h.file.path)).size;
   return (
     <section
       className={cx("group-section", `kind-${group.kind}`)}
@@ -845,7 +848,7 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
           <span className="gtitle">{group.title}</span>
           <TitleSourceIcon group={group} />
           <span className="count">
-            {plural(hunks.length, "change")} · {plural(files, "file")}
+            {plural(all.length, "change")} · {plural(files, "file")}
           </span>
         </button>
         <ViewedCheckbox hunkIds={group.hunkIds} label={`Mark concern ${group.title} as viewed`} onChange={(checked) => setOpen(!checked)} />
@@ -854,7 +857,17 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
         <>
           {/* "Other changes" has no rationale worth reading. Guides saved before it was dropped still hold one. */}
           {group.rationale && group.kind !== "misc" && <p className="rationale">{group.rationale}</p>}
-          {group.kind === "semantic" && <ConcernFlow group={group} result={review.result} color={groupColor(review.result.groups, group)} />}
+          {group.kind === "semantic" && (
+            <ConcernFlow group={group} result={review.result} color={groupColor(review.result.groups, group)} focus={focus} onFocus={setFocus} />
+          )}
+          {focus && (
+            <p className="flow-focus" role="status">
+              Showing {plural(hunks.length, "change")} of {all.length}: <strong>{focus.label}</strong> ·{" "}
+              <button className="link-button" onClick={() => setFocus(null)}>
+                Show all
+              </button>
+            </p>
+          )}
           {hunks.map((h) => (
             <HunkCard key={h.hunk.id} info={h} mode={mode} threads={fileThreads.get(h.file.path) ?? []}
               showFileThreads={firstCards.has(h.hunk.id)} viewUrl={viewUrl(h.file)} />
