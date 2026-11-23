@@ -145,3 +145,17 @@ test("two locals that meet again still lead to the module that reads them", () =
   assert.ok(links.includes("modules/storage > modules/app"), `${links}`);
   assert.ok(!links.includes("modules/storage > envs/prod"), `A branch fell back to the folder: ${links}`);
 });
+
+test("locals that keep branching and meeting are followed once each, not once per path", () => {
+  // Each local reads the two before it: 2^60 paths if each were walked, one link in the end.
+  const locals = Array.from({ length: 60 }, (_, i) => (i < 2 ? `  l${i} = module.storage.id` : `  l${i} = "\${local.l${i - 1}}\${local.l${i - 2}}"`));
+  const root = `module "storage" {\n  source = "../../modules/storage"\n}\nlocals {\n${locals.join("\n")}\n}\nmodule "app" {\n  source = "../../modules/app"\n  id     = local.l59\n}\n`;
+  const modules = reader.diff([
+    { path: "envs/prod/main.tf", old: null, new: root },
+    { path: "modules/app/variables.tf", old: null, new: 'variable "id" {}\n' },
+  ]);
+  const started = performance.now();
+  const links = moduleMap(modules).links.map((l) => `${l.from} > ${l.to}`);
+  assert.ok(performance.now() - started < 1000, "The map took more than a second");
+  assert.ok(links.includes("modules/storage > modules/app"), `${links}`);
+});

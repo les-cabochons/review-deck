@@ -105,27 +105,40 @@ export function moduleMap(modules: InfraModule[]): ModuleMap {
     // What reads each block here, to follow an output through locals (`local.id = module.storage.id`).
     const readers = new Map<string, InfraEdge[]>();
     for (const edge of module.edges) (readers.get(edge.from) ?? readers.set(edge.from, []).get(edge.from)!).push(edge);
+    type End = { to: string; status: InfraEdge["status"] };
+    /** By local and path state: locals that branch and meet again are expanded once, not once per path. */
+    const known = new Map<string, End[]>();
+    /** The states being expanded: met again, they are a cycle, which Terraform rejects anyway. */
+    const open = new Set<string>();
     /**
      * Where a value read by `address` ends up: the modules that read it, through any locals, or else this folder.
      * `path` says on which sides every reference on the way exists: a path that mixes a removed reference with an
-     * added one never existed, and leads nowhere. `seen` is the path's own locals, against a cycle.
+     * added one never existed, and leads nowhere.
      */
-    const destinations = (address: string, path: Path, seen: ReadonlySet<string>): { to: string; status: InfraEdge["status"] }[] => {
+    const destinations = (address: string, path: Path): End[] => {
       if (!address.startsWith("local.")) return [{ to: target.get(address) ?? module.dir, status: statusOf(path) }];
-      if (seen.has(address)) return [];
+      const key = `${address}\u0000${Number(path.base)}${Number(path.head)}${Number(path.touched)}`;
+      const done = known.get(key);
+      if (done) return done;
+      if (open.has(key)) return [];
+      open.add(key);
       const next = (readers.get(address) ?? []).flatMap((edge) => {
         const further = along(path, edge.status);
-        return further.base || further.head ? destinations(edge.to, further, new Set(seen).add(address)) : [];
+        return further.base || further.head ? destinations(edge.to, further) : [];
       });
+      open.delete(key);
       // A local nothing here reads is used in a file the PR doesn't change, or nowhere: it stays in this folder.
-      return next.length > 0 ? next : [{ to: module.dir, status: statusOf(path) }];
+      const ends = next.length > 0 ? next : [{ to: module.dir, status: statusOf(path) }];
+      const unique = [...new Map(ends.map((end) => [`${end.to}\u0000${end.status}`, end])).values()];
+      known.set(key, unique);
+      return unique;
     };
     const linked = new Set<string>();
     for (const edge of module.edges) {
       const from = target.get(edge.from);
       if (from === undefined) continue;
       const start = along({ base: true, head: true, touched: false }, edge.status);
-      for (const end of destinations(edge.to, start, new Set())) link(from, end.to, edge.outputs ?? [], end.status);
+      for (const end of destinations(edge.to, start)) link(from, end.to, edge.outputs ?? [], end.status);
       linked.add(edge.from);
     }
     // A module whose outputs nothing here reads still hangs off the folder that calls it.
