@@ -528,11 +528,11 @@ test("Given a rejected merge type check before a merge type is picked, then it d
   assert.deepEqual(unmetPolicies([MERGE_TYPE_CHECK, FAILED_BUILD].map(policyStatus)).map((p) => p.name), ["Build"]);
 });
 
-test("Given a local PR whose merge type check is rejected, when completing with an allowed type, then it merges like Azure DevOps", async () => {
+test("Given a local PR whose merge type check is rejected, when completing, then the check doesn't stop the merge", async () => {
   const snap = withHead();
   snap.policies = [{ ...MERGE_TYPE_CHECK, status: "rejected" } as unknown as PrSnapshot["policies"][number]];
   const source = new MockPrSource(snap);
-  await source.actions.complete({ ...SQUASH, mergeStrategy: "rebase" }, "head");
+  await source.actions.complete(SQUASH, "head");
   await source.load();
   assert.equal((await source.load()).pr.status, "completed");
 });
