@@ -18,6 +18,16 @@ In **Files**, a concern of three changes or more whose changes use each other's 
 - Past 12 cards, a line gives the count instead of a map nobody can read. The outline has no such limit.
 - Clicking a card shows only its changes. Clicking a connector, or a row of the outline, shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same card or connector again also shows them all. The changes left out are hidden, not removed, so a comment being typed on one of them is kept. Going to a hidden change from the navigator or a comment's link shows them all again.
 
+## Moving around a diagram
+
+Every diagram, these and the Infra tab's, sits on a canvas the reader moves like draw.io (`extension/src/ui/relations/DiagramCanvas.tsx`):
+
+- Press anywhere and drag to move it. A press that doesn't move clicks what is under it, so cards and connectors still work.
+- Ctrl (or ⌘) and the wheel, or a trackpad pinch, zoom around the pointer. The plain wheel still scrolls the page.
+- The −, + and Fit buttons zoom around the middle and put it back. With the canvas focused, the arrow keys move it, + and − zoom, and 0 fits it.
+- Tabbing to a card the canvas has moved out of sight brings it back in.
+- It opens fitted to its width, never below 75%. Part of it always stays in sight, however far it is dragged.
+
 ## Reading and hiding the diagrams
 
 - **How to read it**, beside each diagram, opens a full explanation above it: what a card and a connector mean, how to use the map while reviewing, and what it can't tell (`extension/src/ui/relations/HowToRead.tsx`).

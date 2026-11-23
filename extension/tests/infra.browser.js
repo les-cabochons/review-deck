@@ -41,7 +41,7 @@ async page => {
 
   await page.evaluate(async () => {
     const { wait, assert, text, rows } = check;
-    await wait(() => document.querySelector('.infra-tab .infra-diagram svg'), 'The Infra tab did not draw its diagram');
+    await wait(() => document.querySelector('.infra-tab .relation-map svg'), 'The Infra tab did not draw its diagram');
     assert(location.hash === '#infra', `The card opened ${location.hash}`);
     assert(text('.infra-source').includes('No terraform plan is attached'), 'The tab did not say no plan is attached');
 
@@ -56,12 +56,35 @@ async page => {
     assert(queue?.badges.join() === 'added', `A resource the pull request adds carried a risk: ${JSON.stringify(queue)}`);
 
     // The diagram draws the changed resources, and a click on one leads to its row.
-    const drawn = [...document.querySelectorAll('.infra-tab .infra-node')].map(n => n.querySelector('title').textContent);
+    const drawn = [...document.querySelectorAll('.infra-tab .relation-node')].map(n => n.querySelector('title').textContent);
+    // In the relations map's columns: what the account defines on the left, what uses it on the right.
+    const headings = [...document.querySelectorAll('.infra-tab .relation-heading')].map(h => h.textContent);
+    assert(headings.join() === 'Defined here,Uses them', `Column headings: ${headings}`);
+    // The values' changed words are marked, like a diff.
+    const marks = [...document.querySelectorAll('.infra-attributes del, .infra-attributes ins')].map(m => `${m.tagName}:${m.textContent}`);
+    assert(marks.includes('DEL:Standard') && marks.includes('INS:Premium'), `The tier's change is not marked: ${marks}`);
     assert(drawn.some(t => t.startsWith('azurerm_storage_account.uploads: replace likely')), `The replaced account is not drawn: ${drawn}`);
     assert(!drawn.some(t => t.startsWith('azurerm_resource_group.this')), 'An unrelated neighbour is drawn');
   });
 
-  await page.getByRole('button', { name: 'azurerm_storage_account.uploads, replace likely. Show details.' }).press('Enter');
+  // Dragging the canvas moves the diagram, and the drag picks nothing, even when it starts on a card.
+  const canvas = page.locator('.infra-tab .diagram-canvas');
+  const card = await page.locator('.infra-tab .relation-node.tone-replace .relation-card').boundingBox();
+  const before = await page.locator('.infra-tab .diagram-canvas-content').evaluate(c => c.style.transform);
+  await page.mouse.move(card.x + 20, card.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(card.x - 60, card.y + 40, { steps: 6 });
+  await page.mouse.up();
+  await page.evaluate(async before => {
+    const { assert } = check;
+    const after = document.querySelector('.infra-tab .diagram-canvas-content').style.transform;
+    assert(after !== before, `Dragging did not move the diagram: ${after}`);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert(!document.querySelector('.infra-row.flash'), 'A drag that started on a card picked it');
+  }, before);
+  await canvas.locator('button', { hasText: 'Fit' }).click();
+
+  await page.getByRole('button', { name: 'azurerm_storage_account.uploads: replace likely. Show it.' }).press('Enter');
   await page.evaluate(async () => {
     const { wait, assert, text } = check;
     const row = 'infra-0-azurerm_storage_account.uploads';

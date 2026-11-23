@@ -13,7 +13,9 @@ Everything is read in the browser from the files the review already holds. Revie
 - References between blocks (`azurerm_resource_group.this.name`) are the diagram's arrows. An arrow is coloured when the reference was added, removed, or sits on a changed line.
 - Each directory is one module, as for Terraform. Two directories with the same addresses don't mix.
 
-The diagram draws the changed resources, data sources and modules, plus what the change involves around them: what a changed block uses through a changed line, what uses a changed block, and the changed variables, locals and outputs wired to them (`src/infra/diagram.ts`, laid out with [dagre](https://github.com/dagrejs/dagre)).
+The diagram draws the changed resources, data sources and modules, plus what the change involves around them: what a changed block uses through a changed line, what uses a changed block, and the changed variables, locals and outputs wired to them (`src/infra/diagram.ts`). It uses the same map as the change diagrams (`docs/generated-description.md`): columns from left to right, what is used before what uses it, square connectors, on a canvas the reader drags. Each card has its state's colour, border and symbol, and a connector is green when the pull request adds the reference, red and dashed when it removes it, and amber when the line holding it changed.
+
+In the list, each changed attribute shows its value before and after as a word diff (`src/infra/valueDiff.ts`): the words that changed are marked on each side, and a long value keeps only what surrounds a change.
 
 ## What may be destroyed or replaced
 

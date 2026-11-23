@@ -4918,119 +4918,74 @@ span.artifact-toggle {
   margin: 0 0 8px;
 }
 
-/* The diagram */
-.infra-diagram {
-  overflow: auto;
-  padding: 4px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  --diagram-bg: var(--surface-2);
+/* The diagram: the relations map (ui/relations/RelationMap.tsx), with each card and connector in its state's colours. */
+.infra-diagram-empty {
+  margin: 0;
+  padding: 12px;
 }
-.infra-diagram.compact {
-  overflow: hidden;
+.infra-card-thumb .relation-map {
   border: 0;
   background: none;
   display: flex;
   justify-content: center;
   pointer-events: none;
 }
-.infra-diagram svg {
-  display: block;
-}
-.infra-diagram-empty {
-  margin: 0;
-  padding: 12px;
-}
-.infra-node rect {
-  fill: var(--card-bg, var(--surface));
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-.infra-node-title {
-  fill: var(--fg);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.infra-node.chip .infra-node-title {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 400;
-}
-.infra-node-address {
-  fill: var(--fg2);
-  font-family: var(--mono);
-  font-size: 10.5px;
-}
-.infra-node.tone-same .infra-node-title {
-  fill: var(--fg2);
-  font-weight: 400;
-}
-.infra-node:not(.tone-same) rect {
-  fill: color-mix(in srgb, var(--tone) 12%, var(--card-bg, var(--surface)));
+.relation-node[class*="tone-"]:not(.tone-same) .relation-card {
+  fill: color-mix(in srgb, var(--tone) 10%, var(--card-bg, var(--surface)));
   stroke: var(--tone);
-  stroke-width: 2;
+  stroke-width: 1.5;
+}
+.relation-node[class*="tone-"] .relation-bar {
+  fill: var(--tone, var(--fg3));
+}
+.relation-node.tone-same .relation-node-title {
+  fill: var(--fg2);
+  font-weight: 400;
+}
+.relation-node:not(.tone-same)[class*="tone-"] .relation-node-title {
+  fill: color-mix(in srgb, var(--tone) 62%, var(--fg));
 }
 /* Going away: dashed. Replaced: the heaviest line. A guess about a dependent: dotted. */
-.infra-node.tone-destroy rect,
-.infra-node.tone-removed rect {
+.relation-node.tone-destroy .relation-card,
+.relation-node.tone-removed .relation-card {
   stroke-dasharray: 7 4;
 }
-.infra-node.tone-replace rect {
-  stroke-width: 3;
+.relation-node.tone-replace .relation-card {
+  stroke-width: 2.5;
 }
-.infra-node.tone-follows rect {
+.relation-node.tone-follows .relation-card {
   stroke-dasharray: 2 3;
 }
-.infra-node.selectable {
-  cursor: pointer;
-}
-.infra-node.selectable:focus {
-  outline: none;
-}
-.infra-node.selectable:focus-visible rect {
-  stroke: var(--focus-border-color, var(--accent));
-  stroke-width: 3;
-  stroke-dasharray: none;
-}
-.infra-edge path {
-  fill: none;
-  stroke: var(--fg3);
-  stroke-width: 1.2;
-}
-.infra-edge.added path {
+.relation-edge.added path:not(.relation-edge-hit) {
   stroke: var(--ok);
   stroke-width: 2;
 }
-.infra-edge.removed path {
+.relation-edge.removed path:not(.relation-edge-hit) {
   stroke: var(--err);
   stroke-width: 2;
   stroke-dasharray: 7 4;
 }
-.infra-edge.touched path {
+.relation-edge.touched path:not(.relation-edge-hit) {
   stroke: var(--warn);
   stroke-width: 2;
 }
-.infra-arrowhead {
-  fill: var(--fg3);
-}
-.infra-arrowhead.added {
+.relation-arrowhead.added {
   fill: var(--ok);
 }
-.infra-arrowhead.removed {
+.relation-arrowhead.removed {
   fill: var(--err);
 }
-.infra-arrowhead.touched {
+.relation-arrowhead.touched {
   fill: var(--warn);
 }
-.infra-edge text {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  fill: var(--fg);
-  paint-order: stroke;
-  stroke: var(--diagram-bg);
-  stroke-width: 4px;
-  stroke-linejoin: round;
+.relation-edge.added text {
+  fill: color-mix(in srgb, var(--ok) 62%, var(--fg));
+}
+.relation-edge.removed text {
+  fill: color-mix(in srgb, var(--err) 62%, var(--fg));
+}
+.relation-edge.touched text {
+  fill: color-mix(in srgb, var(--warn) 62%, var(--fg));
 }
 .infra-legend {
   display: flex;
@@ -5149,11 +5104,28 @@ span.artifact-toggle {
 .infra-attributes tr:last-child td {
   border-bottom: 0;
 }
+/* Values as a word diff: each side tinted like a diff line, the changed words marked darker (src/infra/valueDiff.ts). */
 .infra-attributes td.before {
-  color: color-mix(in srgb, var(--err) 62%, var(--fg));
+  background: var(--del-bg);
 }
 .infra-attributes td.after {
-  color: color-mix(in srgb, var(--ok) 62%, var(--fg));
+  background: var(--add-bg);
+}
+.infra-attributes del,
+.infra-attributes ins {
+  text-decoration: none;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.infra-attributes del {
+  background: var(--del-mark);
+}
+.infra-attributes ins {
+  background: var(--add-mark);
+}
+.infra-attributes .elided {
+  color: var(--fg3);
+  padding: 0 2px;
 }
 .infra-attributes td.none {
   color: var(--fg3);
@@ -5392,7 +5364,7 @@ span.artifact-toggle {
   box-shadow: 0 0 0 2px var(--focus-border-color, var(--accent));
 }
 .relation-map {
-  overflow: auto;
+  overflow: hidden;
   padding: 4px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
@@ -5401,6 +5373,62 @@ span.artifact-toggle {
 }
 .relation-map svg {
   display: block;
+}
+.relation-map.compact {
+  overflow: hidden;
+}
+/* A canvas the reader drags (ui/relations/DiagramCanvas.tsx). */
+.diagram-canvas {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+.diagram-canvas.dragging {
+  cursor: grabbing;
+}
+.diagram-canvas:focus-visible {
+  outline: 2px solid var(--focus-border-color, var(--accent));
+  outline-offset: 2px;
+}
+.diagram-canvas-content {
+  transform-origin: 0 0;
+}
+.diagram-canvas .relation-node.selectable,
+.diagram-canvas .relation-edge.selectable {
+  cursor: pointer;
+}
+.diagram-canvas-controls {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--card-bg, var(--surface));
+  box-shadow: var(--shadow-card);
+}
+.diagram-canvas-controls button {
+  font: inherit;
+  font-size: 12px;
+  min-width: 28px;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+.diagram-canvas-controls button + button {
+  border-left: 1px solid var(--line-strong);
+}
+.diagram-canvas-controls button:hover:not(:disabled) {
+  background: var(--hover);
+}
+.diagram-canvas-controls button:disabled {
+  color: var(--fg3);
+  cursor: default;
 }
 .relation-heading {
   fill: var(--fg2);
