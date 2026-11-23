@@ -1033,6 +1033,10 @@ kbd {
   width: 100%;
   min-height: 100vh;
 }
+/* The Files tab takes the whole window, as GitHub's "Files changed" does: diffs, split ones above all, use the width. */
+.review-page.full-width {
+  --page-x: var(--page-gutter);
+}
 .breadcrumb {
   display: flex;
   align-items: center;
