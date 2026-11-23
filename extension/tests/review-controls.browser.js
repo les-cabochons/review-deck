@@ -16,7 +16,14 @@ async page => {
       throw new Error(message);
     };
     const tick = () => new Promise(resolve => setTimeout(resolve, 100));
-    // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
+    // Guided or Files A–Z: the toggle in the Files toolbar.
+    const viewButton = label => [...doc.querySelectorAll(".files-toolbar .view-toggle button")].find(b => b.textContent.trim() === label);
+    const view = async label => {
+      viewButton(label).click();
+      await wait(() => viewButton(label).getAttribute("aria-pressed") === "true", "File view did not switch");
+      await tick();
+    };
+    // The gear holds the diff view (Inline or Side-by-side).
     const gear = () => doc.querySelector('.files-toolbar [aria-label="File view settings"]');
     const menuItem = label => [...doc.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === label);
     const setting = async label => {
@@ -32,7 +39,7 @@ async page => {
     const trees = () => [...doc.querySelectorAll("file-tree-container")];
     const indicators = () => trees().flatMap(tree => [...tree.shadowRoot.querySelectorAll('[title^="Viewed,"]')]);
     await wait(() => gear(), "Files toolbar did not load");
-    await setting("Guided");
+    await view("Guided");
     await wait(() => doc.querySelector(".group-header-row"), "Grouping did not finish");
     await wait(() => doc.querySelector(".hunk-card .viewed-control input"), "Grouped file checkbox did not mount");
     // A concern with several files, so ticking one leaves it mixed.
@@ -73,7 +80,7 @@ async page => {
     fileInput().click();
     const folded = () => doc.getElementById(cardId).querySelector("button.file-collapse").getAttribute("aria-expanded") === "false";
     await wait(() => folded() && !doc.getElementById(cardId).querySelector(".pierre-hunk-header"), "Viewed chunk did not fold");
-    await setting("Files A–Z");
+    await view("Files A–Z");
     const card = doc.getElementById(`file-${path}`);
     card.scrollIntoView({ block: "start" });
     await wait(() => card.querySelector(".viewed-control input"), "Alphabetical file did not mount");
@@ -116,7 +123,7 @@ async page => {
     filter.dispatchEvent(new win.Event("input", { bubbles: true }));
     const viewedKey = Object.keys(win.localStorage).find(key => key.startsWith("semantic-review.viewed.") && key.endsWith(".0.2"));
     assert(viewedKey && Object.hasOwn(JSON.parse(win.localStorage.getItem(viewedKey)), hunkId), "Viewed chunk was not persisted locally");
-    await setting("Guided");
+    await view("Guided");
     return { groupedAndAlphabetical: true, inlineAndSplit: true, perChunkViewedState: true, mixedGroupCheckbox: true,
       treeCheck: true, treeExpansionPreserved: true, collapsePreserved: true, mergedCounterAligned: true,
       searchKeepsTotal: true, localPersistence: true, viewedKey, hunkId, wholeFileViewed: whole, progress: progress() };

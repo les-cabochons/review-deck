@@ -12,17 +12,9 @@ async page => {
   await page.locator('.file-header').first().waitFor();
   await page.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
-  // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
-  const setting = async name => {
-    // On phones the toolbar scrolls away with the tab: go back up to it, as a reader would.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.getByRole('button', { name: 'File view settings', exact: true }).click();
-    const item = page.getByRole('menuitem', { name, exact: true });
-    // Picking the current one changes nothing, so the menu just closes.
-    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
-    else await item.click();
-  };
-  await setting('Guided');
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => page.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
+  await showView('Guided');
   await page.waitForTimeout(500);
 
   const button = page.locator('.navigator-sheet-button');
@@ -75,7 +67,7 @@ async page => {
   assert(await button.evaluate(el => el === document.activeElement), 'Focus did not come back to the button');
 
   // Files A–Z: the sheet is the file tree, and a file jumps to its card.
-  await setting('Files A–Z');
+  await showView('Files A–Z');
   await page.waitForTimeout(500);
   const files = page.getByRole('dialog', { name: 'Files' });
   await button.click();
@@ -90,7 +82,7 @@ async page => {
   let alphaInView = false;
   for (const id of alphaCards) alphaInView ||= await inView(`[id="${id}"]`);
   assert(alphaInView, `Picking ${alphaName} in Files A–Z did not bring its card on screen`);
-  await setting('Guided');
+  await showView('Guided');
 
   await page.setViewportSize({ width: 1280, height: 900 });
   assert(!(await button.isVisible()), 'The navigator button shows on a wide screen');

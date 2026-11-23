@@ -15,11 +15,7 @@ async page => {
   const f = page.frameLocator('#frame');
   await f.locator('.file-header').first().waitFor();
   await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
-  // The Files toolbar's gear holds the view settings.
-  await f.getByRole('button', { name: 'File view settings', exact: true }).click();
-  const guided = f.getByRole('menuitem', { name: 'Guided', exact: true });
-  if (await guided.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
-  else await guided.click();
+  await f.locator('.files-toolbar').getByRole('button', { name: 'Guided', exact: true }).click();
   await f.locator('.group-section').first().waitFor();
   const scrollTo = y => f.locator('body').evaluate((_, y) => window.scrollTo(0, y), y);
   const pause = () => page.waitForTimeout(300);

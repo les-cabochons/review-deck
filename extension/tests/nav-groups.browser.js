@@ -5,15 +5,9 @@ async (page) => {
   page.on("pageerror", error => errors.push(error.message));
   const f = page.frameLocator("#frame");
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
-  // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
-  const setting = async name => {
-    await f.getByRole("button", { name: "File view settings", exact: true }).click();
-    const item = f.getByRole("menuitem", { name, exact: true });
-    // Picking the current one changes nothing, so the menu just closes.
-    if (await item.evaluate(el => el.classList.contains("menu-item-selected"))) await page.keyboard.press("Escape");
-    else await item.click();
-  };
-  await setting("Guided");
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => f.locator(".files-toolbar").getByRole("button", { name, exact: true }).click();
+  await showView("Guided");
   const groups = f.locator(".nav-group");
   const first = groups.first();
   const toggle = first.locator(".nav-group-toggle");
@@ -43,9 +37,9 @@ async (page) => {
   assert(await toggle.getAttribute("aria-expanded") === "false", "Space did not collapse the group");
 
   // Given a collapsed group, navigation changes retain that choice.
-  await setting("Files A–Z");
+  await showView("Files A–Z");
   await f.locator(".file-card").first().waitFor();
-  await setting("Guided");
+  await showView("Guided");
   assert(await toggle.getAttribute("aria-expanded") === "false", "View switch reset collapse");
   await f.getByRole("button", { name: "Hide file tree", exact: true }).click();
   await f.getByRole("button", { name: "Show file tree", exact: true }).click();

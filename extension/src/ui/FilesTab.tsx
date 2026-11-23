@@ -248,9 +248,16 @@ function useTreeOpen(): [boolean, (open: boolean) => void] {
   return [shown !== "hidden", update];
 }
 
+/** The Files toolbar's Guided / A–Z toggle. */
+const FILE_VIEWS: { value: FileView; text: string; icon: string }[] = [
+  { value: "grouped", text: "Guided", icon: "ViewListGroup" },
+  { value: "alpha", text: "Files A–Z", icon: "SortLines" },
+];
+
 /**
- * The Files tab's bar, laid out like GitHub's "Files changed" one: what to compare on the left, then on the right what
- * the guide is, how many files are viewed, and a gear with the view settings, Regroup and Publish.
+ * The Files tab's bar, laid out like GitHub's "Files changed" one: on the left what to compare and the Guided / A–Z
+ * toggle, then on the right what the guide is, how many files are viewed, and a gear with the diff view, Regroup and
+ * Publish.
  * `ready`: concern count when grouping finished but the A–Z preview is still shown.
  */
 const Toolbar: React.FC<Props & { ready: number | null }> = ({
@@ -292,10 +299,8 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
         })
       : []),
   ];
+  const grouping = !!review && !review.analyzed;
   const settings: MenuOption[] = [
-    { id: "grouped", text: "Guided", selected: view === "grouped", onSelect: () => onView("grouped") },
-    { id: "alpha", text: "Files A–Z", selected: view === "alpha", onSelect: () => onView("alpha") },
-    { id: "views", text: "", divider: true },
     { id: "inline", text: "Inline", selected: mode === "inline", onSelect: () => onMode("inline") },
     { id: "split", text: "Side-by-side", selected: mode === "split", onSelect: () => onMode("split") },
     { id: "modes", text: "", divider: true },
@@ -315,6 +320,19 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
         ariaLabel="Changes to show"
         options={comparisons}
       />
+      <div className="view-toggle" role="group" aria-label="File view">
+        {FILE_VIEWS.map((v) => (
+          <button
+            key={v.value}
+            type="button"
+            aria-pressed={view === v.value}
+            onClick={() => onView(v.value)}
+            title={v.value === "grouped" && grouping ? "Grouping is still running: the A–Z list shows until it is done" : undefined}
+          >
+            <Icon iconName={v.icon} /> {v.text}
+          </button>
+        ))}
+      </div>
       <span className="toolbar-end">
         {ready !== null && (
           <span className="grouping-status ready" role="status">

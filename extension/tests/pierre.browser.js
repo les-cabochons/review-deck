@@ -8,7 +8,10 @@ async page => {
     await page.goto('http://127.0.0.1:5173/dev/?pr=17901&repo=t3code#files');
     const f = page.frameLocator('#frame');
     await f.locator('[data-renderer="pierre-diffs"]').first().waitFor();
-    // The Files toolbar's gear holds the view settings; its highlighted items are the current ones.
+    // Guided or Files A–Z is the Files toolbar's toggle. Its gear holds the diff view; the highlighted item is the
+    // current one.
+    const viewButton = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true });
+    const showView = name => viewButton(name).click();
     const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
     const isCurrent = item => item.evaluate(el => el.classList.contains('menu-item-selected'));
     const setting = async name => {
@@ -24,7 +27,7 @@ async page => {
       await page.keyboard.press('Escape');
       return on;
     };
-    await setting('Guided');
+    await showView('Guided');
     await setting('Inline');
     await f.locator('diffs-container [data-column-number="22"]').first().waitFor();
     await f.locator('file-tree-container').first().waitFor();
@@ -54,8 +57,8 @@ async page => {
     await f.getByRole('button',{name:'Update comment',exact:true}).click();
     await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor();
 
-    await setting('Files A–Z');
-    if (!(await checked('Files A–Z'))) throw new Error('View setting did not switch to A–Z');
+    await showView('Files A–Z');
+    if ((await viewButton('Files A–Z').getAttribute('aria-pressed')) !== 'true') throw new Error('View toggle did not switch to A–Z');
     if(await f.locator('file-tree-container').count()!==1)throw new Error('Alphabetical view should have one Pierre tree');
     // Diffs mount lazily near the viewport, so jump to the commented file the way a reviewer would.
     await f.locator('file-tree-container').getByRole('treeitem',{name:'ProviderSettingsForm.tsx',exact:true}).click();

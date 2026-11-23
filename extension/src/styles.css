@@ -2193,6 +2193,41 @@ kbd {
     animation-duration: 2.4s;
   }
 }
+/* Guided or A–Z: two joined buttons, the current one filled. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--fg2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.view-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+.view-toggle button[aria-pressed="true"] {
+  background: var(--surface-3);
+  color: var(--fg);
+  font-weight: 600;
+}
+.view-toggle button:hover:not([aria-pressed="true"]) {
+  background: var(--surface-2);
+}
+.view-toggle button:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
 /* The right side: the guide's status, the viewed count, the settings gear. */
 .files-toolbar .toolbar-end {
   margin-left: auto;

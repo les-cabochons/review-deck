@@ -41,14 +41,9 @@ async page => {
   assert(/^https:\/\/github\.com\/pingdotgg\/t3code\/blob\/[0-9a-f]{40}\//.test(result.filePath.href), `file path link: ${result.filePath.href}`);
   assert(result.filePath.target === '_blank', 'file path link should open a new tab');
 
+  // Guided or Files A–Z: the toggle in the Files toolbar.
+  const showView = name => f.locator('.files-toolbar').getByRole('button', { name, exact: true }).click();
   // Given a code comment on the Overview, its file label opens the Files tab scrolled to that comment.
-  const setting = async name => {
-    await f.getByRole('button', { name: 'File view settings', exact: true }).click();
-    const item = f.getByRole('menuitem', { name, exact: true });
-    // Picking the current one changes nothing, so the menu just closes.
-    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
-    else await item.click();
-  };
   const landsOnComment = async (label) => {
     await f.getByRole('tab', { name: /^Overview/ }).click();
     const fileLabel = f.locator('.timeline-thread .thread-file button').filter({ hasText: 'client.ts' });
@@ -64,12 +59,12 @@ async page => {
     result[label] = box;
     assert(box.top >= box.stickyBottom && box.top < box.height, `${label}: the comment is out of sight (${JSON.stringify(box)})`);
   };
-  await setting('Guided');
+  await showView('Guided');
   await landsOnComment('guided');
-  await setting('Files A–Z');
+  await showView('Files A–Z');
   await landsOnComment('alpha');
   // Back to the guided view, which the other tests expect.
-  await setting('Guided');
+  await showView('Guided');
 
   // Given an update on the Overview, its link opens the Files tab.
   await f.getByRole('tab', { name: /^Overview/ }).click();
