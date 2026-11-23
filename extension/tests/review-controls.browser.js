@@ -16,17 +16,23 @@ async page => {
       throw new Error(message);
     };
     const tick = () => new Promise(resolve => setTimeout(resolve, 100));
-    const toggle = index => doc.querySelectorAll(".files-toolbar .mode-toggle")[index].querySelector("button");
-    const view = async label => {
-      if (toggle(0).textContent.trim() !== label) toggle(0).click();
-      await wait(() => toggle(0).textContent.trim() === label, "File view did not switch");
+    // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
+    const gear = () => doc.querySelector('.files-toolbar [aria-label="File view settings"]');
+    const menuItem = label => [...doc.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === label);
+    const setting = async label => {
+      gear().click();
+      await wait(() => menuItem(label), `${label} is not in the settings menu`);
+      // Picking the current one changes nothing: the gear closes the menu instead.
+      if (menuItem(label).classList.contains("menu-item-selected")) gear().click();
+      else menuItem(label).click();
+      await wait(() => !menuItem(label), "The settings menu did not close");
       await tick();
     };
     const progress = () => Number(doc.querySelector(".viewed-progress").textContent.split("/")[0].trim());
     const trees = () => [...doc.querySelectorAll("file-tree-container")];
     const indicators = () => trees().flatMap(tree => [...tree.shadowRoot.querySelectorAll('[title^="Viewed,"]')]);
-    await wait(() => doc.querySelector(".files-toolbar .mode-toggle"), "Files toolbar did not load");
-    await view("Guided");
+    await wait(() => gear(), "Files toolbar did not load");
+    await setting("Guided");
     await wait(() => doc.querySelector(".group-header-row"), "Grouping did not finish");
     await wait(() => doc.querySelector(".hunk-card .viewed-control input"), "Grouped file checkbox did not mount");
     // A concern with several files, so ticking one leaves it mixed.
@@ -67,7 +73,7 @@ async page => {
     fileInput().click();
     const folded = () => doc.getElementById(cardId).querySelector("button.file-collapse").getAttribute("aria-expanded") === "false";
     await wait(() => folded() && !doc.getElementById(cardId).querySelector(".pierre-hunk-header"), "Viewed chunk did not fold");
-    await view("Files A–Z");
+    await setting("Files A–Z");
     const card = doc.getElementById(`file-${path}`);
     card.scrollIntoView({ block: "start" });
     await wait(() => card.querySelector(".viewed-control input"), "Alphabetical file did not mount");
@@ -85,10 +91,9 @@ async page => {
     }
     alphaFold.click();
     await wait(() => !card.querySelector(".pierre-hunk-header"), "Alphabetical file did not fold");
-    toggle(1).click();
-    await tick();
+    await setting("Side-by-side");
     assert(card.querySelector("button.file-collapse").getAttribute("aria-expanded") === "false", "Diff mode reset the file fold");
-    toggle(1).click();
+    await setting("Inline");
     // The A–Z checkbox marks every chunk of the file, which completes it.
     if (!whole) {
       card.querySelector(".viewed-control input").click();
@@ -111,7 +116,7 @@ async page => {
     filter.dispatchEvent(new win.Event("input", { bubbles: true }));
     const viewedKey = Object.keys(win.localStorage).find(key => key.startsWith("semantic-review.viewed.") && key.endsWith(".0.2"));
     assert(viewedKey && Object.hasOwn(JSON.parse(win.localStorage.getItem(viewedKey)), hunkId), "Viewed chunk was not persisted locally");
-    await view("Guided");
+    await setting("Guided");
     return { groupedAndAlphabetical: true, inlineAndSplit: true, perChunkViewedState: true, mixedGroupCheckbox: true,
       treeCheck: true, treeExpansionPreserved: true, collapsePreserved: true, mergedCounterAligned: true,
       searchKeepsTotal: true, localPersistence: true, viewedKey, hunkId, wholeFileViewed: whole, progress: progress() };

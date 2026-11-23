@@ -8,12 +8,24 @@ async page => {
     await page.goto('http://127.0.0.1:5173/dev/?pr=17901&repo=t3code#files');
     const f = page.frameLocator('#frame');
     await f.locator('[data-renderer="pierre-diffs"]').first().waitFor();
-    // View toggles name the current mode, like Azure DevOps' "Inline ▾": one click flips them.
-    const viewToggle = f.locator('.files-toolbar .mode-toggle').nth(0).locator('button').first();
-    const diffToggle = f.locator('.files-toolbar .mode-toggle').nth(1).locator('button').first();
-    const label = async (toggle) => (await toggle.innerText()).trim();
-    if (await label(viewToggle) !== 'Guided') await viewToggle.click();
-    if (await label(diffToggle) !== 'Inline') await diffToggle.click();
+    // The Files toolbar's gear holds the view settings; its highlighted items are the current ones.
+    const gear = () => f.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const isCurrent = item => item.evaluate(el => el.classList.contains('menu-item-selected'));
+    const setting = async name => {
+      await gear();
+      const item = f.getByRole('menuitem', { name, exact: true });
+      // Picking the current one changes nothing, so the menu just closes.
+      if (await isCurrent(item)) await page.keyboard.press('Escape');
+      else await item.click();
+    };
+    const checked = async name => {
+      await gear();
+      const on = await isCurrent(f.getByRole('menuitem', { name, exact: true }));
+      await page.keyboard.press('Escape');
+      return on;
+    };
+    await setting('Guided');
+    await setting('Inline');
     await f.locator('diffs-container [data-column-number="22"]').first().waitFor();
     await f.locator('file-tree-container').first().waitFor();
     const firstTreeFile=f.locator('file-tree-container').first().getByRole('treeitem',{name:'ProviderSettingsForm.tsx',exact:true});
@@ -27,8 +39,8 @@ async page => {
     await f.getByRole('button',{name:'Add single comment',exact:true}).click();
     await f.getByText('Pierre browser check: right-side comment.',{exact:true}).waitFor();
 
-    await diffToggle.click();
-    if (await label(diffToggle) !== 'Side-by-side') throw new Error('Diff toggle did not switch to side-by-side');
+    await setting('Side-by-side');
+    if (!(await checked('Side-by-side'))) throw new Error('Diff setting did not switch to side-by-side');
     const deletion=f.locator('diffs-container [data-column-number][data-line-type="change-deletion"]').first();
     const leftLine=await deletion.getAttribute('data-column-number');
     await deletion.click();
@@ -42,8 +54,8 @@ async page => {
     await f.getByRole('button',{name:'Update comment',exact:true}).click();
     await f.getByText('Pierre browser check: edited draft.',{exact:true}).waitFor();
 
-    await viewToggle.click();
-    if (await label(viewToggle) !== 'Files A–Z') throw new Error('View toggle did not switch to A–Z');
+    await setting('Files A–Z');
+    if (!(await checked('Files A–Z'))) throw new Error('View setting did not switch to A–Z');
     if(await f.locator('file-tree-container').count()!==1)throw new Error('Alphabetical view should have one Pierre tree');
     // Diffs mount lazily near the viewport, so jump to the commented file the way a reviewer would.
     await f.locator('file-tree-container').getByRole('treeitem',{name:'ProviderSettingsForm.tsx',exact:true}).click();

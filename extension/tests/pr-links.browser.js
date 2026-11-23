@@ -42,7 +42,13 @@ async page => {
   assert(result.filePath.target === '_blank', 'file path link should open a new tab');
 
   // Given a code comment on the Overview, its file label opens the Files tab scrolled to that comment.
-  const view = f.locator('.files-toolbar .mode-toggle').first().locator('button');
+  const setting = async name => {
+    await f.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const item = f.getByRole('menuitem', { name, exact: true });
+    // Picking the current one changes nothing, so the menu just closes.
+    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
+    else await item.click();
+  };
   const landsOnComment = async (label) => {
     await f.getByRole('tab', { name: /^Overview/ }).click();
     const fileLabel = f.locator('.timeline-thread .thread-file button').filter({ hasText: 'client.ts' });
@@ -58,12 +64,12 @@ async page => {
     result[label] = box;
     assert(box.top >= box.stickyBottom && box.top < box.height, `${label}: the comment is out of sight (${JSON.stringify(box)})`);
   };
-  if ((await view.first().textContent()).trim() !== 'Guided') await view.first().click();
+  await setting('Guided');
   await landsOnComment('guided');
-  await view.nth(1).click();
+  await setting('Files A–Z');
   await landsOnComment('alpha');
   // Back to the guided view, which the other tests expect.
-  await view.first().click();
+  await setting('Guided');
 
   // Given an update on the Overview, its link opens the Files tab.
   await f.getByRole('tab', { name: /^Overview/ }).click();

@@ -11,9 +11,16 @@ async page => {
   await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1000);
   const result = {};
+  // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
+  const setting = async name => {
+    await f.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const item = f.getByRole('menuitem', { name, exact: true });
+    // Picking the current one changes nothing, so the menu just closes.
+    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
+    else await item.click();
+  };
   for (const view of ['Guided', 'Files A–Z']) {
-    const toggle = f.locator('.mode-toggle').first();
-    if (!(await toggle.innerText()).includes(view)) await toggle.locator('button').first().click();
+    await setting(view);
     await page.waitForTimeout(500);
     for (const y of [0, 100, 3000]) {
       await f.locator('body').evaluate((_, y) => window.scrollTo(0, y), y);

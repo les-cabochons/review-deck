@@ -1025,17 +1025,14 @@ kbd {
 
 /* ---------- PR page shell ---------- */
 /* Like GitHub, the PR page stops growing at --page-max and centers. Each full-width row (breadcrumb, header,
-   compact header, tab row, tab content) pads its sides by --page-x, so its content lines up with the others while
-   its background and borders still span the window. The 100% resolves against each row's own width when the
-   variable is used, which is the page's width for every row that uses it, and the window's for the fixed .pr-bar. */
+   compact header, the tab row's tabs, tab content but the Files tab's) pads its sides by --page-x, so its content
+   lines up with the others while its background and borders still span the window. The 100% resolves against each
+   row's own width when the variable is used, which is the page's width for every row that uses it, and the
+   window's for the fixed .pr-bar. */
 .review-page {
   --page-x: max(var(--page-gutter), (100% - var(--page-max)) / 2);
   width: 100%;
   min-height: 100vh;
-}
-/* The Files tab takes the whole window, as GitHub's "Files changed" does: diffs, split ones above all, use the width. */
-.review-page.full-width {
-  --page-x: var(--page-gutter);
 }
 .breadcrumb {
   display: flex;
@@ -1069,7 +1066,7 @@ kbd {
 }
 /* The compact header (GitHub's sticky one): fixed to the top once .pr-header scrolls behind it. What else sticks on
    the page sits under it: the tab row --pr-bar-h lower, and the file tree --pr-tabs-h lower again. App.tsx keeps
-   --pr-tabs-h at the tab row's height, which is two lines when the Files tab's toolbar doesn't fit beside the tabs. */
+   --pr-tabs-h at the tab row's height, which is two lines on the Files tab, where the toolbar has the second. */
 .review-page {
   --pr-bar-h: 48px;
   --pr-tabs-h: 43px;
@@ -1195,39 +1192,39 @@ kbd {
   border-radius: 3px;
   padding: 1px 6px;
 }
-/* The tab row. On the Files tab it also holds the files toolbar (.tab-row-controls, filled by FilesTab.tsx), so
-   one row sticks under the compact header and the tabs stay in reach. Short of room, the toolbar takes a second
-   line, and wraps inside it when that is too short as well. */
+/* The tab row. On the Files tab it also holds the files toolbar (.tab-row-controls, filled by FilesTab.tsx) on a
+   line of its own under the tabs, so one block sticks under the compact header and the tabs stay in reach. The tabs
+   stay centered with the rest of the page on every tab; the toolbar spans the window, like the Files tab's diffs. */
 .pr-tabs {
   flex-wrap: wrap;
-  padding: 0 calc(var(--page-x) - 8px);
   border-bottom: 1px solid var(--line);
   background: var(--canvas);
 }
-/* azure-devops-ui lets the tabs take the whole row; the toolbar gets what they don't use. */
+/* The tab list's 100% (in --page-x) is the row's width, the page's. Each tab's own 8px padding lines up its label. */
 .pr-tabs .bolt-tabbar-tabs {
-  flex-grow: 0;
+  padding: 0 calc(var(--page-x) - 8px);
 }
-/* A divider after the last tab, on the tabs' side so it stays on their line when the toolbar wraps. */
-.pr-tabs:has(.files-toolbar) .bolt-tabbar-tabs::after {
-  content: "";
-  flex: none;
-  align-self: center;
-  width: 1px;
-  height: 20px;
-  background: var(--line);
-}
-/* The 8px margins line the toolbar up with the page's content, as the tabs' own padding does for their labels. */
 .tab-row-controls {
-  flex: 1 1 auto;
+  flex: 1 0 100%;
   min-width: 0;
-  margin: 0 8px;
+  box-sizing: border-box;
+  padding: 0 var(--page-gutter);
+  border-top: 1px solid var(--line-soft);
+}
+/* Empty on the other tabs. */
+.tab-row-controls:empty {
+  display: none;
 }
 .tab-row-controls .files-toolbar {
-  padding: 5px 0;
+  padding: 6px 0;
 }
 .tab-content {
   padding: 16px var(--page-x) 64px;
+}
+/* The Files tab's diffs take the whole window, as GitHub's "Files changed" does; the header and tabs stay centered. */
+.tab-content.tab-files {
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
 }
 
 /* review submit panel */
@@ -2120,15 +2117,6 @@ kbd {
   flex-wrap: wrap;
   padding: 0 0 12px;
 }
-.compare {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-}
-.compare > [class*="ms-Icon"] {
-  color: var(--fg2);
-}
 .stats {
   margin-left: auto;
   font-size: 13px;
@@ -2205,8 +2193,16 @@ kbd {
     animation-duration: 2.4s;
   }
 }
-.files-toolbar .grouping-status {
+/* The right side: the guide's status, the viewed count, the settings gear. */
+.files-toolbar .toolbar-end {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+}
+.files-toolbar .grouping-status {
   font-size: 13px;
 }
 .grouping-status.ready {
@@ -2215,12 +2211,8 @@ kbd {
 .grouping-status.ready .fabric-icon {
   color: var(--ok);
 }
-.files-toolbar .grouping-status + .stats {
-  margin-left: 16px;
-}
 /* Sits on the right, before the stats; stale = the description was edited after grouping. */
 .files-toolbar .regroup {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2325,10 +2317,6 @@ kbd {
 .side-section .guide-source {
   margin: 0 0 6px;
   font-size: 12px;
-}
-.files-toolbar .regroup + .stats,
-.files-toolbar .grouping-status + .regroup {
-  margin-left: 16px;
 }
 .grouping-status {
   display: inline-flex;

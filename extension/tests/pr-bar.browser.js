@@ -1,7 +1,8 @@
 // Run through playwright-cli run-code --filename=extension/tests/pr-bar.browser.js.
 // Uses the demo data (`npm run ext:demo`). Scrolled down, the compact PR header stays at the top with the title and
 // the review controls, and nothing else that sticks (the tab row with the files toolbar in it, the navigator) or a
-// concern a jump lands on hides under it. Its Review button edits the same review as the full header's.
+// concern a jump lands on hides under it. Its Review button edits the same review as the full header's. The files
+// toolbar has a line of its own under the tabs, as wide as the diffs, and the tabs stay in place from tab to tab.
 async page => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -14,8 +15,11 @@ async page => {
   const f = page.frameLocator('#frame');
   await f.locator('.file-header').first().waitFor();
   await f.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
-  const view = f.locator('.files-toolbar .mode-toggle').first().locator('button').first();
-  if ((await view.textContent()).trim() !== 'Guided') await view.click();
+  // The Files toolbar's gear holds the view settings.
+  await f.getByRole('button', { name: 'File view settings', exact: true }).click();
+  const guided = f.getByRole('menuitem', { name: 'Guided', exact: true });
+  if (await guided.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
+  else await guided.click();
   await f.locator('.group-section').first().waitFor();
   const scrollTo = y => f.locator('body').evaluate((_, y) => window.scrollTo(0, y), y);
   const pause = () => page.waitForTimeout(300);
@@ -84,24 +88,29 @@ async page => {
   assert(landed.top <= tabRowNow.bottom + 16, `The jump stopped short: the concern is at ${landed.top}px, the tab row ends at ${tabRowNow.bottom}px`);
   result.jump = { concern: landed.top, tabRow: tabRowNow.bottom };
 
-  // The dev shell's navigation leaves the page 1040px of this 1280px window: too narrow for the tabs and the
-  // toolbar on one line, so the toolbar has the tab row's second line, and the navigator above was measured under
-  // both. Given a window wide enough, the toolbar is beside the tabs and the row is as tall as the tabs alone.
-  await scrollTo(1500);
-  await pause();
-  const tabs = await box('.pr-tabs .bolt-tabbar-tabs');
-  const lowerToolbar = await box('.files-toolbar');
-  assert(lowerToolbar.top >= tabs.bottom - 1, `In a 1040px page the toolbar (${lowerToolbar.top}px) is not under the tabs (${tabs.bottom}px)`);
+  // Given a window wide enough for the page to center (the dev shell leaves it 1360px of 1600px), the toolbar is on
+  // its own line under the tabs and starts where the diffs do, at the page's side margin, while the tabs are
+  // centered; the navigator was measured under both lines. On the Overview, the tabs are where they were.
+  const left = selector => f.locator(selector).first().evaluate(el => Math.round(el.getBoundingClientRect().left));
   await page.setViewportSize({ width: 1600, height: 720 });
   await scrollTo(1500);
   await pause();
-  const oneLine = await box('.pr-tabs');
-  const wideTabs = await box('.pr-tabs .bolt-tabbar-tabs');
-  const besideToolbar = await box('.files-toolbar');
-  assert(besideToolbar.top < wideTabs.bottom && oneLine.bottom <= wideTabs.bottom + 1, `In a 1360px page the toolbar (${besideToolbar.top}px) is not beside the tabs (row ${oneLine.top}px to ${oneLine.bottom}px)`);
+  const tabs = await box('.pr-tabs .bolt-tabbar-tabs');
+  const toolbarLine = await box('.files-toolbar');
+  assert(toolbarLine.top >= tabs.bottom - 1, `The toolbar (${toolbarLine.top}px) is not under the tabs (${tabs.bottom}px)`);
+  const lefts = { tab: await left('.pr-tabs [role=tab]'), toolbar: await left('.files-toolbar'), diffs: await left('.files-layout') };
+  assert(lefts.toolbar === lefts.diffs, `The toolbar (${lefts.toolbar}px) does not start where the diffs do (${lefts.diffs}px)`);
+  assert(lefts.tab > lefts.toolbar, `The tabs (${lefts.tab}px) are not centered past the toolbar's margin (${lefts.toolbar}px)`);
+  const wideRow = await box('.pr-tabs');
   const wideNavigator = await box('.navigator');
-  assert(wideNavigator.top >= oneLine.bottom - 1 && wideNavigator.top <= oneLine.bottom + 16, `In a 1360px page the navigator (${wideNavigator.top}px) is not right under the tab row (${oneLine.bottom}px)`);
-  result.oneLine = { tabRow: oneLine.bottom, navigator: wideNavigator.top };
+  assert(wideNavigator.top >= wideRow.bottom - 1 && wideNavigator.top <= wideRow.bottom + 16, `The navigator (${wideNavigator.top}px) is not right under the tab row (${wideRow.bottom}px)`);
+  await f.getByRole('tab', { name: 'Overview' }).click();
+  await f.locator('.overview').waitFor();
+  const overviewTab = await left('.pr-tabs [role=tab]');
+  assert(overviewTab === lefts.tab, `The tabs moved between Files (${lefts.tab}px) and Overview (${overviewTab}px)`);
+  await f.getByRole('tab', { name: /^Files/ }).click();
+  await f.locator('.files-toolbar').waitFor();
+  result.wide = { ...lefts, overviewTab, tabRow: wideRow.bottom, navigator: wideNavigator.top };
   await page.setViewportSize({ width: 1280, height: 720 });
 
   // Given a review started in the full header, the compact header's Review opens on the same summary and verdict.

@@ -11,8 +11,15 @@ async page => {
   };
   await page.reload();
   await settle();
-  const view = f.locator('.mode-toggle').first();
-  if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
+  // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
+  const setting = async name => {
+    await f.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const item = f.getByRole('menuitem', { name, exact: true });
+    // Picking the current one changes nothing, so the menu just closes.
+    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
+    else await item.click();
+  };
+  await setting('Guided');
   // Start from a clean slate: nothing viewed.
   // Mixed concerns need two clicks. The first marks every chunk and the second clears them.
   for (const box of await f.locator('.group-header-row .viewed-control input').all())

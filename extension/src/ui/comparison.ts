@@ -16,6 +16,16 @@ export function latestComparison(data: PrOverview | null): Comparison {
 export const sameComparison = (a: Comparison, b: Comparison) => a.iteration === b.iteration && a.compareTo === b.compareTo;
 
 /**
+ * The Files tab's name for a comparison, as its select shows it. A comparison holds what updates compareTo + 1 to
+ * iteration pushed: "All changes" for every update (the latest against the base), "Update 3" for one, "Updates 2–3"
+ * for a range, which only a comment's own comparison opens (threadComparison).
+ */
+export function comparisonLabel({ iteration, compareTo }: Comparison, latest: number): string {
+  if (iteration === 0 || (iteration === latest && compareTo === 0)) return "All changes";
+  return compareTo === iteration - 1 ? `Update ${iteration}` : `Updates ${compareTo + 1}–${iteration}`;
+}
+
+/**
  * The comparison a comment was written on, from its iteration context, or null when it has none. A comment is saved
  * with first = compareTo || iteration and second = iteration (adoActions.ts createThread), so equal iterations mean
  * the PR's base, as Azure DevOps documents them. Each comparison's comments are read for that comparison only

@@ -12,8 +12,17 @@ async page => {
   await page.locator('.file-header').first().waitFor();
   await page.locator('.meta-stats .grouping-status').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
-  const view = page.locator('.mode-toggle').first();
-  if (!(await view.innerText()).includes('Guided')) await view.locator('button').first().click();
+  // The Files toolbar's gear holds the view settings (Guided or Files A–Z, Inline or Side-by-side).
+  const setting = async name => {
+    // On phones the toolbar scrolls away with the tab: go back up to it, as a reader would.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.getByRole('button', { name: 'File view settings', exact: true }).click();
+    const item = page.getByRole('menuitem', { name, exact: true });
+    // Picking the current one changes nothing, so the menu just closes.
+    if (await item.evaluate(el => el.classList.contains('menu-item-selected'))) await page.keyboard.press('Escape');
+    else await item.click();
+  };
+  await setting('Guided');
   await page.waitForTimeout(500);
 
   const layout = await page.evaluate(() => {

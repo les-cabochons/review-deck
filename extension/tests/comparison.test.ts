@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { PrOverview } from "../src/data/model";
-import { type Comparison, followLatest, latestComparison } from "../src/ui/comparison";
+import { type Comparison, comparisonLabel, followLatest, latestComparison } from "../src/ui/comparison";
 
 const update = (iteration: number, compareTo = 0): Comparison => ({ iteration, compareTo });
 const unknown = update(0);
@@ -35,4 +35,13 @@ test("Given a page drawn from the hub row, then the Files tab waits for the upda
   // The load that follows may be the partial or, if it was already done, the whole.
   assert.deepEqual(followLatest(picked, picked, latestComparison(overview([1, 2], true))), update(2));
   assert.deepEqual(followLatest(picked, picked, latestComparison(overview([1, 2]))), update(2));
+});
+
+test("Given a PR at update 3, then the Files tab names every update, one update and a range of updates", () => {
+  assert.equal(comparisonLabel(update(3), 3), "All changes");
+  assert.equal(comparisonLabel(update(3, 2), 3), "Update 3");
+  assert.equal(comparisonLabel(update(1), 3), "Update 1");
+  assert.equal(comparisonLabel(update(3, 1), 3), "Updates 2–3");
+  assert.equal(comparisonLabel(update(2), 3), "Updates 1–2");
+  assert.equal(comparisonLabel(unknown, 0), "All changes");
 });

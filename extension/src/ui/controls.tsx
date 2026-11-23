@@ -1,4 +1,4 @@
-// Azure DevOps-native buttons used across pages: a dropdown button ("Inline ▾") and split buttons
+// Azure DevOps-native buttons used across pages: a dropdown button ("All changes ▾") and split buttons
 // ("Approve | ▾"). They wrap azure-devops-ui so look, keyboard handling and menus match the host.
 import { MenuButton, MenuItemType, type IMenuItem } from "azure-devops-ui/Menu";
 import { SplitButton } from "azure-devops-ui/SplitButton";
@@ -11,6 +11,7 @@ export interface MenuOption {
   /** Extra class on the icon, e.g. to draw it as a coloured badge. */
   iconClassName?: string;
   secondaryText?: string;
+  /** A checkbox: azure-devops-ui toggles it and keeps the menu open (and its button expanded). Pickers use `selected`. */
   checked?: boolean;
   /** The current value of a picker: a blue marker and highlight instead of a checkmark. */
   selected?: boolean;
@@ -93,70 +94,27 @@ export const SplitActionButton: React.FC<{
   );
 };
 
-/** Icon-only "⋯" menu for comment and row actions; `subtle={false}` for the filled page-header one. */
-export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean; subtle?: boolean }> = ({ label, options, disabled, subtle = true }) => {
+/**
+ * Icon-only "⋯" menu for comment and row actions; `subtle={false}` for the filled page-header one. `icon` swaps the
+ * "⋯" for another icon, as the Files tab's settings gear does.
+ */
+export const MoreMenu: React.FC<{ label: string; options: MenuOption[]; disabled?: boolean; subtle?: boolean; icon?: string }> = ({
+  label,
+  options,
+  disabled,
+  subtle = true,
+  icon = "More",
+}) => {
   const id = useMenuId("more");
   return (
     <MenuButton
       className="more-menu"
       subtle={subtle}
       hideDropdownIcon
-      iconProps={{ iconName: "More" }}
+      iconProps={{ iconName: icon }}
       ariaLabel={label}
       disabled={disabled}
       contextualMenuProps={{ menuProps: { id, items: toItems(options) } }}
     />
   );
 };
-
-export interface ModeOption<T extends string> {
-  value: T;
-  text: string;
-  icon: string;
-}
-
-/**
- * A two-way view switch like Azure DevOps' "Inline ▾" diff toggle: the button names the current mode,
- * one click flips to the other, and the chevron lists both.
- */
-export function ModeToggle<T extends string>({
-  options,
-  value,
-  onChange,
-  menuLabel,
-  tooltip,
-  disabled,
-}: {
-  options: [ModeOption<T>, ModeOption<T>];
-  value: T;
-  onChange: (value: T) => void;
-  menuLabel: string;
-  /** Overrides the default "Currently in 'X' mode. Click to toggle to 'Y' mode." */
-  tooltip?: string;
-  disabled?: boolean;
-}): React.ReactElement {
-  const id = useMenuId("mode");
-  const current = options.find((o) => o.value === value) ?? options[0];
-  const other = options.find((o) => o !== current)!;
-  return (
-    <SplitButton
-      className="mode-toggle"
-      disabled={disabled}
-      buttonProps={{
-        text: current.text,
-        iconProps: { iconName: current.icon },
-        tooltipProps: { text: tooltip ?? `Currently in '${current.text}' mode. Click to toggle to '${other.text}' mode.` },
-        onClick: () => onChange(other.value),
-      }}
-      menuButtonProps={{
-        ariaLabel: menuLabel,
-        contextualMenuProps: {
-          menuProps: {
-            id,
-            items: toItems(options.map((o) => ({ id: o.value, text: o.text, icon: o.icon, onSelect: () => onChange(o.value) }))),
-          },
-        },
-      }}
-    />
-  );
-}

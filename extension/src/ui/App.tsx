@@ -332,7 +332,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
           <PresenceProvider store={presence} pr={route.pr} me={source.currentUser} tab={tab} draftsKey={draftsKey} active={loadedOnce}>
           <MentionProvider people={people}>
             <HostLinks.Provider value={links}>
-              <div className={cx("review-page", tab === "files" && "full-width")} ref={setPage}>
+              <div className="review-page" ref={setPage}>
                 <Breadcrumb onBack={back} repo={data.pr.repository.name} id={data.pr.id} nativeUrl={native} />
                 {refreshError && (
                   <div className="error-box" role="alert">
