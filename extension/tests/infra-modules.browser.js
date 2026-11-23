@@ -38,6 +38,14 @@ async page => {
     const storage = [...document.querySelectorAll('.infra-module-map .relation-node')].find(n => n.querySelector('.relation-node-title').textContent === 'modules/storage');
     const rows = [...storage.querySelectorAll('.relation-row')].map(r => r.textContent);
     assert(rows[0] === '−/+Storage account this' && rows.includes('+output queue_name'), `Storage rows: ${rows}`);
+    // Every row stays inside its card.
+    for (const node of document.querySelectorAll('.infra-module-map .relation-node')) {
+      const card = node.querySelector('.relation-card').getBBox();
+      for (const row of node.querySelectorAll('.relation-row')) {
+        const box = row.getBBox();
+        assert(box.x + box.width <= card.x + card.width, `A row runs past its card: ${row.textContent}`);
+      }
+    }
     // The new input reads a new output: the arrow from storage to the function app says so.
     const edges = [...document.querySelectorAll('.infra-module-map .relation-edge')].map(e => `${e.getAttribute('class')}|${e.querySelector('title').textContent}`);
     assert(

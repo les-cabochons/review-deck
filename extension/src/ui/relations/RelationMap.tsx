@@ -229,13 +229,18 @@ const Card: React.FC<{
       {rows && (
         <>
           <line className="relation-rows-rule" x1={x + 10} x2={x + width - 10} y1={y + ROWS_TOP - 6} y2={y + ROWS_TOP - 6} />
-          {rows.map((row, i) => (
-            <text key={i} className="relation-row" x={x + 13} y={y + ROWS_TOP + 12 + i * ROW_HEIGHT}>
-              <tspan className={cx("relation-row-mark", row.tone)}>{row.mark}</tspan>
-              <tspan x={x + ROW_TEXT}>{row.text}</tspan>
-              {row.name && <tspan className="relation-row-name"> {row.name}</tspan>}
-            </text>
-          ))}
+          {rows.map((row, i) => {
+            // The card stops growing at the layout's widest: a long name is cut to the room left, whole in the tooltip.
+            const name = row.name && fitName(row.name, width - ROW_TEXT - (row.text.length + 1) * 6.8 - 10);
+            return (
+              <text key={i} className="relation-row" x={x + 13} y={y + ROWS_TOP + 12 + i * ROW_HEIGHT}>
+                {name !== row.name && <title>{`${row.mark} ${row.text} ${row.name}`}</title>}
+                <tspan className={cx("relation-row-mark", row.tone)}>{row.mark}</tspan>
+                <tspan x={x + ROW_TEXT}>{row.text}</tspan>
+                {name && <tspan className="relation-row-name"> {name}</tspan>}
+              </text>
+            );
+          })}
         </>
       )}
       {stats && (
@@ -265,6 +270,12 @@ function edgeTooltip(edge: { from: string; to: string; both: boolean; names: str
   if (used.length === 0) return edge.both ? `${from} and ${to} use each other` : `${to} uses ${from}`;
   if (edge.both) return `${from} and ${to} use each other: ${list}`;
   return used.length === 1 && used[0] === from ? `${to} uses ${from}` : `${to} uses ${list} from ${from}`;
+}
+
+/** A name cut to `room` pixels of 10.5 px monospace, keeping its start: a name's start says what it is. */
+function fitName(name: string, room: number): string {
+  const chars = Math.floor(room / 6.4);
+  return name.length <= chars ? name : `${name.slice(0, Math.max(chars - 1, 4))}…`;
 }
 
 /** `text` cut to `room` pixels of 10.5 px monospace, keeping its end (a file name matters more than its folders). */
