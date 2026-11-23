@@ -61,6 +61,12 @@ async page => {
     assert(cards.every(c => c.left >= box.left && c.right <= box.right && c.top >= box.top && c.bottom <= box.bottom), 'The expanded map does not show every card');
     assert(document.querySelector('.infra-module-map .diagram-canvas-away'), 'The page lost the place the map came from');
   });
+  // Fit disables itself once pressed: focus stays in the expanded view.
+  await page.locator('.diagram-expanded button[aria-label="Zoom in"]').click();
+  await page.locator('.diagram-expanded .diagram-canvas-controls button', { hasText: 'Fit' }).click();
+  await page.evaluate(() => {
+    check.assert(document.activeElement?.closest('.diagram-expanded'), `Fit sent focus out of the expanded view, to ${document.activeElement?.tagName}`);
+  });
   await page.keyboard.press('Escape');
   await page.evaluate(async () => {
     const { wait, assert } = check;

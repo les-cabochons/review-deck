@@ -48,10 +48,16 @@ interface Drag {
 export const DiagramCanvas: React.FC<Props> = (props) => {
   const [expanded, setExpanded] = React.useState(false);
   const opener = React.useRef<HTMLButtonElement | null>(null);
-  /** `restore`: focus goes back to Expand. Not after a pick, which has put focus where the page shows it. */
+  /**
+   * `restore`: focus goes back to Expand. After a pick, only if the pick left it nowhere: some picks move focus to what
+   * the page shows, others (a filter) don't.
+   */
   const close = React.useCallback((restore: boolean) => {
     setExpanded(false);
-    if (restore) setTimeout(() => opener.current?.focus(), 0);
+    setTimeout(() => {
+      const nowhere = !document.activeElement || document.activeElement === document.body;
+      if (restore || nowhere) opener.current?.focus();
+    }, 0);
   }, []);
   if (!expanded) return <Canvas {...props} onExpand={() => setExpanded(true)} expandRef={opener} />;
   return (
@@ -284,7 +290,16 @@ const Canvas: React.FC<CanvasProps> = ({ contentWidth, contentHeight, maxHeight,
         <button type="button" aria-label="Zoom in" title="Zoom in" onClick={() => zoomAt(ZOOM_STEP, ...middle())}>
           +
         </button>
-        <button type="button" title="Fit the diagram to the canvas, and put it back at the start" disabled={!moved} onClick={() => setMoved(null)}>
+        <button
+          type="button"
+          title="Fit the diagram to the canvas, and put it back at the start"
+          disabled={!moved}
+          onClick={() => {
+            setMoved(null);
+            // Fit disables itself: focus goes to the canvas rather than out of it.
+            viewport?.focus();
+          }}
+        >
           Fit
         </button>
         {onExpand && (
