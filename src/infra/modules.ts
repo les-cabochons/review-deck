@@ -56,6 +56,19 @@ function resolve(caller: string, source: string | undefined, name: string): { id
   return { id: dir, label: dir || "Repository root", kind: "neighbour" };
 }
 
+/** A chain of references: whether all of them exist before the change, after it, and whether one was touched. */
+interface Path {
+  base: boolean;
+  head: boolean;
+  touched: boolean;
+}
+const along = (path: Path, status: InfraEdge["status"]): Path => ({
+  base: path.base && status !== "added",
+  head: path.head && status !== "removed",
+  touched: path.touched || status === "touched",
+});
+const statusOf = (path: Path): InfraEdge["status"] => (path.base && path.head ? (path.touched ? "touched" : "same") : path.head ? "added" : "removed");
+
 /** Two references to one pair, merged: unchanged only if both are, otherwise what they share, or `touched`. */
 const merge = (a: InfraEdge["status"], b: InfraEdge["status"]): InfraEdge["status"] => (a === b ? a : a === "same" ? b : b === "same" ? a : "touched");
 
@@ -94,21 +107,25 @@ export function moduleMap(modules: InfraModule[]): ModuleMap {
     for (const edge of module.edges) (readers.get(edge.from) ?? readers.set(edge.from, []).get(edge.from)!).push(edge);
     /**
      * Where a value read by `address` ends up: the modules that read it, through any locals, or else this folder.
-     * `status` merges the statuses of the references on the way.
+     * `path` says on which sides every reference on the way exists: a path that mixes a removed reference with an
+     * added one never existed, and leads nowhere. `seen` is the path's own locals, against a cycle.
      */
-    const destinations = (address: string, status: InfraEdge["status"], seen: Set<string>): { to: string; status: InfraEdge["status"] }[] => {
-      if (!address.startsWith("local.")) return [{ to: target.get(address) ?? module.dir, status }];
+    const destinations = (address: string, path: Path, seen: ReadonlySet<string>): { to: string; status: InfraEdge["status"] }[] => {
+      if (!address.startsWith("local.")) return [{ to: target.get(address) ?? module.dir, status: statusOf(path) }];
       if (seen.has(address)) return [];
-      seen.add(address);
-      const next = (readers.get(address) ?? []).flatMap((edge) => destinations(edge.to, merge(status, edge.status), seen));
+      const next = (readers.get(address) ?? []).flatMap((edge) => {
+        const further = along(path, edge.status);
+        return further.base || further.head ? destinations(edge.to, further, new Set(seen).add(address)) : [];
+      });
       // A local nothing here reads is used in a file the PR doesn't change, or nowhere: it stays in this folder.
-      return next.length > 0 ? next : [{ to: module.dir, status }];
+      return next.length > 0 ? next : [{ to: module.dir, status: statusOf(path) }];
     };
     const linked = new Set<string>();
     for (const edge of module.edges) {
       const from = target.get(edge.from);
       if (from === undefined) continue;
-      for (const end of destinations(edge.to, edge.status, new Set())) link(from, end.to, edge.outputs ?? [], end.status);
+      const start = along({ base: true, head: true, touched: false }, edge.status);
+      for (const end of destinations(edge.to, start, new Set())) link(from, end.to, edge.outputs ?? [], end.status);
       linked.add(edge.from);
     }
     // A module whose outputs nothing here reads still hangs off the folder that calls it.

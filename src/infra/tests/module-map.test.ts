@@ -121,3 +121,27 @@ test("an output passed through a local still links the module that gives it to t
     ["modules/app > envs/prod", "same", ""],
   ]);
 });
+
+test("references through a local that never exist on the same side link nothing", () => {
+  const head = (local: string, input: string) =>
+    `module "storage" {\n  source = "../../modules/storage"\n}\nlocals {\n  id = ${local}\n}\nmodule "app" {\n  source = "../../modules/app"\n  id     = ${input}\n}\n`;
+  const modules = reader.diff([
+    // Before: the local reads storage, the app reads a constant. After: the local is a constant, the app reads it.
+    { path: "envs/prod/main.tf", old: head("module.storage.id", '"x"'), new: head('"x"', "local.id") },
+    { path: "modules/app/variables.tf", old: 'variable "id" {}\n', new: 'variable "id" {\n  type = string\n}\n' },
+  ]);
+  const links = moduleMap(modules).links.map((l) => `${l.from} > ${l.to} ${l.status}`);
+  assert.ok(!links.some((l) => l.startsWith("modules/storage > modules/app")), `storage never fed app: ${links}`);
+  assert.ok(links.includes("modules/storage > envs/prod removed"), `the local stopped reading storage: ${links}`);
+});
+
+test("two locals that meet again still lead to the module that reads them", () => {
+  const root = `module "storage" {\n  source = "../../modules/storage"\n}\nlocals {\n  start = module.storage.id\n  a     = local.start\n  b     = local.start\n  c     = "\${local.a}-\${local.b}"\n}\nmodule "app" {\n  source = "../../modules/app"\n  id     = local.c\n}\n`;
+  const modules = reader.diff([
+    { path: "envs/prod/main.tf", old: null, new: root },
+    { path: "modules/app/variables.tf", old: null, new: 'variable "id" {}\n' },
+  ]);
+  const links = moduleMap(modules).links.map((l) => `${l.from} > ${l.to}`);
+  assert.ok(links.includes("modules/storage > modules/app"), `${links}`);
+  assert.ok(!links.includes("modules/storage > envs/prod"), `A branch fell back to the folder: ${links}`);
+});
