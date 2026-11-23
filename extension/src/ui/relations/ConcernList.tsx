@@ -6,7 +6,8 @@ import { plural } from "../util";
 
 interface Props {
   groups: Group[];
-  links: Link[];
+  /** Null when the guide has no relations (saved before they were recorded): the concerns are listed, without links. */
+  links: Link[] | null;
   onOpenGroup: (id: string) => void;
 }
 
@@ -15,7 +16,8 @@ interface Props {
  * concerns use it, which test it, and "reviewable on its own" when nothing does. The map shows the same, drawn;
  * this list is what a screen reader and a phone get.
  */
-export const ConcernList: React.FC<Props> = ({ groups, links, onOpenGroup }) => {
+export const ConcernList: React.FC<Props> = ({ groups, links: known, onOpenGroup }) => {
+  const links = known ?? [];
   const concerns = groups.filter((g) => g.kind === "semantic");
   const others = groups.filter((g) => g.kind !== "semantic");
   const badge = (id: string) => {
@@ -42,7 +44,7 @@ export const ConcernList: React.FC<Props> = ({ groups, links, onOpenGroup }) => 
         const testedIn = strong.filter((l) => l.kind === "tests" && l.from === g.id);
         const tests = strong.filter((l) => l.kind === "tests" && l.to === g.id);
         const loose = links.filter((l) => isLoose(l) && (l.from === g.id || l.to === g.id));
-        const alone = uses.length + usedBy.length + testedIn.length + tests.length === 0;
+        const alone = known !== null && uses.length + usedBy.length + testedIn.length + tests.length === 0;
         return (
           <li key={g.id} style={{ borderLeftColor: groupColor(groups, g) }}>
             <button className="concern-list-title link-button" onClick={() => onOpenGroup(g.id)}>

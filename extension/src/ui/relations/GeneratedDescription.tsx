@@ -109,7 +109,7 @@ const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: stri
         </React.Suspense>
       )}
       <h4>How they connect</h4>
-      <ConcernList groups={groups} links={links} onOpenGroup={onOpenGroup} />
+      <ConcernList groups={groups} links={relations ? links : null} onOpenGroup={onOpenGroup} />
       {relations && <p className="generated-source muted">Links come from names shared between changed lines. Two different things with the same name look linked, so each link shows its names.</p>}
     </>
   );
