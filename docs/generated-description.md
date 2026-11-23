@@ -5,20 +5,22 @@ The description card in Overview has a toggle: **Written by \<author\>**, and **
 ## What it shows
 
 - **Why.** The commit messages, as a changelog: subjects grouped by conventional-commit type, like the Changelog hub (`buildChangelog` in `extension/src/data/releases.ts`). Merges from the target branch are left out by their subject, because the PR's commits don't say how many parents they have.
-- **What changed.** A map of the guide's concerns. An arrow goes from the concern that defines a name to the one that uses it, both ways when each uses the other. Each arrow shows the name behind it. Concerns without a link sit apart, under "On their own".
+- **What changed.** A map of the guide's concerns, in columns: concerns on the left define names, and each column to the right uses names from the columns before it. A square connector joins a concern to one that uses it, with the arrowhead on the user's side, at both ends when each uses the other. The text over a connector is a name used. Each card has its count of added and removed lines, and five squares for their share. Concerns without a link sit apart, under "On their own". On a phone the map doesn't show: the list below says the same.
 - **How they connect.** The same, in sentences, per concern: what it uses from which concern, which concerns use it, and "reviewable on its own" when nothing links it. This is what a screen reader and a phone get.
 
 In **Files**, a concern of three changes or more whose changes use each other's names shows **How these changes connect** (`src/relations/flow.ts`):
 
-- One box per function and file. Changes inside the same function of the same file share a box, so a large function edited in twelve places is one box, not twelve boxes with its name.
-- Every box reads the same way: the function as its title, then its file, and the number of changes past one.
-- An arrow's label gives only the names the boxes don't already show: no `StorageCleanup` on an arrow from the box `StorageCleanup`.
-- Past 12 boxes, a line gives the count instead of a map nobody can read.
-- Clicking a box shows only its changes. Clicking an arrow shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same box or arrow again also shows them all.
+- One card per function and file. Changes inside the same function of the same file share a card, so a large function edited in twelve places is one card, not twelve cards with its name.
+- Every card reads the same way: the function as its title, then its file, the number of changes past one, and its added and removed lines.
+- Same columns and connectors as the map of concerns (`src/relations/diagram.ts`). A connector that spans a column passes between the cards, never over one. A use that closes a cycle is drawn back to front, its arrowhead on the left.
+- A connector's text gives only the names the cards don't already show: no `StorageCleanup` on a connector from the card `StorageCleanup`.
+- On a phone, the same links show as an outline (`FlowOutline.tsx`): each function that uses others, then one row per thing it uses. Nothing to lay out, so it never scrolls sideways.
+- Past 12 cards, a line gives the count instead of a map nobody can read. The outline has no such limit.
+- Clicking a card shows only its changes. Clicking a connector, or a row of the outline, shows only the changes behind it: for each name it stands for, the change that defines it and the change that uses it (`arrowHunks` in `src/relations/flow.ts`). A line above the changes says what is picked, with Show all. Clicking the same card or connector again also shows them all.
 
 ## Reading and hiding the diagrams
 
-- **How to read it**, beside each diagram, opens a full explanation above it: what a box and an arrow mean, how to use the map while reviewing, and what it can't tell (`extension/src/ui/relations/HowToRead.tsx`).
+- **How to read it**, beside each diagram, opens a full explanation above it: what a card and a connector mean, how to use the map while reviewing, and what it can't tell (`extension/src/ui/relations/HowToRead.tsx`).
 - **Hide diagrams** hides every diagram, in Overview and in Files, on every pull request. The choice is saved with the user's preferences, so it follows them to other browsers (`diagramsShown.ts`). The list of how concerns connect stays.
 - **Show change diagrams**, in the Files tab's settings menu (the gear), brings them back. The same menu has **Hide change diagrams** while they show.
 

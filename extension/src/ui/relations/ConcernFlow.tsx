@@ -1,8 +1,10 @@
 import * as React from "react";
 import type { Group, ReviewResult } from "../../../../src/core/types";
 import { concernFlow, pairKey } from "../../../../src/relations/flow";
+import { NARROW_SCREEN, useMediaQuery } from "../useMediaQuery";
 import { plural } from "../util";
 import { useDiagramsShown } from "./diagramsShown";
+import { FlowOutline } from "./FlowOutline";
 import { DiagramControls, HowToRead } from "./HowToRead";
 
 const RelationMap = React.lazy(() => import("./RelationMap"));
@@ -34,9 +36,11 @@ export const ConcernFlow: React.FC<{
   const boxes = React.useMemo(() => new Map(flow.boxes.map((b) => [b.id, b])), [flow]);
   const [shown, setShown] = useDiagramsShown();
   const [reading, setReading] = React.useState(false);
+  // On a phone the map of cards doesn't fit: the same links show as an outline.
+  const narrow = useMediaQuery(NARROW_SCREEN);
   if (!shown || flow.boxes.length < 2) return null;
   const others = flow.unlinked > 0 && <span className="muted"> · {plural(flow.unlinked, "other change")} not linked</span>;
-  if (flow.tooMany)
+  if (flow.tooMany && !narrow)
     return (
       <p className="concern-flow concern-flow-summary">
         How these changes connect: {flow.boxes.length} linked places, too many to draw{others}
@@ -60,7 +64,10 @@ export const ConcernFlow: React.FC<{
         </span>
         <DiagramControls reading={reading} onReading={setReading} onHide={() => setShown(false)} />
       </div>
-      {reading && <HowToRead kind="changes" />}
+      {reading && <HowToRead kind={narrow ? "outline" : "changes"} />}
+      {narrow ? (
+        <FlowOutline boxes={flow.boxes} links={flow.links} color={color} selected={focus?.key ?? null} linkKey={pairKey} onSelectBox={showBox} onSelectLink={showArrow} />
+      ) : (
       <React.Suspense fallback={<div className="relation-map loading">Drawing the map…</div>}>
         <RelationMap
           items={flow.boxes}
@@ -70,10 +77,11 @@ export const ConcernFlow: React.FC<{
           onSelect={showBox}
           onSelectEdge={showArrow}
           selected={focus?.key ?? null}
-          height={260}
+          height={480}
           label={`How the changes in concern ${group.title} connect`}
         />
       </React.Suspense>
+      )}
     </div>
   );
 };

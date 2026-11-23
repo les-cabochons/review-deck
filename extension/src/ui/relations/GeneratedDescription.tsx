@@ -4,6 +4,7 @@ import type { PrOverview } from "../../data/model";
 import { buildChangelog } from "../../data/releases";
 import type { ReviewModel } from "../../review/engine";
 import { groupColor } from "../groupColors";
+import { NARROW_SCREEN, useMediaQuery } from "../useMediaQuery";
 import { plural } from "../util";
 import { ConcernList } from "./ConcernList";
 import { useDiagramsShown } from "./diagramsShown";
@@ -69,13 +70,25 @@ const Why: React.FC<{ data: PrOverview }> = ({ data }) => {
 const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: string) => void }> = ({ review, onOpenGroup }) => {
   const [shown, setShown] = useDiagramsShown();
   const [reading, setReading] = React.useState(false);
+  const narrow = useMediaQuery(NARROW_SCREEN);
   if (!review?.analyzed) return <p className="muted">Building the guide…</p>;
   const { groups, relations } = review.result;
   const concerns = groups.filter((g) => g.kind === "semantic");
   if (concerns.length === 0) return <p className="muted">No concern to describe: every change is mechanical or stands alone.</p>;
   const links = relations?.links ?? [];
   const drawn = new Set(links.filter((l) => !isLoose(l)).flatMap((l) => [l.from, l.to]));
-  const items = concerns.map((g) => ({ id: g.id, title: g.title, subtitle: plural(g.hunkIds.length, "change") }));
+  const items = concerns.map((g) => {
+    const lines = g.hunkIds.flatMap((id) => review.result.hunks.get(id)?.hunk.lines ?? []);
+    return {
+      id: g.id,
+      title: g.title,
+      subtitle: plural(g.hunkIds.length, "change"),
+      adds: lines.filter((l) => l.kind === "add").length,
+      dels: lines.filter((l) => l.kind === "del").length,
+    };
+  });
+  // On a phone the map doesn't fit, and the list below says the same.
+  const mapShown = !!relations && concerns.length > 1 && shown && !narrow;
   const index = new Map(concerns.map((g, i) => [g.id, String(i + 1)]));
   const colors = new Map(concerns.map((g) => [g.id, groupColor(groups, g)]));
   return (
@@ -87,13 +100,13 @@ const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: stri
       {!relations && (
         <p className="generated-note">This guide was saved before Review Deck recorded links. Choose Regroup in Files to see them.</p>
       )}
-      {relations && concerns.length > 1 && shown && (
+      {mapShown && (
         <div className="generated-map-head">
           <DiagramControls reading={reading} onReading={setReading} onHide={() => setShown(false)} />
         </div>
       )}
-      {relations && concerns.length > 1 && shown && reading && <HowToRead kind="concerns" />}
-      {relations && concerns.length > 1 && shown && (
+      {mapShown && reading && <HowToRead kind="concerns" />}
+      {mapShown && (
         <React.Suspense fallback={<div className="relation-map loading">Drawing the map…</div>}>
           <RelationMap
             items={items}
@@ -102,7 +115,7 @@ const WhatChanged: React.FC<{ review: ReviewModel | null; onOpenGroup: (id: stri
             badge={(id) => index.get(id) ?? null}
             apartCaption="On their own"
             onSelect={onOpenGroup}
-            height={300}
+            height={420}
             label={`Map of the ${concerns.length} concerns and the names that link them`}
           />
         </React.Suspense>

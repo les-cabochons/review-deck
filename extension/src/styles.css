@@ -5398,13 +5398,20 @@ span.artifact-toggle {
 .relation-map svg {
   display: block;
 }
-.relation-node rect {
-  fill: var(--card-bg, var(--surface));
-  stroke: var(--node-color, var(--line-strong));
-  stroke-width: 2;
+.relation-heading {
+  fill: var(--fg2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
-.relation-node.apart rect {
-  stroke-width: 1.5;
+.relation-card {
+  fill: var(--card-bg, var(--surface));
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.relation-bar {
+  fill: var(--node-color, var(--fg3));
 }
 .relation-node-title {
   fill: var(--fg);
@@ -5415,6 +5422,19 @@ span.artifact-toggle {
   fill: var(--fg2);
   font-family: var(--mono);
   font-size: 10.5px;
+}
+.relation-stats {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.relation-stats .adds,
+.relation-square.adds {
+  fill: var(--ok);
+}
+.relation-stats .dels,
+.relation-square.dels {
+  fill: var(--err);
 }
 .relation-badge circle {
   fill: var(--node-color, var(--fg3));
@@ -5430,12 +5450,17 @@ span.artifact-toggle {
 .relation-node.selectable:focus {
   outline: none;
 }
-.relation-node.selectable:focus-visible rect,
-.relation-node.selectable:hover rect {
-  stroke-width: 3;
+.relation-node.selectable:hover .relation-card {
+  stroke: var(--fg2);
 }
-.relation-node.selectable:focus-visible rect {
+.relation-node.selectable:focus-visible .relation-card {
   stroke: var(--focus-border-color, var(--accent));
+  stroke-width: 2.5;
+}
+.relation-node.selected .relation-card {
+  stroke: var(--link);
+  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--accent) 9%, var(--card-bg, var(--surface)));
 }
 .relation-edge path {
   fill: none;
@@ -5469,9 +5494,106 @@ span.artifact-toggle {
   fill: var(--link);
   font-weight: 700;
 }
-.relation-node.selected rect {
-  stroke-width: 3.5;
-  fill: color-mix(in srgb, var(--node-color, var(--accent)) 14%, var(--card-bg, var(--surface)));
+.relation-arrowhead {
+  fill: var(--fg2);
+}
+.relation-edge text {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--fg);
+  paint-order: stroke;
+  stroke: var(--map-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.flow-outline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+.flow-outline button {
+  font: inherit;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  width: 100%;
+}
+.flow-outline-root {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--node-color, var(--fg3));
+  border-radius: var(--radius);
+  background: var(--card-bg, var(--surface));
+}
+.flow-outline-file {
+  color: var(--fg2);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.flow-outline-stats {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.flow-outline-stats .adds {
+  color: var(--ok);
+}
+.flow-outline-stats .dels {
+  color: var(--err);
+}
+.flow-outline ul {
+  list-style: none;
+  margin: 0 0 0 14px;
+  padding: 0;
+}
+.flow-outline li {
+  position: relative;
+  padding-left: 20px;
+}
+/* The tree's lines: a trunk down the left, stopping at the last row's branch. */
+.flow-outline li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px solid var(--fg3);
+}
+.flow-outline li:last-child::before {
+  bottom: calc(100% - 17px);
+}
+.flow-outline li::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 17px;
+  width: 14px;
+  border-top: 1.5px solid var(--fg3);
+}
+.flow-outline-row {
+  padding: 7px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  overflow-wrap: anywhere;
+}
+.flow-outline code {
+  font-size: 11.5px;
+}
+.flow-outline .selected {
+  border-color: var(--link);
+  background: color-mix(in srgb, var(--accent) 9%, var(--card-bg, var(--surface)));
 }
 .flow-focus {
   margin: 0 14px 8px;
@@ -5479,18 +5601,6 @@ span.artifact-toggle {
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--accent) 9%, transparent);
   font-size: 12.5px;
-}
-.relation-arrowhead {
-  fill: var(--fg2);
-}
-.relation-edge text {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  fill: var(--fg);
-  paint-order: stroke;
-  stroke: var(--map-bg);
-  stroke-width: 4px;
-  stroke-linejoin: round;
 }
 .relation-apart-caption {
   fill: var(--fg2);

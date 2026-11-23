@@ -1,39 +1,40 @@
 import * as React from "react";
 import type { Link } from "../../../../src/core/types";
-import { boxTitle, layoutRelations, type MapItem, type MapNode } from "../../../../src/relations/diagram";
+import { boxTitle, layoutRelations, type MapEdge, type MapItem, type MapNode } from "../../../../src/relations/diagram";
 import { cx } from "../util";
 
 interface Props {
   items: MapItem[];
   links: Link[];
-  /** The stripe and badge colour of an item; grey when absent. */
+  /** The colour of an item's bar and badge; grey when absent. */
   color?: (id: string) => string;
   /** The number on an item's badge (a concern's place in the guide). */
   badge?: (id: string) => string | null;
-  /** Caption of the row of items without a link. */
+  /** Caption of the rows of items without a link. */
   apartCaption: string;
   onSelect?: (id: string) => void;
-  /** An arrow was clicked, or activated with Enter or Space. Without it, arrows only have their tooltip. */
+  /** A connector was clicked, or activated with Enter or Space. Without it, connectors only have their tooltip. */
   onSelectEdge?: (from: string, to: string) => void;
-  /** The box id, or the `pairKey` of an arrow's two boxes, drawn as selected. */
+  /** The card id, or the `pairKey` of a connector's two cards, drawn as selected. */
   selected?: string | null;
   /** Height the map may take before it scrolls. */
   height: number;
   label: string;
 }
 
-/** Below this the text is too small to read: a larger map scrolls instead of shrinking further. */
+/** Below this the text is too small to read: a wider map scrolls sideways instead of shrinking further. */
 const MIN_SCALE = 0.75;
 let maps = 0;
 
 /**
  * A map of items (concerns, or the changes in one concern) and the names that link them, laid out by
- * src/relations/diagram.ts. An arrow goes from what defines a name to what uses it, both ways when each uses the
- * other. Loose links (member names only) aren't drawn.
+ * src/relations/diagram.ts: columns from left to right, what is defined before what uses it. A connector's arrowhead
+ * is on the user's side, on both sides when each uses the other. Loose links (member names only) aren't drawn.
  */
 const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption, onSelect, onSelectEdge, selected, height, label }) => {
   const [box, setBox] = React.useState<HTMLDivElement | null>(null);
   const [width, setWidth] = React.useState(0);
+  // Arrowhead markers are looked up by id in the whole document, so each map needs its own.
   const [id] = React.useState(() => `relmap${++maps}`);
   React.useLayoutEffect(() => {
     if (!box) return;
@@ -44,10 +45,10 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
     return () => observer.disconnect();
   }, [box]);
   const measured = width > 0;
-  const fit = { width: Math.max(width - 8, 240), height };
-  const map = React.useMemo(() => (measured ? layoutRelations(items, links, fit) : null), [items, links, measured, fit.width, fit.height]);
+  const room = Math.max(width - 8, 240);
+  const map = React.useMemo(() => (measured ? layoutRelations(items, links, { width: room }) : null), [items, links, measured, room]);
   const titles = React.useMemo(() => new Map(items.map((i) => [i.id, i.title])), [items]);
-  const scale = map ? Math.max(MIN_SCALE, Math.min(1, fit.width / map.width, fit.height / map.height)) : 1;
+  const scale = map ? Math.max(MIN_SCALE, Math.min(1, room / map.width)) : 1;
 
   return (
     <div className="relation-map" ref={setBox} style={{ maxHeight: height + 16 }}>
@@ -58,41 +59,16 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
               <path className="relation-arrowhead" d="M0,0 L10,5 L0,10 z" />
             </marker>
           </defs>
-          {map.edges.map((edge) => {
-            const select = onSelectEdge ? () => onSelectEdge(edge.from, edge.to) : undefined;
-            const key = edge.from < edge.to ? `${edge.from}\u0001${edge.to}` : `${edge.to}\u0001${edge.from}`;
-            return (
-            <g
-              key={`${edge.from}>${edge.to}`}
-              className={cx("relation-edge", select && "selectable", selected === key && "selected")}
-              tabIndex={select ? 0 : undefined}
-              role={select ? "button" : undefined}
-              aria-pressed={select ? selected === key : undefined}
-              aria-label={select ? `${edgeTooltip(edge, titles)}. Show only these changes.` : undefined}
-              onClick={select}
-              onKeyDown={
-                select &&
-                ((e) => {
-                  if (e.key !== "Enter" && e.key !== " ") return;
-                  e.preventDefault();
-                  select();
-                })
-              }
-            >
-              <title>{edgeTooltip(edge, titles)}</title>
-              {/* The line is 1.5 px: a wide invisible copy under it is what the pointer finds. */}
-              <path className="relation-edge-hit" d={smooth(edge.points)} />
-              <path d={smooth(edge.points)} markerEnd={`url(#${id}-end)`} markerStart={edge.both ? `url(#${id}-end)` : undefined} />
-              {edge.label && (
-                <text x={edge.label.x} y={edge.label.y + 4} textAnchor="middle">
-                  {edge.label.text}
-                </text>
-              )}
-            </g>
-            );
-          })}
+          {map.headings.map((h) => (
+            <text key={h.text} className="relation-heading" x={h.x} y={h.y}>
+              {h.text}
+            </text>
+          ))}
+          {map.edges.map((edge) => (
+            <Connector key={`${edge.from}>${edge.to}`} edge={edge} marker={`url(#${id}-end)`} titles={titles} selected={selected} onSelect={onSelectEdge} />
+          ))}
           {map.nodes.map((node) => (
-            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} selected={selected === node.id} />
+            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} selected={selected === node.id} />
           ))}
           {map.apartTop !== null && (
             <text className="relation-apart-caption" x={12} y={map.apartTop + 14}>
@@ -100,7 +76,7 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
             </text>
           )}
           {map.apart.map((node) => (
-            <Box key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} apart />
+            <Card key={node.id} node={node} color={color?.(node.id)} badge={badge?.(node.id) ?? null} onSelect={onSelect} apart />
           ))}
         </svg>
       )}
@@ -109,7 +85,53 @@ const RelationMap: React.FC<Props> = ({ items, links, color, badge, apartCaption
 };
 export default RelationMap;
 
-const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart?: boolean; selected?: boolean; onSelect?: (id: string) => void }> = ({
+const onKey = (act: () => void) => (e: React.KeyboardEvent) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  act();
+};
+
+const Connector: React.FC<{
+  edge: MapEdge;
+  marker: string;
+  titles: Map<string, string>;
+  selected?: string | null;
+  onSelect?: (from: string, to: string) => void;
+}> = ({ edge, marker, titles, selected, onSelect }) => {
+  const select = onSelect ? () => onSelect(edge.from, edge.to) : undefined;
+  const key = edge.from < edge.to ? `${edge.from}\u0001${edge.to}` : `${edge.to}\u0001${edge.from}`;
+  const tooltip = edgeTooltip(edge, titles);
+  return (
+    <g
+      className={cx("relation-edge", select && "selectable", selected === key && "selected")}
+      tabIndex={select ? 0 : undefined}
+      role={select ? "button" : undefined}
+      aria-pressed={select ? selected === key : undefined}
+      aria-label={select ? `${tooltip}. Show only these changes.` : undefined}
+      onClick={select}
+      onKeyDown={select && onKey(select)}
+    >
+      <title>{tooltip}</title>
+      {/* The line is 1.5 px: a wide invisible copy under it is what the pointer finds. */}
+      <path className="relation-edge-hit" d={edge.path} />
+      {/* The path runs left to right; the arrowhead goes on the user's side. */}
+      <path d={edge.path} markerEnd={edge.both || !edge.reversed ? marker : undefined} markerStart={edge.both || edge.reversed ? marker : undefined} />
+      {edge.label && (
+        <text x={edge.label.x} y={edge.label.y}>
+          {edge.label.text}
+        </text>
+      )}
+    </g>
+  );
+};
+
+/** How many of a card's five squares are green: its share of added lines, with at least one square for each side that has lines. */
+function greenSquares(adds: number, dels: number): number {
+  if (adds + dels === 0) return 0;
+  return Math.max(adds > 0 ? 1 : 0, Math.min(dels > 0 ? 4 : 5, Math.round((5 * adds) / (adds + dels))));
+}
+
+const Card: React.FC<{ node: MapNode; color?: string; badge: string | null; apart?: boolean; selected?: boolean; onSelect?: (id: string) => void }> = ({
   node,
   color,
   badge,
@@ -119,7 +141,12 @@ const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart
 }) => {
   const { x, y, width, height } = node;
   const select = onSelect ? () => onSelect(node.id) : undefined;
-  const left = x + (badge ? 30 : 10);
+  const left = x + (badge ? 34 : 13);
+  // Two lines of text, centred in a card that may be taller for its connectors.
+  const line1 = y + height / 2 - 3;
+  const line2 = y + height / 2 + 13;
+  const stats = !apart && node.adds !== undefined && node.dels !== undefined ? { adds: node.adds, dels: node.dels, green: greenSquares(node.adds, node.dels) } : null;
+  const subtitleRoom = width - (left - x) - 8 - (stats ? 108 : 0);
   return (
     <g
       className={cx("relation-node", apart && "apart", select && "selectable", selected && "selected")}
@@ -127,43 +154,47 @@ const Box: React.FC<{ node: MapNode; color?: string; badge: string | null; apart
       style={color ? ({ "--node-color": color } as React.CSSProperties) : undefined}
       tabIndex={select ? 0 : undefined}
       role={select ? "button" : undefined}
-      aria-label={select ? `${node.title}${node.subtitle ? `, ${node.subtitle}` : ""}. Show it.` : undefined}
+      aria-label={select ? `${node.title}${node.subtitle ? `, ${node.subtitle}` : ""}${stats ? `, ${stats.adds} added, ${stats.dels} removed` : ""}. Show it.` : undefined}
       onClick={select}
-      onKeyDown={
-        select &&
-        ((e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          select();
-        })
-      }
+      onKeyDown={select && onKey(select)}
     >
       <title>{[node.title, node.path ?? node.subtitle].filter(Boolean).join("\n")}</title>
-      <rect x={x} y={y} width={width} height={height} rx={6} />
+      <rect className="relation-card" x={x} y={y} width={width} height={height} rx={7} />
+      <rect className="relation-bar" x={x} y={y + 7} width={3} height={height - 14} rx={1.5} />
       {badge && (
         <g className="relation-badge">
-          <circle cx={x + 15} cy={y + height / 2} r={9} />
-          <text x={x + 15} y={y + height / 2 + 4} textAnchor="middle">
+          <circle cx={x + 19} cy={y + height / 2} r={9} />
+          <text x={x + 19} y={y + height / 2 + 4} textAnchor="middle">
             {badge}
           </text>
         </g>
       )}
-      <text className="relation-node-title" x={left} y={node.subtitle && !apart ? y + 20 : y + height / 2 + 4}>
+      <text className="relation-node-title" x={left} y={node.subtitle && !apart ? line1 : y + height / 2 + 4}>
         {boxTitle(node.title)}
       </text>
       {node.subtitle && !apart && (
-        <text className="relation-node-subtitle" x={left} y={y + 35}>
-          {fitText(node.subtitle, width - (left - x) - 8)}
+        <text className="relation-node-subtitle" x={left} y={line2}>
+          {fitText(node.subtitle, subtitleRoom)}
         </text>
+      )}
+      {stats && (
+        <>
+          <text className="relation-stats" x={x + width - 62} y={line2} textAnchor="end">
+            <tspan className="adds">+{stats.adds}</tspan> <tspan className="dels">−{stats.dels}</tspan>
+          </text>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <rect key={i} className={i < stats.green ? "relation-square adds" : "relation-square dels"} x={x + width - 55 + i * 9} y={line2 - 8} width={7} height={7} rx={1.5} />
+          ))}
+        </>
       )}
     </g>
   );
 };
 
 /**
- * An arrow's tooltip, in full: "make uses sentence, cleanupFailureReason and REPORT_ENTRY_LIMIT from sentence", or
- * "layerRuntimeCoreDependenciesBase uses StorageCleanup" when the only name is the box it comes from. The box an
- * arrow goes to doesn't use its own name, so that name is left out.
+ * A connector's tooltip, in full: "make uses sentence, cleanupFailureReason and REPORT_ENTRY_LIMIT from sentence", or
+ * "layerRuntimeCoreDependenciesBase uses StorageCleanup" when the only name is the card it comes from. The card a
+ * connector goes to doesn't use its own name, so that name is left out.
  */
 function edgeTooltip(edge: { from: string; to: string; both: boolean; names: string[] }, titles: Map<string, string>): string {
   const from = titles.get(edge.from) ?? edge.from;
@@ -178,14 +209,4 @@ function edgeTooltip(edge: { from: string; to: string; both: boolean; names: str
 function fitText(text: string, room: number): string {
   const chars = Math.floor(room / 6.4);
   return text.length <= chars ? text : `…${text.slice(text.length - Math.max(chars - 1, 4))}`;
-}
-
-/** A line through dagre's points: straight to each midpoint, curving around the corners. */
-function smooth(points: { x: number; y: number }[]): string {
-  const at = (p: { x: number; y: number }) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-  if (points.length < 3) return `M${points.map(at).join(" L")}`;
-  const mid = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-  let d = `M${at(points[0])} L${at(mid(points[0], points[1]))}`;
-  for (let i = 1; i < points.length - 1; i++) d += ` Q${at(points[i])} ${at(mid(points[i], points[i + 1]))}`;
-  return `${d} L${at(points[points.length - 1])}`;
 }

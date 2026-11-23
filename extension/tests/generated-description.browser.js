@@ -88,6 +88,10 @@ async page => {
     const scale = svg.width / hit.ownerSVGElement.viewBox.baseVal.width;
     const found = document.elementFromPoint(svg.left + middle.x * scale + 4 * scale, svg.top + middle.y * scale);
     assert(found?.closest('.relation-edge') === edge, `The pointer 4 px off the line found ${found?.outerHTML.slice(0, 80)}`);
+    // The cards sit in columns under their headings, with their line counts.
+    const headings = [...section.querySelectorAll('.concern-flow .relation-heading')].map(h => h.textContent);
+    assert(headings.join() === 'Defined here,Uses them', `Column headings: ${headings}`);
+    assert(/^\+\d+ −\d+$/.test(section.querySelector('.concern-flow .relation-stats').textContent), 'A card has no line counts');
     // Every box: the function, then its file. No "start here", and no `make` linking two files.
     const subtitles = [...document.querySelectorAll('.concern-flow .relation-node-subtitle')].map(t => t.textContent);
     assert(subtitles.length > 0 && subtitles.every(t => /^[\w.-]+\.\w+( · \d+ changes)?$/.test(t)), `A box's second line isn't its file: ${subtitles}`);
@@ -102,7 +106,7 @@ async page => {
     const link = label => [...document.querySelectorAll('.concern-flow .diagram-controls button')].find(b => b.textContent === label);
     link('How to read it').click();
     await wait(() => document.querySelector('.concern-flow .how-to-read'), 'How to read it did not open');
-    assert(document.querySelector('.how-to-read').textContent.includes('An arrow from A to B means B uses something A defines'), 'The explanation is not the one for a concern\'s map');
+    assert(document.querySelector('.how-to-read').textContent.includes('Each column to the right uses things from the columns before it'), 'The explanation is not the one for a concern\'s map');
     link('Hide diagrams').click();
     await wait(() => !document.querySelector('.concern-flow'), 'Hide diagrams left a map in Files');
   });
@@ -118,6 +122,24 @@ async page => {
   await page.evaluate(async () => {
     await check.wait(() => document.querySelector('.concern-flow .relation-map svg'), 'The settings menu did not bring the maps back');
   });
+
+  // On a phone, the same links show as an outline, and a row picks the changes behind its link.
+  await page.setViewportSize({ width: 390, height: 800 });
+  await page.evaluate(async () => {
+    const { wait, assert } = check;
+    await wait(() => document.querySelector('.flow-outline'), 'A phone did not get the outline');
+    const section = document.querySelector('.flow-outline').closest('.group-section');
+    assert(!section.querySelector('.relation-map'), 'A phone still draws the map');
+    const all = section.querySelectorAll('.hunk-card').length;
+    section.querySelector('.flow-outline-row').click();
+    await wait(() => section.querySelector('.flow-focus'), 'A row of the outline did not pick its changes');
+    const shown = section.querySelectorAll('.hunk-card').length;
+    assert(shown >= 2 && shown < all, `A row left ${shown} of ${all} changes showing`);
+    assert(section.querySelector('.flow-outline-row.selected'), 'The picked row is not shown as picked');
+    assert(section.querySelector('.flow-outline').scrollWidth <= section.querySelector('.flow-outline').clientWidth, 'The outline scrolls sideways');
+    section.querySelector('.flow-focus .link-button').click();
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // A guide saved before relations were recorded: concerns without links, and the page says why.
   await page.evaluate(() => {

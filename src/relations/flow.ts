@@ -53,11 +53,14 @@ export function concernFlow(group: Group, relations: ReviewRelations | undefined
 
   const boxes: FlowBox[] = [...members].map(([id, hs]) => {
     const count = hs.length > 1 ? ` · ${plural(hs.length, "change")}` : "";
+    const lines = hs.flatMap((h) => h.hunk.lines ?? []);
     return {
       id,
       title: hs[0].symbol ?? `change ${hs[0].hunk.index + 1}`,
       subtitle: `${basename(hs[0].file.path)}${count}`,
       path: hs[0].file.path,
+      adds: lines.filter((l) => l.kind === "add").length,
+      dels: lines.filter((l) => l.kind === "del").length,
       hunkIds: hs.map((h) => h.hunk.id),
     };
   });

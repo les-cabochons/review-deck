@@ -74,20 +74,76 @@ test("Given linked and unlinked concerns, then the map draws the linked ones, me
       { from: "g2", to: "g1", symbols: ["AdoTagStore"] },
       { from: "g2", to: "g3", symbols: [".hide"] },
     ],
-    { width: 700, height: 300 },
+    { width: 700 },
   );
   assert.ok(map);
   assert.deepEqual(map.nodes.map((n) => n.id).sort(), ["g1", "g2"]);
   // g2 to g3 rests on a member name only: not drawn, so g3 is apart with g4.
   assert.deepEqual(map.apart.map((n) => n.id), ["g3", "g4"]);
   assert.deepEqual(map.edges.map((e) => [e.from, e.to, e.both, e.symbols]), [["g1", "g2", true, ["TagFields", "AdoTagStore"]]]);
+  assert.equal(map.edges[0].reversed, false);
   for (const n of [...map.nodes, ...map.apart]) assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.width <= map.width && n.y + n.height <= map.height, n.id);
+});
+
+/** The level runs of a connector's path, as [x1, x2, y]. The layout only writes M, H, V and Q. */
+function levelRuns(path: string): [number, number, number][] {
+  const runs: [number, number, number][] = [];
+  let x = 0;
+  let y = 0;
+  for (const [, command, args] of path.matchAll(/([MHVQ])([^MHVQ]*)/g)) {
+    const n = args.trim().split(/[ ,]+/).map(Number);
+    if (command === "M") [x, y] = n;
+    else if (command === "H") {
+      runs.push([Math.min(x, n[0]), Math.max(x, n[0]), y]);
+      x = n[0];
+    } else if (command === "V") y = n[0];
+    else [x, y] = [n[2], n[3]];
+  }
+  return runs;
+}
+
+test("Given a chain of uses, then each card sits one column right of what it uses, under the two headings", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: "file.ts", adds: 4, dels: 1 }));
+  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }], { width: 700 })!;
+  const at = (id: string) => map.nodes.find((n) => n.id === id)!;
+  assert.ok(at("a").x + at("a").width < at("b").x && at("b").x + at("b").width < at("c").x);
+  assert.deepEqual(map.headings.map((h) => [h.text, h.x]), [["Defined here", at("a").x], ["Uses them", at("c").x]]);
+  assert.deepEqual([at("a").adds, at("a").dels], [4, 1]);
+  // Every connector starts on its source's right edge and ends on its user's left edge.
+  for (const edge of map.edges) {
+    const runs = levelRuns(edge.path);
+    assert.equal(runs[0][0], at(edge.from).x + at(edge.from).width, edge.from);
+    assert.equal(runs.at(-1)![1], at(edge.to).x, edge.to);
+  }
+});
+
+test("Given a connector that spans a column, then it passes clear of the card in between", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: null }));
+  const links = [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }, { from: "a", to: "c", symbols: ["z"] }];
+  const map = layoutRelations(items, links, { width: 700 })!;
+  const b = map.nodes.find((n) => n.id === "b")!;
+  const long = map.edges.find((e) => e.from === "a" && e.to === "c")!;
+  const across = levelRuns(long.path).filter(([x1, x2]) => x1 < b.x + b.width && x2 > b.x);
+  assert.ok(across.length > 0);
+  for (const [, , y] of across) assert.ok(y < b.y || y > b.y + b.height, `the connector crosses b at y=${y}`);
+});
+
+test("Given uses that form a cycle, then the map still lays out, and the use that closes it is drawn back to front", async () => {
+  const { layoutRelations } = await import("../diagram.js");
+  const items = ["a", "b", "c"].map((id) => ({ id, title: id, subtitle: null }));
+  const links = [{ from: "a", to: "b", symbols: ["x"] }, { from: "b", to: "c", symbols: ["y"] }, { from: "c", to: "a", symbols: ["z"] }];
+  const map = layoutRelations(items, links, { width: 700 })!;
+  assert.equal(map.nodes.length, 3);
+  assert.equal(new Set(map.nodes.map((n) => n.x)).size, 3);
+  assert.equal(map.edges.filter((e) => e.reversed).length, 1);
 });
 
 test("Given an arrow whose only name is the title of the box it comes from, then it has no label", async () => {
   const { layoutRelations } = await import("../diagram.js");
   const items = [{ id: "a", title: "StorageCleanup", subtitle: "storageCleanup.ts" }, { id: "b", title: "make", subtitle: "storageCleanup.ts" }, { id: "c", title: "sentence", subtitle: null }];
-  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: ["StorageCleanup"] }, { from: "c", to: "b", symbols: ["sentence", "Reason", "kind"] }], { width: 700, height: 300 });
+  const map = layoutRelations(items, [{ from: "a", to: "b", symbols: ["StorageCleanup"] }, { from: "c", to: "b", symbols: ["sentence", "Reason", "kind"] }], { width: 700 });
   assert.deepEqual(map!.edges.map((e) => [e.from, e.label?.text ?? null]).sort(), [["a", null], ["c", "Reason +1"]]);
 });
 

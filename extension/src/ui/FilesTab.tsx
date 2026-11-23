@@ -16,6 +16,7 @@ import { LazyMount, LazyRoot } from "./LazyMount";
 import { groupColor } from "./groupColors";
 import { ConcernFlow, type FlowFocus } from "./relations/ConcernFlow";
 import { useDiagramsShown } from "./relations/diagramsShown";
+import { useMediaQuery } from "./useMediaQuery";
 import { usePreference } from "./usePreference";
 import { FileReviewProvider, useFileReview, ViewedCheckbox } from "./FileReviewState";
 import { viewedStatus } from "./viewed";
@@ -229,19 +230,6 @@ const FilesContent: React.FC<Props> = (props) => {
     </div>
   );
 };
-
-/** Whether the window matches a media query, kept current as the window resizes. */
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = React.useState(() => window.matchMedia(query).matches);
-  React.useEffect(() => {
-    const list = window.matchMedia(query);
-    const update = () => setMatches(list.matches);
-    update();
-    list.addEventListener("change", update);
-    return () => list.removeEventListener("change", update);
-  }, [query]);
-  return matches;
-}
 
 /** Whether the file tree sidebar is shown. Hidden, it leaves a slim rail and the diffs take the rest of the width. */
 function useTreeOpen(): [boolean, (open: boolean) => void] {
