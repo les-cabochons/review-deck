@@ -92,22 +92,26 @@ const DescriptionCard: React.FC<{ data: PrOverview; review: ReviewModel | null; 
           </button>
         )}
       </div>
-      {generated ? (
+      {generated && (
         <React.Suspense fallback={<div className="card-body muted">Loading…</div>}>
           <GeneratedDescription data={data} review={review} onOpenGroup={onOpenGroup} />
         </React.Suspense>
-      ) : editing ? (
-        <CommentComposer
-          label="Pull request description"
-          submitText="Save description"
-          initial={pr.description}
-          allowEmpty
-          onSave={actions.setDescription}
-          onCancel={() => setEditing(false)}
-          onSaved={() => setEditing(false)}
-        />
+      )}
+      {/* An edit in progress stays mounted, hidden, while Generated shows: its unsaved text lives in the composer. */}
+      {editing ? (
+        <div hidden={generated}>
+          <CommentComposer
+            label="Pull request description"
+            submitText="Save description"
+            initial={pr.description}
+            allowEmpty
+            onSave={actions.setDescription}
+            onCancel={() => setEditing(false)}
+            onSaved={() => setEditing(false)}
+          />
+        </div>
       ) : (
-        <Markdown text={pr.description} className="card-body" />
+        !generated && <Markdown text={pr.description} className="card-body" />
       )}
     </div>
   );

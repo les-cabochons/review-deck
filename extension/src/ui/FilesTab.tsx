@@ -150,6 +150,7 @@ const FilesContent: React.FC<Props> = (props) => {
     }
     setGroupCollapsed(card.group, false);
     setCollapsed([card.info.hunk.id], false);
+    revealHunk(card.info.hunk.id);
     requestAnimationFrame(() => scrollToThread([`hunk-${card.info.hunk.id}`], thread.id));
   }, [focusThread, review, selection, props.threads, shownView, shown, setCollapsed, setGroupCollapsed]);
   // The sidebar and the phone sheet show the same navigator, with the same search, filters and folds.
@@ -382,6 +383,15 @@ const Toolbar: React.FC<Props & { ready: number | null }> = ({
 // ---------- navigator ----------
 
 /** Scrolls to an element, then again once lazily mounted content above it has settled. */
+/**
+ * Says a change is about to be scrolled to. A concern showing only the changes of a card or connector picked in its
+ * map (GroupSection's focus) shows them all again if this one isn't among them: its card would not be on the page.
+ */
+const REVEAL_HUNK = "review-deck:reveal-hunk";
+function revealHunk(id: string) {
+  window.dispatchEvent(new CustomEvent<string>(REVEAL_HUNK, { detail: id }));
+}
+
 function scrollToId(id: string) {
   const go = () => document.getElementById(id)?.scrollIntoView({ block: "start" });
   go();
@@ -737,6 +747,7 @@ const GroupTree: React.FC<{ review: ReviewModel; group: Group; files: FileDiff[]
           setCollapsed(hunksOf(path), false);
           const section = document.getElementById(`group-${group.id}`);
           section?.querySelector<HTMLButtonElement>(".group-header[aria-expanded=false]")?.click();
+          revealHunk(hunksOf(path)[0]);
           requestAnimationFrame(() => scrollToId(`hunk-${hunksOf(path)[0]}`));
           onPick?.();
         }}
@@ -823,6 +834,16 @@ const GroupSection: React.FC<{ group: Group; index: number; firstCards: Set<stri
   const setOpen = (next: boolean) => setGroupCollapsed(group.id, !next);
   /** A box or an arrow picked in the concern's map: only its changes show, until it is picked again or cleared. */
   const [focus, setFocus] = React.useState<FlowFocus | null>(null);
+  // The navigator or a comment is about to scroll to a change the focus hides: show them all, so it is there.
+  React.useEffect(() => {
+    if (!focus) return;
+    const reveal = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (group.hunkIds.includes(id) && !focus.hunkIds.includes(id)) setFocus(null);
+    };
+    window.addEventListener(REVEAL_HUNK, reveal);
+    return () => window.removeEventListener(REVEAL_HUNK, reveal);
+  }, [focus, group]);
   const all = group.hunkIds.map((id) => review.result.hunks.get(id)!).filter((h) => shown(h.file.path));
   const hunks = focus ? all.filter((h) => focus.hunkIds.includes(h.hunk.id)) : all;
   const files = new Set(all.map((h) => h.file.path)).size;

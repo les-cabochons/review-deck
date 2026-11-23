@@ -18,6 +18,8 @@ async page => {
       assert: (condition, message) => { if (!condition) throw new Error(message); },
       toggle: label => [...document.querySelectorAll('.description-source button')].find(b => b.textContent.startsWith(label)),
       saved: () => JSON.parse(localStorage.getItem('write-test-saved') ?? 'null'),
+      // A change of concern `group` other than the one whose card has id `kept`.
+      hiddenHunk: (group, kept) => JSON.parse(localStorage.getItem('write-test-saved'))[0].review.groups.find(g => g.id === group).hunkIds.find(id => `hunk-${id}` !== kept),
     };
   });
 
@@ -51,6 +53,20 @@ async page => {
     // Back to the author's.
     toggle('Written by').click();
     await wait(() => document.querySelector('.description .card-body') && !document.querySelector('.generated-description'), 'The toggle did not go back to the author\'s description');
+
+    // An unsaved edit of the description survives a look at Generated.
+    document.querySelector('.description-edit').click();
+    await wait(() => document.querySelector('.description textarea'), 'The description editor did not open');
+    const editor = document.querySelector('.description textarea');
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(editor, 'Draft kept across the toggle');
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    toggle('Generated').click();
+    await wait(() => document.querySelector('.generated-description'), 'Generated did not show over an edit');
+    toggle('Written by').click();
+    await wait(() => !document.querySelector('.generated-description'), 'The toggle did not go back to the edit');
+    assert(document.querySelector('.description textarea')?.value === 'Draft kept across the toggle', `The draft was lost: "${document.querySelector('.description textarea')?.value}"`);
+    [...document.querySelectorAll('.description button')].find(b => b.textContent === 'Cancel').click();
+    await wait(() => document.querySelector('.description .card-body') && !document.querySelector('.generated-description'), 'The toggle did not go back to the author\'s description');
   });
 
   // Files: a concern's flow, and a click on a change. The harness keeps the guide it saved, so this is a reopened one.
@@ -78,6 +94,19 @@ async page => {
     assert(cards() >= 2 && cards() < all, `An arrow left ${cards()} of ${all} changes showing`);
     section.querySelector('.flow-focus .link-button').click();
     await wait(() => cards() === all, 'Show all did not show every change again');
+
+    // With a card picked, going to a change the pick hides shows every change again. The event is what the navigator
+    // and a comment's link send before they scroll (revealHunk in FilesTab.tsx).
+    const one = [...section.querySelectorAll('.concern-flow .relation-node.selectable')].find(n => !/· \d+ changes/.test(n.textContent));
+    one.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await wait(() => cards() === 1, `One card left ${cards()} changes showing`);
+    const kept = section.querySelector('.hunk-card').id;
+    const hidden = check.hiddenHunk(section.id.slice('group-'.length), kept);
+    window.dispatchEvent(new CustomEvent('review-deck:reveal-hunk', { detail: kept.slice('hunk-'.length) }));
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert(cards() === 1, 'Going to a change already showing dropped the pick');
+    window.dispatchEvent(new CustomEvent('review-deck:reveal-hunk', { detail: hidden }));
+    await wait(() => cards() === all && document.getElementById(`hunk-${hidden}`), 'Going to a hidden change did not show it');
     // An arrow answers the pointer anywhere along it, and its tooltip names both ends.
     const edge = document.querySelector('.concern-flow .relation-edge');
     const tooltip = edge.querySelector(':scope > title').textContent;
