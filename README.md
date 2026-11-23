@@ -28,6 +28,7 @@ session and never sends code anywhere, unless you connect [your own backend](#op
 Created in [T3 Code](https://t3.codes).
 
 - [Install the extension](#install-the-extension)
+- [Open pull request links in the Deck](#open-pull-request-links-in-the-deck)
 - [Test it locally](#test-it-locally)
 - [Optional: run your own backend](#optional-run-your-own-backend)
 - [How grouping works](#how-grouping-works)
@@ -77,6 +78,42 @@ To change the extension or run your own build:
 
 A copy published under another publisher is served from `https://<publisher>.gallerycdn.vsassets.io`. If
 you also run a backend, add that origin to `allowed_origins` in `infra/variables.tf`.
+
+## Open pull request links in the Deck
+
+The browser extension in `browser-extension/` opens Azure DevOps pull request links in the Deck when you open them
+from outside Azure DevOps: chat, email, another site, or the address bar. Links you click inside Azure DevOps, and
+the Deck's link back to the Azure DevOps page, still open the classic pull request page, and so does reloading it.
+It works in Chrome, Edge, and Firefox 128 or later. Zen is built on Firefox, so it works there too.
+
+1. Build it: `npm run browser:build` writes `browser-extension/dist`.
+2. Load it:
+   - Chrome or Edge: open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked** and pick
+     `browser-extension/dist`.
+   - Firefox or Zen: open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and pick
+     `browser-extension/dist/manifest.json`. The browser drops it when it restarts, so load it again after each
+     restart. To keep it, sign it as an unlisted add-on with your addons.mozilla.org API key:
+     `npx web-ext sign --channel unlisted --source-dir browser-extension/dist --api-key <key> --api-secret <secret>`.
+     Then install the `.xpi` it writes from `about:addons`, gear menu, **Install Add-on From File**.
+3. Open **Repos → Deck** once in each organization. The extension learns that organization's Deck from the page's
+   address, for all of its projects, and private copies under another publisher work too. Its toolbar icon shows
+   the learned Decks, and you can paste or remove one there. If the browser hides the icon, open `about:addons`,
+   choose **Review Deck links** and open its options.
+4. Firefox or Zen only: if links still open the classic page, open the add-on in `about:addons` and check that
+   it may access `dev.azure.com` and `visualstudio.com`. Without that access it can't redirect.
+
+Pull request links of an organization whose Deck you haven't opened yet keep opening the classic page.
+
+The Deck must be a version that opens `?pr=<id>` without a repository (commit `feat(hub): open a pull request from
+a link that has only its id`). An older Deck shows its pull request list instead of the pull request.
+
+The Deck gets these links as `?pr=<id>`, because the classic URL names the repository, not its id. It finds the
+repository in the PR or hub row the browser kept, or else with one REST call before the PR loads. A link to a
+comment or a file opens the PR's overview, since the Deck doesn't open those yet.
+
+Checks: `npm run browser:test` tests the redirect rules. `npm run browser:test:redirect -- --chrome <path>`
+opens links in a real Chromium with the extension loaded (Chrome for Testing or Chromium, since Google Chrome no
+longer loads unpacked extensions from the command line). There's no automated Firefox run.
 
 ## Test it locally
 
@@ -308,6 +345,7 @@ The weights were tuned on everything except #17826, so treat these as a smoke te
 | `src/` | The grouping pipeline, and `src/infra` for the Infra view. Everything except `src/node/` runs in the browser. |
 | `extension/` | The Azure DevOps extension: `src/app` (Azure DevOps and local hosts), `src/data` (REST adapters and mocks), `src/review` (worker, engine, backend client), `src/ui` (React with `azure-devops-ui`, `@pierre/diffs` and `@pierre/trees`). |
 | `backend/` | The optional Azure Function: embeddings, titles, spending caps, auto-restack. |
+| `browser-extension/` | The Chrome and Firefox extension that opens pull request links in the Deck. |
 | `infra/` | Terraform for the backend. |
 | `fixtures/` | Synthetic and real PRs with hand-written truth. `npm run fixtures` regenerates and validates them. `fixtures/demo` holds demo-only PRs. |
 | `docs/` | Backend, stacks, the Infra view, startup and milestone notes. |

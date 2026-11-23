@@ -1,12 +1,14 @@
 import * as SDK from "azure-devops-extension-sdk";
 import { CommonServiceIds, type IExtensionDataManager, type IExtensionDataService, type IHostNavigationService } from "azure-devops-extension-api/Common";
 import { CoreRestClient } from "azure-devops-extension-api/Core";
-import { GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
+import { GitRestClient, GitServiceIds, type IVersionControlRepositoryService } from "azure-devops-extension-api/Git";
 import { getClient } from "azure-devops-extension-api";
 import { type Feature, type OrganizationSettings, readOrganizationSettings } from "../data/access";
 import { AdoPrListSource } from "../data/adoList";
 import type { PrSummary } from "../data/list";
 import { AdoPrSource } from "../data/adoSource";
+import { readHubSnapshot } from "../data/hubCache";
+import { readPrSnapshot } from "../data/prCache";
 import { AdoTagStore } from "./adoTags";
 import type { Identity, PrSource } from "../data/model";
 import type { PresenceStore } from "../data/presence";
@@ -84,7 +86,7 @@ export class AdoHost implements AppHost {
   static async create(): Promise<AdoHost> {
     const nav = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
     const host = new AdoHost(nav);
-    host.router = await HashRouter.connect(nav, (route) => host.listeners.emit(route));
+    host.router = await HashRouter.connect(nav, (route) => host.listeners.emit(route), (pr) => host.findRepository(pr));
     return host;
   }
 
@@ -144,6 +146,22 @@ export class AdoHost implements AppHost {
   private freshPrefetch(route: Extract<Route, { view: "pr" }>): AdoPrSource | null {
     const p = this.prefetched;
     return p && p.repo === route.repo && p.pr === route.pr && Date.now() - p.at < PREFETCH_REUSE_MS ? p.source : null;
+  }
+
+  /**
+   * The repository of a pull request known only by its id (a `?pr=<id>` link from the browser extension): from the
+   * PR or the hub row this browser kept, else one REST call, which holds the PR page back by its round trip.
+   * Null when the PR can't be read here; the hub opens instead.
+   */
+  private async findRepository(pr: number): Promise<string | null> {
+    const kept = readPrSnapshot(this.cacheScope, pr)?.overview.pr.repository.id ?? readHubSnapshot(this.cacheScope)?.prs.find((p) => p.id === pr)?.repository.id;
+    if (kept) return kept;
+    try {
+      return (await getClient(GitRestClient).getPullRequestById(pr, this.projectId)).repository.id;
+    } catch (e) {
+      console.warn(`[review-deck] could not find the repository of pull request ${pr}:`, e);
+      return null;
+    }
   }
 
   private inOtherProject(route: Extract<Route, { view: "pr" }>): boolean {

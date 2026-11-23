@@ -11,6 +11,8 @@ check:
     npm run ext:typecheck
     npm run ext:test
     npm run backend:typecheck
+    npm run browser:typecheck
+    npm run browser:test
 
 build:
     npm run ext:build

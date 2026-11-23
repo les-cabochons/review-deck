@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Review Deck links",
+  "version": "0.1.0",
+  "description": "Opens Azure DevOps pull request links in Review Deck when you open them from outside Azure DevOps.",
+  "icons": {
+    "128": "logo.png"
+  },
+  "permissions": ["declarativeNetRequestWithHostAccess", "storage"],
+  "host_permissions": ["https://dev.azure.com/*", "https://*.visualstudio.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Review Deck links",
+    "default_popup": "options.html",
+    "default_icon": {
+      "128": "logo.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "review-deck-links@les-cabochons",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

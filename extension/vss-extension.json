@@ -81,7 +81,7 @@
           "light": "images/deck-light.png",
           "dark": "images/deck-dark.png"
         },
-        "order": 100,
+        "order": 39,
         "supportsMobile": true
       },
       "constraints": [

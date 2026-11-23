@@ -30,6 +30,9 @@ jobs:
       - run: npm run ext:test
       - run: npm run backend:typecheck
       - run: npm run ext:build
+      - run: npm run browser:typecheck
+      - run: npm run browser:test
+      - run: npm run browser:build
 
   publish:
     needs: check

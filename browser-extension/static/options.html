@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Review Deck links</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --text: #1f1f1f;
+        --muted: #5f5f5f;
+        --background: #ffffff;
+        --border: #c8c8c8;
+        --accent: #0078d4;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #e6e6e6;
+          --muted: #a8a8a8;
+          --background: #1f1f1f;
+          --border: #4a4a4a;
+          --accent: #4ba0e8;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        min-width: 24rem;
+        max-width: 36rem;
+        font: 14px/1.45 system-ui, sans-serif;
+        color: var(--text);
+        background: var(--background);
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      p {
+        margin: 0 0 12px;
+      }
+      .hint {
+        color: var(--muted);
+      }
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 600;
+      }
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 6px;
+        font: 12px/1.4 ui-monospace, monospace;
+        color: var(--text);
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+      }
+      button {
+        padding: 6px 16px;
+        font: inherit;
+        color: #ffffff;
+        background: var(--accent);
+        border: 0;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+      }
+      #status {
+        margin-top: 12px;
+        white-space: pre-line;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Review Deck links</h1>
+    <p>
+      Pull request links you open from outside Azure DevOps (chat, email, another site) open in the Deck. Links inside
+      Azure DevOps, and the Deck's own "open in Azure DevOps" link, still open the classic page.
+    </p>
+    <label for="links">Deck pages, one per organization</label>
+    <p class="hint">
+      There's nothing to paste: the first time you open Repos → Deck in an organization, its Deck is added here, for
+      all of its projects. You can still paste or remove a Deck page's address.
+    </p>
+    <textarea
+      id="links"
+      rows="4"
+      spellcheck="false"
+      placeholder="https://dev.azure.com/my-org/my-project/_apps/hub/Cabochonio.review-deck.review-hub"
+    ></textarea>
+    <button id="save" type="button">Save</button>
+    <p id="status" role="status"></p>
+    <script src="options.js"></script>
+  </body>
+</html>
