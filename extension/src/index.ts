@@ -2,6 +2,7 @@ import "azure-devops-ui/Core/override.css";
 import "./styles.css";
 import * as SDK from "azure-devops-extension-sdk";
 import { prSkeleton } from "./skeletons";
+import { timings } from "./app/timings";
 import { rememberHostTheme, startHostedPage, withTimeout } from "./startup";
 
 const root = document.getElementById("root")!;
@@ -42,6 +43,8 @@ async function renderHosted() {
   // A link with only the PR id (from the browser extension) waits for one REST call to find its repository: the PR's
   // skeleton shows meanwhile, not the hub's.
   const showPr = (id: number) => {
+    // Only the browser extension's redirect (browser-extension/) links to a PR without its repository.
+    timings.note({ link: "pr-id-only" });
     // The page keeps its tab in its own hash (ui/App.tsx), so a reload on the Files tab shows that tab selected.
     if (isReview) root.innerHTML = prSkeleton({ id }, location.hash.slice(1));
   };
@@ -49,6 +52,7 @@ async function renderHosted() {
     adoHost.then(({ AdoHost }) => AdoHost.create(showPr)),
     "Could not connect to Azure DevOps navigation. Reload to try again.",
   );
+  timings.mark("host");
   // Started now, so the hub's on/off check (page.tsx, which doesn't hold up the first render) answers sooner.
   void host.organizationSettings();
   // The route is known now: a link straight to a pull request gets that page's skeleton, and its data starts
@@ -62,15 +66,31 @@ async function renderHosted() {
     Promise.all([page, preferences]),
     "The review code could not finish loading. Check your connection and reload.",
   );
+  timings.mark("ui");
   // The user's synced preferences never delay the first paint: the page opens with this browser's and adopts
   // theirs as they arrive (ui/preferences.ts preferencesLoaded).
   void connectPreferences(host.preferences());
   await renderHost(host);
 }
 
+/** The SDK calls startHostedPage makes, with the load's handshake and reveal marked (app/timings.ts). */
+const timedSdk = {
+  init: (options: SDK.IExtensionInitOptions) =>
+    SDK.init(options).then(() => {
+      timings.mark("handshake");
+      const { publisherId, extensionId, version } = SDK.getExtensionContext();
+      timings.describe({ organization: SDK.getHost().name, projectId: SDK.getWebContext().project?.id, extension: `${publisherId}.${extensionId}`, version });
+    }),
+  notifyLoadSucceeded: () => SDK.notifyLoadSucceeded().then(() => timings.mark("shown")),
+  notifyLoadFailed: (error: Error) => {
+    timings.fail("error", error.message);
+    return SDK.notifyLoadFailed(error);
+  },
+};
+
 if (!local) {
   rememberHostTheme();
-  void startHostedPage(SDK, renderHosted, showError);
+  void startHostedPage(timedSdk, renderHosted, showError);
 } else {
   import("./page").then((page) => page.renderLocal()).catch(showError);
 }

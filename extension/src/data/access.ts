@@ -27,6 +27,11 @@ export interface OrganizationSettings {
   changelog: FeaturePolicy;
   /** Projects may turn on AI group titles. Off overrides every project's choice. */
   aiTitles: boolean;
+  /**
+   * Pages send their load timings (app/timings.ts) to the organization's backend, which writes them to Log
+   * Analytics. Off until an administrator turns it on: it's one more request per page load.
+   */
+  loadTimings: boolean;
 }
 
 /** Before an administrator chooses, everything is available, as it was before these settings existed. */
@@ -34,6 +39,7 @@ export const DEFAULT_ORGANIZATION_SETTINGS: OrganizationSettings = {
   deck: { mode: "default-on", projects: {} },
   changelog: { mode: "default-on", projects: {} },
   aiTitles: true,
+  loadTimings: false,
 };
 
 /** In the order the organization's settings page offers them. */
@@ -46,6 +52,7 @@ export function readOrganizationSettings(saved: unknown): OrganizationSettings {
     deck: readPolicy(s.deck),
     changelog: readPolicy(s.changelog),
     aiTitles: s.aiTitles !== false,
+    loadTimings: s.loadTimings === true,
   };
 }
 

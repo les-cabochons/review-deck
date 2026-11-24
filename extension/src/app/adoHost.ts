@@ -17,6 +17,7 @@ import { type BackendService, restackPr, type RestackOutcome } from "../review/b
 import { type ReviewKey, type SavedReview, type SavedReviews, savedFor, withSaved } from "../review/saved";
 import { type AppHost, type BackendSettings, type FavoriteRepos, DEFAULT_PROJECT_SETTINGS, Listeners, type ProjectSettings, readBackendSettings, readProjectSettings, type Route } from "./host";
 import { featureContributionId, syncFeatureStates } from "./featureStates";
+import { timings } from "./timings";
 import { HashRouter, reviewHubUrl } from "./hashRoute";
 import { syncRestackHooks } from "./restackHooks";
 import type { PreferenceStore } from "../ui/preferences";
@@ -137,6 +138,7 @@ export class AdoHost implements AppHost {
   async prSource(route: Extract<Route, { view: "pr" }>): Promise<PrSource> {
     const prefetched = this.freshPrefetch(route);
     this.prefetched = null;
+    timings.note({ prefetched: !!prefetched });
     return prefetched ?? new AdoPrSource(this.project.id, route.repo, route.pr, this.currentUser);
   }
 
@@ -166,10 +168,12 @@ export class AdoHost implements AppHost {
    */
   private async findRepository(pr: number): Promise<string | null> {
     const kept = readPrSnapshot(this.cacheScope, pr)?.overview.pr.repository.id ?? readHubSnapshot(this.cacheScope)?.prs.find((p) => p.id === pr)?.repository.id;
+    timings.note({ repoLookup: kept ? "kept" : "rest" });
     if (kept) return kept;
     try {
       return (await getClient(GitRestClient).getPullRequestById(pr, this.projectId)).repository.id;
     } catch (e) {
+      timings.note({ repoLookup: "failed" });
       console.warn(`[review-deck] could not find the repository of pull request ${pr}:`, e);
       return null;
     }

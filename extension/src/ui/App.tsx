@@ -3,6 +3,7 @@ import { Tab, TabBar, TabSize } from "azure-devops-ui/Tabs";
 import { Toast } from "azure-devops-ui/Toast";
 import * as React from "react";
 import type { AppHost, Route } from "../app/host";
+import { timings } from "../app/timings";
 import { hubPatch, prFromRow, rememberPr } from "../data/hubCache";
 import { readPrSnapshot, writePrSnapshot } from "../data/prCache";
 import type { Identity, PrOverview, PrSource, Thread } from "../data/model";
@@ -66,6 +67,9 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
   const [data, setData] = React.useState<PrOverview | null>(() => kept ?? prFromRow(host.cacheScope, route.pr));
   /** `data` is the kept copy or a partial. Changes wait for the first load, so none is made from what may be out of date. */
   const [stale, setStale] = React.useState(!!data);
+  /** The load timings' scope (app/timings.ts): marks from this page count only in this PR's trace. */
+  const traceScope = { pr: route.pr };
+  React.useState(() => timings.note({ kept: !!kept, fromRow: !kept && !!data }));
   const [error, setError] = React.useState<string | null>(null);
   /** The first full load landed. Who else is on the PR is asked only then, behind the page's own REST calls. */
   const [loadedOnce, setLoadedOnce] = React.useState(false);
@@ -135,6 +139,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
    * and stale still false would enable the buttons and keep the partial in this browser.
    */
   const partial = (p: PrOverview) => {
+    timings.mark("prPartial", traceScope);
     setStale(true);
     setData(p);
     showLatest(p);
@@ -144,6 +149,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
     // The kept copy already covers the wait; without one, the partial takes over from the skeleton or the hub's row.
     source.load(kept ? undefined : partial).then(
       (d) => {
+        timings.mark("prLive", traceScope);
         loaded(d);
         // A push since the kept copy, or since a partial load that failed and is retried, moves to the new latest.
         // So does the first load of a page drawn from the hub's row, which knew no update.
@@ -152,7 +158,10 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
       (e: Error) => {
         // With nothing on screen to keep, the page shows the error. The kept copy or the partial stays, marked, unless
         // a load since (a poll while completing) made the page current.
-        if (!dataNow.current) setError(e.message);
+        if (!dataNow.current) {
+          timings.fail("error", e.message, traceScope);
+          setError(e.message);
+        }
         else if (staleNow.current) setRefreshError(e.message);
       },
     );
@@ -199,6 +208,7 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
           onPreview: (preview) => {
             if (cancelled) return;
             previewAt = Date.now();
+            timings.mark("diff", traceScope);
             setReview(preview);
             setProgress({ fraction: 0, label: "Starting" });
           },
@@ -211,12 +221,19 @@ export const PrPage: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr
         // promise callback on its own, and the guided view would replace the preview for a render, remounting it.
         const keepPlace = commentOnPreview.current;
         commentOnPreview.current = false;
+        timings.note({ files: r.result.files.length });
+        timings.mark("diff", traceScope);
+        timings.mark("grouped", traceScope);
         if (previewAt !== null && (keepPlace || Date.now() - previewAt >= ANNOUNCE_AFTER_MS)) announceGrouped(r, keepPlace);
         setReview(r);
         setGroupedWith({ title: r.result.title, description: r.result.description });
         setProgress(null);
       })
-      .catch((e: Error) => !cancelled && setReviewError(`Could not analyze changes: ${e.message}`))
+      .catch((e: Error) => {
+        if (cancelled) return;
+        timings.fail("error", `Could not analyze changes: ${e.message}`, traceScope);
+        setReviewError(`Could not analyze changes: ${e.message}`);
+      })
       .finally(() => !cancelled && setReviewLoading(false));
     return () => {
       cancelled = true;

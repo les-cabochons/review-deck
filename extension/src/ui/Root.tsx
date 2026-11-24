@@ -1,5 +1,6 @@
 import * as React from "react";
 import { type AppHost, type Route, sameRoute } from "../app/host";
+import { timings } from "../app/timings";
 import type { PrSource } from "../data/model";
 import { PrPage } from "./App";
 import { HubPage } from "./hub/HubPage";
@@ -8,9 +9,16 @@ import { ProjectTagsProvider } from "./tags/Tags";
 
 /** Switches between the PR hub and a pull request without reloading the page. */
 export const Root: React.FC<{ host: AppHost }> = ({ host }) => {
-  const [route, setRoute] = React.useState<Route>(() => host.route());
+  const [route, setRoute] = React.useState<Route>(() => traced(host.route()));
+  const current = React.useRef(route);
   React.useEffect(() => {
-    const unsubscribe = host.subscribe((r) => setRoute((cur) => (sameRoute(cur, r) ? cur : r)));
+    timings.mark("rendered");
+    const unsubscribe = host.subscribe((r) => {
+      // Traced here, as the route changes, rather than once React renders it: the move's time starts at the click.
+      if (sameRoute(current.current, r)) return;
+      current.current = traced(r);
+      setRoute(r);
+    });
     return () => {
       unsubscribe();
     };
@@ -44,6 +52,21 @@ export const Root: React.FC<{ host: AppHost }> = ({ host }) => {
     </ProjectTagsProvider>
   );
 };
+
+/**
+ * Names the route's view for load timings (app/timings.ts): the load's first view, or a move to a new one. A PR
+ * settles once its buttons work and its diff can show, the hub once its list landed.
+ */
+function traced(route: Route): Route {
+  if (route.view === "pr") timings.view("pr", ["prLive", "diff"], { pr: route.pr, repo: route.repo, tab: tabInHash() });
+  else timings.view("hub", ["hubListed"]);
+  return route;
+}
+
+/** The PR tab the page opens on (ui/App.tsx keeps it in the frame's hash). */
+function tabInHash(): string {
+  return location.hash.slice(1) || "overview";
+}
 
 const PrRoute: React.FC<{ host: AppHost; route: Extract<Route, { view: "pr" }> }> = ({ host, route }) => {
   const [source, setSource] = React.useState<PrSource | null>(null);

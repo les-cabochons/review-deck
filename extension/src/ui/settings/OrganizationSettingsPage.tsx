@@ -11,8 +11,8 @@ import { SkeletonHtml } from "../SkeletonHtml";
 
 /**
  * Organization settings → Review Deck (contribution "org-settings-hub", dist/org-settings.html). Organization
- * administrators choose which projects get the Deck and Changelog, whether AI group titles are allowed, and the
- * backend; everyone else sees them read-only.
+ * administrators choose which projects get the Deck and Changelog, whether AI group titles are allowed, the
+ * backend, and whether pages send their load timings to it; everyone else sees them read-only.
  */
 export const OrganizationSettingsPage: React.FC<{ host: AppHost }> = ({ host }) => {
   React.useEffect(() => {
@@ -36,12 +36,57 @@ export const OrganizationSettingsPage: React.FC<{ host: AppHost }> = ({ host }) 
         <h2 id="settings-backend">Backend</h2>
         <BackendSetting host={host} />
       </section>
+      <section className="settings-section" aria-labelledby="settings-timings">
+        <h2 id="settings-timings">Load timings</h2>
+        <OrganizationLoadTimings host={host} />
+      </section>
     </div>
   );
 };
 
 /** The organization's switch over every project's AI titles: off, no project sends code to the LLM. */
-const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
+const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => (
+  <OrganizationSwitch
+    host={host}
+    setting="aiTitles"
+    label="Projects can use AI group titles"
+    skeleton={SETTINGS_BODIES.orgAi}
+    what="organization's AI group titles"
+    help={(on) =>
+      on
+        ? "Each project's administrators choose whether to send changed lines to the backend's AI model for group titles. They're off until they do."
+        : "Off for every project: groups get rule-based titles and no code is sent to an AI model, whatever a project chose."
+    }
+  />
+);
+
+/** Whether pages send their load timings (app/timings.ts) to the backend's Log Analytics workspace. */
+const OrganizationLoadTimings: React.FC<{ host: AppHost }> = ({ host }) => (
+  <OrganizationSwitch
+    host={host}
+    setting="loadTimings"
+    label="Send load timings to the backend"
+    skeleton={SETTINGS_BODIES.orgTimings}
+    what="organization's load timings"
+    help={(on) =>
+      on
+        ? "Each page load sends how long each step took, and which Azure DevOps calls it waited on, to the backend, which writes them to its Log Analytics workspace. It sends the organization, project and pull request ids, the browser and the extension version: no code, titles or names. Needs a backend deployed with load timings (infra/)."
+        : "Pages write their load timings to the browser's console only."
+    }
+  />
+);
+
+/** One on/off organization setting, saved at once; read-only for anyone but organization administrators. */
+const OrganizationSwitch: React.FC<{
+  host: AppHost;
+  setting: "aiTitles" | "loadTimings";
+  label: string;
+  /** The field's place in gray until it loads (skeletons.ts SETTINGS_BODIES). */
+  skeleton: string;
+  /** What failed to load, for the error message. */
+  what: string;
+  help: (on: boolean) => string;
+}> = ({ host, setting, label, skeleton, what, help }) => {
   const [settings, setSettings] = React.useState<OrganizationSettings | null>(null);
   const [canManage, setCanManage] = React.useState(false);
   const [status, setStatus] = React.useState<"saving" | "saved" | null>(null);
@@ -54,19 +99,19 @@ const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
       if (cancelled) return;
       setSettings(s);
       setCanManage(manage);
-    }, loadFailed("organization's AI group titles", () => cancelled, setLoadError));
+    }, loadFailed(what, () => cancelled, setLoadError));
     return () => {
       cancelled = true;
     };
   }, [host]);
 
   if (loadError) return <LoadError message={loadError} />;
-  if (!settings) return <SkeletonHtml html={SETTINGS_BODIES.orgAi} />;
+  if (!settings) return <SkeletonHtml html={skeleton} />;
 
-  const change = (aiTitles: boolean) => {
+  const change = (on: boolean) => {
     setStatus("saving");
     setError(null);
-    host.updateOrganizationSettings((s) => ({ ...s, aiTitles })).then(
+    host.updateOrganizationSettings((s) => ({ ...s, [setting]: on })).then(
       (next) => {
         setSettings(next);
         setStatus("saved");
@@ -81,14 +126,10 @@ const OrganizationAiTitles: React.FC<{ host: AppHost }> = ({ host }) => {
   return (
     <div className="settings-field">
       <div className="settings-label-row">
-        <Toggle text="Projects can use AI group titles" checked={settings.aiTitles} disabled={!canManage || status === "saving"} onChange={(_, on) => change(on)} />
+        <Toggle text={label} checked={settings[setting]} disabled={!canManage || status === "saving"} onChange={(_, on) => change(on)} />
         <SaveStatus status={status} />
       </div>
-      <p className="settings-help muted">
-        {settings.aiTitles
-          ? "Each project's administrators choose whether to send changed lines to the backend's AI model for group titles. They're off until they do."
-          : "Off for every project: groups get rule-based titles and no code is sent to an AI model, whatever a project chose."}
-      </p>
+      <p className="settings-help muted">{help(settings[setting])}</p>
       {!canManage && <p className="settings-help muted">Only organization administrators can change this.</p>}
       {error && (
         <p className="settings-help tone-warning" role="alert">
