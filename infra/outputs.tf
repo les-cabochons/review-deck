@@ -20,3 +20,12 @@ output "restack_identity" {
     name         = azurerm_windows_function_app.this.name
   }
 }
+
+output "timings_workspace" {
+  description = "The Log Analytics workspace load timings go to (table DeckTimings_CL), for Grafana's Azure Monitor data source. Null with load_timings = false."
+  value = var.load_timings ? {
+    resource_id  = azurerm_log_analytics_workspace.timings[0].id
+    workspace_id = azurerm_log_analytics_workspace.timings[0].workspace_id
+    name         = azurerm_log_analytics_workspace.timings[0].name
+  } : null
+}

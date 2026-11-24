@@ -186,6 +186,8 @@ Two harness scenarios open PR 471 from its hub row, timed from the click. One is
 
 ## Measure startup
 
+The harness plays Azure DevOps. To measure the real thing, use the load timings each page records ([load-timings.md](load-timings.md)).
+
 Build first, then run the harness. It serves `extension/` itself and needs Chrome (`--chrome <path>` if it isn't under Program Files; on a Mac, `--chrome "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`), plus `openssl` (Git for Windows has it) for the HTTP/2 REST stub.
 
 ```powershell

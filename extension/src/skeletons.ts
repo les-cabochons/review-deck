@@ -284,6 +284,7 @@ export const SETTINGS_BODIES = {
   orgFeatures: `<div class="feature-access"><div class="feature-modes">${featureMode("Deck")}${featureMode("Changelog")}</div>${inputField("Projects", 2)}</div>`,
   /** ui/settings/OrganizationSettingsPage.tsx OrganizationAiTitles */
   orgAi: toggleField("Projects can use AI group titles"),
+  orgTimings: toggleField("Send load timings to the backend"),
   /** ui/settings/BackendSetting.tsx */
   orgBackend: help(2) + inputField("Backend URL", 0, textField) + inputField("API key", 1, textField),
 };
@@ -310,6 +311,7 @@ export function orgSettingsSkeleton(): string {
     ["features", "Deck and Changelog", SETTINGS_BODIES.orgFeatures],
     ["ai", "AI group titles", SETTINGS_BODIES.orgAi],
     ["backend", "Backend", SETTINGS_BODIES.orgBackend],
+    ["timings", "Load timings", SETTINGS_BODIES.orgTimings],
   ]);
 }
 

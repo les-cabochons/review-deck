@@ -1,8 +1,9 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 import type { AppHost } from "./app/host";
+import { timings } from "./app/timings";
 import { enabledFor, type Feature } from "./data/access";
-import { warmBackend } from "./review/backend";
+import { timingSink, warmBackend } from "./review/backend";
 import { renderUnlessOff } from "./startup";
 import { FeatureOff } from "./ui/FeatureOff";
 import { Root } from "./ui/Root";
@@ -20,6 +21,7 @@ const page = document.body.dataset.page;
 const FEATURE_PAGES: Record<string, Feature> = { review: "deck", changelog: "changelog" };
 
 export async function renderHost(host: AppHost) {
+  exportTimings(host);
   const feature = FEATURE_PAGES[page ?? "review"];
   if (!feature) return renderPage(host);
   // Azure DevOps normally hides a turned-off hub; this covers links to it, and a hub its feature state didn't hide.
@@ -27,12 +29,26 @@ export async function renderHost(host: AppHost) {
   // The backend's cold start runs while the hub or the PR loads, not once the guided view's build asks for embeddings.
   // Both reads run together; the request leaves once the settings say the Deck is on here, so a turned-off hub stays quiet.
   if (feature === "deck") warmBackend(host.backendService(), off.then((policy) => policy === null));
-  await renderUnlessOff(off, `review-deck.off.v1:${host.cacheScope}:${feature}`, () => renderPage(host), (policy) =>
-    ReactDOM.render(<FeatureOff feature={feature} policy={policy} />, root),
+  await renderUnlessOff(off, `review-deck.off.v1:${host.cacheScope}:${feature}`, () => renderPage(host), (policy) => {
+    timings.fail("off");
+    ReactDOM.render(<FeatureOff feature={feature} policy={policy} />, root);
+  });
+}
+
+/**
+ * Load timings go to the console, and to the backend too when the organization turned "Send load timings" on and
+ * has a backend. Both reads are the ones the page makes anyway; events from before they answer wait for them.
+ */
+function exportTimings(host: AppHost) {
+  Promise.all([host.organizationSettings(), host.backendService()]).then(
+    ([settings, backend]) => timings.exportTo(settings.loadTimings && backend ? timingSink(backend) : null),
+    () => timings.exportTo(null),
   );
 }
 
 async function renderPage(host: AppHost) {
+  // The review page's views name themselves (ui/Root.tsx); the others settle once rendered.
+  if (page && page !== "review") timings.view(page, ["rendered"]);
   if (page === "changelog") {
     // Its own chunk, so the review page doesn't load it.
     const { ChangelogPage } = await import("./ui/changelog/ChangelogPage");
@@ -43,6 +59,7 @@ async function renderPage(host: AppHost) {
   } else {
     ReactDOM.render(page === "settings" ? <SettingsPage host={host} /> : <Root host={host} />, root);
   }
+  if (page && page !== "review") timings.mark("rendered");
 }
 
 /** Local dev: mock data from extension/dev-data, theme from ?theme=, live reload from the esbuild server. */

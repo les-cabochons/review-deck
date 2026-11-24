@@ -2,6 +2,7 @@ import { Button } from "azure-devops-ui/Button";
 import { Icon } from "azure-devops-ui/Icon";
 import * as React from "react";
 import type { AppHost } from "../../app/host";
+import { timings } from "../../app/timings";
 import {
   inboxSections,
   matchesQuery,
@@ -190,11 +191,19 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
         const rows = withRecentPatches(cacheScope, list, requestedAt);
         // First: React 16 renders (and may start fetching details) inside setPrs, and those belong to this list.
         listLoaded(rows, everything);
+        if (activeNow.current) {
+          timings.mark("hubRows");
+          timings.mark("hubListed");
+        }
         setPrs(rows);
         setListed({ selection: selectionKey, at: requestedAt });
         if (activeNow.current) setListedNow(true);
       })
-      .catch((e: Error) => load === latestLoad.current && setError(e.message))
+      .catch((e: Error) => {
+        if (load !== latestLoad.current) return;
+        if (activeNow.current) timings.fail("error", e.message);
+        setError(e.message);
+      })
       .finally(() => load === latestLoad.current && setListLoading(false));
   }, [source, scopeKey, selectionKey, cacheScope, listLoaded]);
   /** The Refresh button fetches the tags, the list and every row's details anew. */
@@ -216,6 +225,11 @@ export const HubPage: React.FC<{ host: AppHost; active: boolean }> = ({ host, ac
   React.useEffect(() => {
     if (active) host.setTitle("Pull requests");
   }, [host, active]);
+  // Rows on screen, kept from last time or listed now: the hub's first useful paint, for load timings.
+  const hasRows = !!prs;
+  React.useEffect(() => {
+    if (active && hasRows) timings.mark("hubRows");
+  }, [active, hasRows]);
 
   // Changes made on a PR page (votes, reviewers, tags) apply here at once, even while the hub is hidden.
   React.useEffect(

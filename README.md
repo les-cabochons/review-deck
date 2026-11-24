@@ -188,6 +188,7 @@ wants these extras deploys its own, in its own Azure subscription, and connects 
 | Grouping | Code structure, names and paths | Also sentence embeddings, for more accurate groups |
 | Group titles | Rule-based | Optional, **off by default**: a small LLM writes them, per project opt-in |
 | Stacked PRs | Shown as stacks | Optional **auto-restack**: layers are rebased when the PR below them changes or merges |
+| Load timings | In the browser console | Optional, **off by default**: kept in your own Log Analytics workspace, for Grafana |
 
 The backend is one Azure Function (`backend/`), deployed with Terraform (`infra/`):
 - **Cost:** about $0.50 a month for 1,000 PRs, and capped to stay under $1. The function runs on the free
@@ -196,7 +197,8 @@ The backend is one Azure Function (`backend/`), deployed with Terraform (`infra/
   Only projects that turn on AI titles send changed lines to the model, which runs in your own Azure AI
   resource.
 
-Details, costs and limits are in [docs/azure-backend.md](docs/azure-backend.md).
+Details, costs and limits are in [docs/azure-backend.md](docs/azure-backend.md). Load timings are in
+[docs/load-timings.md](docs/load-timings.md).
 
 ### 1. Deploy it
 

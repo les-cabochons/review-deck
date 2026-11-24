@@ -7,6 +7,7 @@
 //   node extension/tests/startup-timing.mjs --shots .cache/shots   # screenshots of the skeletons and pages
 //   node extension/tests/startup-timing.mjs --check                # a PR that loads only in part isn't kept in the browser
 //   node extension/tests/startup-timing.mjs --calls --runs 3       # REST calls per step of hub → PR → hub, not timings
+//   node extension/tests/startup-timing.mjs --events --runs 1      # also print the page's own load timings (src/app/timings.ts)
 //
 // The host page is a fake: it answers the SDK handshake (with a dark theme), the navigation service (route from
 // the scenario), the location service (REST calls go to a second server, over HTTP/2 and cross-origin with CORS
@@ -386,6 +387,14 @@ async function open(context, origin, path, hosted) {
   page.on("requestfinished", (r) => pending.delete(r.url()));
   page.on("requestfailed", (r) => pending.delete(r.url()));
   page.on("console", (m) => m.type() === "error" && problems.push(m.text()));
+  // The page's own wide events, as it logs them: "[review-deck] timing", event. The stub's REST origin isn't an
+  // Azure DevOps host, so their `rest` lists no calls here.
+  if (args.has("events")) {
+    page.on("console", (m) => {
+      if (!m.text().startsWith("[review-deck] timing")) return;
+      m.args()[1]?.jsonValue().then((event) => console.log(`  event: ${JSON.stringify({ kind: event.kind, view: event.context.view, outcome: event.outcome, totalMs: event.totalMs, steps: event.steps, context: event.context, assets: event.assets, frame: event.frame })}`), () => {});
+    });
+  }
   page.on("pageerror", (e) => problems.push(e.message));
   const started = Date.now();
   await page.goto(origin + path, { waitUntil: "domcontentloaded" });
@@ -433,6 +442,8 @@ async function measureHubToPr(context, origin, scenario) {
   const marks = await frame.evaluate(() => window.frameMarks ?? {});
   const result = {};
   for (const m of scenario.frame) if (marks[m]) result[m] = marks[m] - marks.press;
+  // The move's event ends once the diff can show too, a little after the buttons work.
+  if (args.has("events")) await page.waitForTimeout(2000);
   await page.close();
   return result;
 }

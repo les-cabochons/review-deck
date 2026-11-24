@@ -113,3 +113,26 @@ variable "extension_id" {
   type        = string
   default     = "Cabochonio.review-deck"
 }
+
+variable "load_timings" {
+  description = "Create the Log Analytics workspace that load timings go to (timings.tf). Pages send them only once an organization administrator turns \"Send load timings\" on."
+  type        = bool
+  default     = true
+}
+
+variable "load_timings_daily_quota_gb" {
+  description = "The workspace stops ingesting for the rest of the UTC day at this size. An event is about 3 KB, so 0.1 GB is some 30,000 page loads."
+  type        = number
+  default     = 0.1
+
+  validation {
+    condition     = var.load_timings_daily_quota_gb >= 0.023
+    error_message = "Log Analytics accepts a daily quota of 0.023 GB or more."
+  }
+}
+
+variable "load_timings_readers" {
+  description = "Object ids of the identities that read load timings, such as Grafana's managed identity or the app registration of its Azure Monitor data source. Each gets Log Analytics Reader on the workspace."
+  type        = list(string)
+  default     = []
+}

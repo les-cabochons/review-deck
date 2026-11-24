@@ -10,3 +10,6 @@ alert_email      = "you@example.com"
 #   project_monthly_usd = 0.25
 #   orgs = { cabochons = { monthly_usd = 1, projects = { Semantic_pr = 0.5 } } }
 # }
+# load_timings                = true
+# load_timings_daily_quota_gb = 0.1
+# load_timings_readers        = ["<Grafana's object id>"]

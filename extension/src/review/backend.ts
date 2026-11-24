@@ -2,6 +2,7 @@ import type { Embedder } from "../../../src/score/index";
 import { type LlmTitle, matchTitles, type PromptContext, promptGroups } from "../../../src/title/prompt";
 import type { GroupTitle, TitleInput, Titler } from "../../../src/title/types";
 import type { RestackOutcome } from "../../../src/stack/restack";
+import type { TimingSink } from "../app/timings";
 
 /** The Azure Function (backend/, deployed by infra/) and a token it accepts. */
 export interface BackendService {
@@ -81,6 +82,24 @@ export class RemoteTitler implements Titler {
     if (!Array.isArray(titles)) throw new Error("titles service returned an unexpected response");
     return matchTitles(inputs, titles);
   }
+}
+
+/**
+ * Sends load timings to the backend (POST /api/timings), which writes them to Log Analytics. Rejects on any failure,
+ * and the page keeps them in the console.
+ */
+export function timingSink(service: BackendService): TimingSink {
+  return async (event) => {
+    const response = await fetch(`${service.url}/api/timings`, {
+      method: "POST",
+      headers: { ...authorization(service), "content-type": "application/json" },
+      body: JSON.stringify({ events: [event] }),
+      // So the event of a page going away (outcome "left") still leaves. Only then: some browsers have refused
+      // keepalive requests that need a CORS preflight, as this one does for its authorization header.
+      keepalive: document.visibilityState === "hidden",
+    });
+    if (!response.ok) throw new Error(`timings service returned ${response.status}: ${await errorMessage(response)}`);
+  };
 }
 
 export async function fetchUsage(service: BackendService): Promise<Usage> {

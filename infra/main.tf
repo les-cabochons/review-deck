@@ -8,7 +8,8 @@
 #   many GB-s. The default (2,000/day, ~62,000/month) costs under $1 even with no free grant left.
 #   Only Windows Consumption supports this hard cap, which is why the app is Windows, not Linux/Flex.
 # - app_scale_limit = 1: one instance, so a burst of requests queues instead of fanning out.
-# - No Application Insights (ingestion is the usual surprise bill); platform logs only.
+# - No Application Insights (ingestion is the usual surprise bill); platform logs only. Load timings go to their
+#   own Log Analytics table, with a daily cap (timings.tf).
 # - Titles: the function caches answers by prompt in Table storage and stops calling the model once
 #   the day's spend reaches titles_daily_budget_usd ($0.025, so at most ~$0.78/month), or a month's
 #   spend reaches the organization's or project's cap (titles_caps). The model
@@ -40,6 +41,8 @@ provider "azurerm" {
   resource_providers_to_register = [
     "Microsoft.CognitiveServices",
     "Microsoft.Consumption",
+    "Microsoft.Insights",
+    "Microsoft.OperationalInsights",
     "Microsoft.Storage",
     "Microsoft.Web",
   ]
@@ -191,6 +194,11 @@ resource "azurerm_windows_function_app" "this" {
     HOOK_KEY     = random_password.hook_key.result
     ADO_PAT      = var.ado_pat
     EXTENSION_ID = var.extension_id
+    # backend/src/timings.ts: where POST /api/timings writes (timings.tf). Empty with load_timings = false, and
+    # the endpoint answers 503.
+    TIMINGS_INGESTION_ENDPOINT = var.load_timings ? azurerm_monitor_data_collection_endpoint.timings[0].logs_ingestion_endpoint : ""
+    TIMINGS_DCR_ID             = var.load_timings ? azurerm_monitor_data_collection_rule.timings[0].immutable_id : ""
+    TIMINGS_STREAM             = var.load_timings ? local.timings_stream : ""
     # Write function logs to LogFiles/Application/Functions even with no debugger attached: without
     # Application Insights, that's the only record of why a queued restack job failed.
     AzureFunctionsJobHost__logging__fileLoggingMode = "always"
