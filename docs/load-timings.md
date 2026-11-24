@@ -23,7 +23,7 @@ The `outcome` is `settled`, `error` (the view showed an error), `timeout` (not s
 
 Each event also carries:
 
-- `context`: organization, project id, extension version, browser, view, PR id and repository id, the tab, and how the PR got there. `link: "pr-id-only"` is a link from the browser extension, `repoLookup` says whether its repository came from the browser's cache or a REST call, `kept` and `fromRow` say whether a kept copy or the hub's row drew the page first, and `prefetched` whether the hub's hover prefetch was used.
+- `context`: organization, project id, extension version, browser, view, PR id and repository id, the tab, and how the PR got there. `link: "pr-id-only"` is a link from the browser extension, `repoLookup` says whether its repository came from the browser's cache or a REST call, `kept` and `fromRow` say whether a kept copy or the hub's row drew the page first, and `prefetched` whether the PR's calls had started ahead of its page: at startup for a link, or on hover for a hub row.
 - `rest`: the Azure DevOps calls that started during the trace, with their route (ids, organization, project and query left out), start and duration, the first 40 listed.
 - `assets`: the Deck's own files fetched, and how many came from the browser cache.
 - `frame`, for a load: when the frame's HTML arrived, DOMContentLoaded, and the first paint (the static skeleton).

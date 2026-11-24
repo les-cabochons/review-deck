@@ -43,13 +43,17 @@ async function renderHosted() {
   // A link with only the PR id (from the browser extension) waits for one REST call to find its repository: the PR's
   // skeleton shows meanwhile, not the hub's.
   const showPr = (id: number) => {
-    // Only the browser extension's redirect (browser-extension/) links to a PR without its repository.
-    timings.note({ link: "pr-id-only" });
     // The page keeps its tab in its own hash (ui/App.tsx), so a reload on the Files tab shows that tab selected.
     if (isReview) root.innerHTML = prSkeleton({ id }, location.hash.slice(1));
   };
   const host = await withTimeout(
-    adoHost.then(({ AdoHost }) => AdoHost.create(showPr)),
+    adoHost.then(({ AdoHost }) =>
+      AdoHost.create((id) => {
+        // Only the browser extension's redirect (browser-extension/) links to a PR without its repository.
+        timings.note({ link: "pr-id-only" });
+        showPr(id);
+      }),
+    ),
     "Could not connect to Azure DevOps navigation. Reload to try again.",
   );
   timings.mark("host");
