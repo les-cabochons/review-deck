@@ -25,6 +25,7 @@
     "ext:test:browser": "node scripts/build-write-test.mjs",
     "ext:timing": "node extension/tests/startup-timing.mjs",
     "backend:typecheck": "tsc --noEmit -p backend",
+    "backend:test": "tsx --test backend/tests/*.test.ts",
     "browser:build": "node browser-extension/build.mjs",
     "browser:typecheck": "tsc --noEmit -p browser-extension",
     "browser:test": "tsx --test browser-extension/tests/*.test.ts",

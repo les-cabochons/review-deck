@@ -3,6 +3,7 @@
 //   POST /api/titles  {"scope", "context", "groups"} -> {"titles": [{id, title, rationale}]}  (group titles, titles_model)
 //   GET  /api/usage?organization=&projectId=&projectName=  ->  the titles model (or null) and this month's spend and caps
 //   GET  /api/warm    loads the embedding model; the page calls it as it opens, so the cold start overlaps its own loading.
+//   POST /api/timings {"events": TimingEvent[]} -> 204, written to Log Analytics (src/timings.ts, infra/timings.tf)
 //   GET  /api/stacks/hook?organization=  ->  {url, header, secret} for the auto-restack service hooks
 //   POST /api/hooks/ado?org=&ext=  Azure DevOps service hook (git.push, git.pullrequest.updated) -> restack queue
 //   POST /api/stacks/restack  {organization, projectId, repositoryId, pullRequestId, extensionId, adoToken} -> {outcomes, log}
@@ -16,6 +17,7 @@ import { HOOK_HEADER, hookSecret, jobsFromHook, type RestackJob, verifyHookSecre
 import { ManualRestackError, runManualRestack, runRestackJob } from "./stacks/run.js";
 import { AdoError } from "./stacks/ado.js";
 import { parseExtensionId } from "./stacks/settings.js";
+import { sendTimingRows, timingRows, timingsConfigured, TimingsRejected } from "./timings.js";
 
 /** Bounds per request, so one call can't run for minutes. Bigger PRs fall back to structural grouping. */
 const MAX_TEXTS = 2000;
@@ -104,6 +106,31 @@ app.http("usage", {
       if (e instanceof BadRequest) return error(400, e.message);
       context.error(e);
       return error(502, "usage unavailable");
+    }
+  },
+});
+
+/** Load timings, sent by pages whose organization turned "Send load timings" on (Organization settings → Review Deck). */
+app.http("timings", {
+  methods: ["POST"],
+  authLevel: "anonymous",
+  handler: async (request, context) => {
+    if (!authorized(request)) return error(401, "invalid token");
+    if (!timingsConfigured) return error(503, "load timings aren't set up on this backend (infra/timings.tf)");
+    if (Number(request.headers.get("content-length") ?? 0) > 64 * 1024) return error(413, "body too large");
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return error(400, "expected JSON");
+    }
+    try {
+      await sendTimingRows(timingRows(body, new Date()));
+      return { status: 204 };
+    } catch (e) {
+      if (e instanceof TimingsRejected) return error(400, e.message);
+      context.error("could not write load timings", e);
+      return error(502, "load timings unavailable");
     }
   },
 });
