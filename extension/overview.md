@@ -33,7 +33,7 @@ Open **Repos › Deck** to see the pull requests that involve you, sorted into s
 - The description, editable with a Markdown preview.
 - A timeline of updates, commits, votes and comment threads, with replies and thread status.
 - A sidebar with **Changes by concern** (click one to jump to it), reviewers and votes, required and optional checks, tags and work items.
-- Add or remove reviewers, mark them required or optional, and edit tags without leaving the page.
+- Add or remove reviewers, mark them required or optional, edit tags, and link or unlink work items without leaving the page.
 
 ![PR overview with the stack and changes by concern](images/marketplace/overview.png)
 
@@ -87,11 +87,11 @@ A backend you deploy in your own Azure subscription adds them; there is no share
 **Why does it need these permissions?**
 - *Code (read and write):* to read diffs, tags and commits, to post comments, votes, reviewers, tags and description edits that you make, and to complete or abandon a PR when you choose to.
 - *Build (read):* used only by the Changelog, to find each tag's pipeline runs and list their artifacts.
-- *Work items (read):* to show the work items linked to a PR.
+- *Work items (read and write):* to show the work items linked to a PR, and to link or unlink one when you choose to.
 - *Project and team (read):* to list your projects and repositories.
 - *Service hooks (read and write):* used only by auto-restack, to hear when a PR in a stack changes.
 
-Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, writing a release description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
+Review Deck only writes when you act: posting a comment, voting, editing reviewers, tags or the description, linking work items, writing a release description, or completing, abandoning or setting auto-complete. The one exception is auto-restack, which a project administrator has to turn on.
 
 **Which languages are supported?**
 Every file shows up and gets a diff. Structural grouping understands TypeScript, JavaScript (including TSX/JSX), Python, Go, Rust, Java, C#, Ruby, PHP, C and C++. For these languages it links a change to the code that uses it and pairs tests with the code they test. Syntax highlighting covers about 75 languages and formats, including Kotlin, Swift, Scala, Dart, SQL, Terraform, Dockerfiles, Vue and Svelte. Other files are grouped by their paths and shared names.

@@ -117,7 +117,8 @@ export function toOverview(pr: GitPullRequest, iterations: GitPullRequestIterati
       date: new Date(c.author?.date ?? Date.now()),
     })),
     policies: (details?.policies ?? []).map(policyStatus),
-    workItems: (details?.workItems ?? []).map((w) => ({ id: w.id, url: w.url })),
+    // The read's url is the REST address, not the work item's page: the Work items card reads the page with the title.
+    workItems: (details?.workItems ?? []).map((w) => ({ id: w.id, url: "" })),
   };
   if (!details) overview.partial = true;
   return overview;

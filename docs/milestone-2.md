@@ -20,7 +20,8 @@ Continue the approved full PR review page plan with milestone 2. Run locally aga
 - [ ] [Finish live validation cases requiring more test data or permissions](https://github.com/les-cabochons/review-deck/issues/1). Cross-update/rename anchors, group identities, another reviewer's vote, and actual permission denials remain unverified.
 - [x] Milestone 3: completion, auto-complete, abandon, merge options.
 - [ ] Reviewed-file state.
-- [ ] Later: work item linking, comment editing/deletion, likes, identity mentions, syntax highlighting, expanded context.
+- [x] Work item linking: search by id or title, link and unlink from the Overview sidebar.
+- [ ] Later: comment editing/deletion, likes, identity mentions, syntax highlighting, expanded context.
 - [ ] Deferred: stack navigation, browser embeddings and LLM titles.
 
 The extension was privately published and installed for the approved test organization. Live smoke tests changed PR #1 and restored its original metadata. This work remains uncommitted locally. No push or new PR creation occurred.

@@ -9,6 +9,8 @@ import type {
   ShareNotificationContext,
 } from "azure-devops-extension-api/Git";
 import type { ArtifactFilter, NotificationRestClient, NotificationSubscriptionCreateParameters, SubscriptionQuery } from "azure-devops-extension-api/Notification";
+import type { JsonPatchDocument } from "azure-devops-extension-api/WebApi";
+import type { Wiql, WorkItem, WorkItemTrackingRestClient } from "azure-devops-extension-api/WorkItemTracking";
 import type { CompletionOptionsJson } from "./snapshot";
 import {
   type CompletionOptions,
@@ -21,6 +23,7 @@ import {
   type NewThread,
   type PrActions,
   type ThreadStatus,
+  type WorkItemRef,
 } from "./model";
 
 export type WriteClient = Pick<
@@ -47,11 +50,17 @@ export type WriteClient = Pick<
 
 export type NotificationClient = Pick<NotificationRestClient, "querySubscriptions" | "createSubscription" | "deleteSubscription">;
 
+export type WorkItemClient = Pick<WorkItemTrackingRestClient, "getWorkItems" | "getWorkItem" | "updateWorkItem" | "queryByWiql">;
+
 // Enum values from azure-devops-extension-api, inlined: its enums are declared, not emitted.
 /** RefFavoriteType.Ref */
 const REF_FAVORITE = 2;
 /** SubscriptionQueryFlags.IncludeFilterDetails */
 const INCLUDE_FILTER_DETAILS = 8;
+/** WorkItemErrorPolicy.Omit: a work item you can't read comes back null instead of failing the whole read. */
+const OMIT_ERRORS = 2;
+/** WorkItemExpand.Relations */
+const RELATIONS = 1;
 /** GitAsyncOperationStatus */
 const OPERATION = { completed: 3, failed: 4, abandoned: 5 };
 const CHERRY_PICK_POLL_MS = 1000;
@@ -145,6 +154,46 @@ function policyAllows(settings: NonNullable<MergePolicy["settings"]>, strategy: 
   return true;
 }
 
+/** The fields the Work items card shows, and the project that names the work item's page. */
+const WORK_ITEM_FIELDS = ["System.Title", "System.WorkItemType", "System.State", "System.TeamProject"];
+/** Azure DevOps reads at most 200 work items in one call. */
+const WORK_ITEM_BATCH = 200;
+const WORK_ITEM_SEARCH_LIMIT = 10;
+
+/** The work item id in `123`, `#123`, or a pasted link to it (`…/_workitems/edit/123`); null when there's none. */
+export function workItemIdIn(query: string): number | null {
+  const match = /^#?(\d+)$/.exec(query.trim()) ?? /\/_workitems\/edit\/(\d+)/i.exec(query);
+  const id = match ? Number(match[1]) : NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/** The query for this project's work items whose title contains `text`, the latest changed first. */
+export function titleSearchWiql(text: string): string {
+  // A WIQL string escapes a quote by doubling it.
+  const quoted = `'${text.trim().replace(/'/g, "''")}'`;
+  return `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.Title] CONTAINS ${quoted} ORDER BY [System.ChangedDate] DESC`;
+}
+
+/**
+ * What a work item's link to a pull request points at, as Azure DevOps stores it on the work item (an "ArtifactLink"
+ * relation named "Pull Request"). It reads back with `%2F` or `%2f`, so compare it ignoring case.
+ */
+export function pullRequestArtifactUrl(projectId: string, repositoryId: string, pullRequestId: number): string {
+  return `vstfs:///Git/PullRequestId/${projectId}%2F${repositoryId}%2F${pullRequestId}`;
+}
+
+function toWorkItemRef(w: WorkItem, hostUrl: string): WorkItemRef {
+  const fields = (w.fields ?? {}) as Record<string, string | undefined>;
+  const project = fields["System.TeamProject"];
+  return {
+    id: String(w.id),
+    url: project ? `${hostUrl}${encodeURIComponent(project)}/_workitems/edit/${w.id}` : "",
+    title: fields["System.Title"],
+    type: fields["System.WorkItemType"],
+    state: fields["System.State"],
+  };
+}
+
 export function requireContent(content: string): string {
   if (!content.trim()) throw new Error("Enter a comment before posting.");
   return content;
@@ -196,7 +245,13 @@ export function createAdoActions(
   git: WriteClient,
   scope: { project: string; repo: string; pr: number },
   currentUser: Identity,
-  reads: { searchReviewers: PrActions["searchReviewers"]; mergePolicies: () => Promise<MergePolicy[]>; notifications?: NotificationClient },
+  reads: {
+    searchReviewers: PrActions["searchReviewers"];
+    mergePolicies: () => Promise<MergePolicy[]>;
+    notifications?: NotificationClient;
+    /** The organization's Azure DevOps address (`https://dev.azure.com/{org}/`) names the work items' pages. */
+    workItems?: { client: WorkItemClient; hostUrl: string };
+  },
 ): PrActions {
   const { project, repo, pr } = scope;
   const update = (body: Record<string, unknown>) => git.updatePullRequest(body as unknown as GitPullRequest, repo, pr, project);
@@ -226,6 +281,21 @@ export function createAdoActions(
       const filter = s.filter as ArtifactFilter;
       return filter.artifactType === "PullRequestId" && filter.artifactId?.toLowerCase() === artifactId;
     });
+  };
+  const workItems = () => {
+    if (!reads.workItems) throw new Error("Work items aren't available here.");
+    return reads.workItems;
+  };
+  // Without a project, so a work item from another project reads too.
+  const describeWorkItems = async (ids: number[]) => {
+    if (!ids.length) return [];
+    const { client, hostUrl } = workItems();
+    const found = await client.getWorkItems(ids.slice(0, WORK_ITEM_BATCH), undefined, WORK_ITEM_FIELDS, undefined, undefined, OMIT_ERRORS);
+    return found.filter((w): w is WorkItem => !!w).map((w) => toWorkItemRef(w, hostUrl));
+  };
+  const artifactUrl = async () => {
+    const { id, projectId } = await repoIds();
+    return pullRequestArtifactUrl(projectId, id, pr);
   };
   return {
     async createThread(input) {
@@ -270,6 +340,36 @@ export function createAdoActions(
     },
     async removeTag(name) {
       await git.deletePullRequestLabels(repo, pr, name, project);
+    },
+    async describeWorkItems(ids) {
+      return describeWorkItems(ids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0));
+    },
+    async searchWorkItems(query) {
+      const id = workItemIdIn(query);
+      if (id) return describeWorkItems([id]);
+      if (query.trim().length < 2) return [];
+      const wiql = { query: titleSearchWiql(query) } as Wiql;
+      const result = await workItems().client.queryByWiql(wiql, project, undefined, false, WORK_ITEM_SEARCH_LIMIT);
+      return describeWorkItems(result.workItems.map((w) => w.id));
+    },
+    // The link is a relation on the work item, the one Azure DevOps adds when you link them on its own PR page.
+    async linkWorkItem(id) {
+      const relation = { rel: "ArtifactLink", url: await artifactUrl(), attributes: { name: "Pull Request" } };
+      await workItems().client.updateWorkItem([{ op: "add", path: "/relations/-", value: relation }] as JsonPatchDocument, Number(id));
+    },
+    async unlinkWorkItem(id) {
+      const url = (await artifactUrl()).toLowerCase();
+      const { client } = workItems();
+      const item = await client.getWorkItem(Number(id), undefined, undefined, undefined, RELATIONS);
+      const index = (item.relations ?? []).findIndex((r) => r.rel === "ArtifactLink" && r.url.toLowerCase() === url);
+      if (index < 0) throw new Error(`Work item ${id} no longer links to this pull request. Refresh to see its links.`);
+      // A relation is removed by its position. Testing the revision makes Azure DevOps refuse the removal if the work
+      // item changed since it was read, so a shifted position can't remove another link.
+      const patch = [
+        { op: "test", path: "/rev", value: item.rev },
+        { op: "remove", path: `/relations/${index}` },
+      ];
+      await client.updateWorkItem(patch as JsonPatchDocument, Number(id));
     },
     async setDescription(description) {
       await update({ description });

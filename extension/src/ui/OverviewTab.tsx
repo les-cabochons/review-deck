@@ -9,7 +9,7 @@ import type { InfraState } from "./infra/useInfra";
 import { HostLinks } from "./App";
 import { ThreadCard } from "./ThreadCard";
 import { CommentComposer } from "./CommentComposer";
-import { Reviewers, Tags } from "./MetadataEditors";
+import { Reviewers, Tags, WorkItems } from "./MetadataEditors";
 import { OthersOnPr } from "./presence/Presence";
 import { useReviewActions } from "./ReviewActions";
 import { Avatar, CommitLink, cx, isOpen, Markdown, plural, Time, voteInfo } from "./util";
@@ -249,16 +249,9 @@ const Event: React.FC<{
 
 // ---------- sidebar ----------
 
-const Side: React.FC<{ title: string; action?: string }> = ({ title, action, children }) => (
+const Side: React.FC<{ title: string }> = ({ title, children }) => (
   <section className="side-section">
-    <h3>
-      {title}
-      {action && (
-        <button className="link-button" disabled title="Editing arrives in milestone 2">
-          {action}
-        </button>
-      )}
-    </h3>
+    <h3>{title}</h3>
     {children}
   </section>
 );
@@ -345,24 +338,6 @@ const Checks: React.FC<{ data: PrOverview }> = ({ data }) => {
     </Side>
   );
 };
-
-const WorkItems: React.FC<{ data: PrOverview }> = ({ data }) => (
-  <Side title="Work items" action="Link">
-    {data.partial ? (
-      <p className="muted">Loading work items…</p>
-    ) : data.workItems.length === 0 ? (
-      <p className="muted">No work items linked</p>
-    ) : (
-      <ul className="work-items">
-        {data.workItems.map((w) => (
-          <li key={w.id}>
-            <Icon iconName="WorkItem" /> <a href={w.url}>#{w.id}</a> {w.title}
-          </li>
-        ))}
-      </ul>
-    )}
-  </Side>
-);
 
 export function openThreadCount(threads: Thread[]): number {
   return threads.filter((t) => t.kind === "comment" && isOpen(t.status)).length;

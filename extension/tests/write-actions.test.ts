@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { PolicyEvaluationRecord } from "azure-devops-extension-api/Policy";
 import { isCompleting, mergeProblem, unmetPolicies } from "../src/data/completion";
 import { policyStatus } from "../src/data/adoOverview";
-import { allowedStrategies, createAdoActions, type NotificationClient, threadPayload, type WriteClient } from "../src/data/adoActions";
+import { allowedStrategies, createAdoActions, type NotificationClient, threadPayload, type WorkItemClient, type WriteClient } from "../src/data/adoActions";
 import { MOCK_USER, MockPrSource } from "../src/data/mockSource";
 import type { CompletionOptions, NewThread, ThreadStatus, Vote } from "../src/data/model";
 import { identityImageUrl } from "../src/data/model";
@@ -341,6 +341,131 @@ function menuServer(cherryPick: { status: number; detailedStatus?: object }[] = 
   const actions = createAdoActions(client, { project: "project", repo: "repo-name", pr: 7 }, MOCK_USER, { searchReviewers: async () => [], mergePolicies: async () => [], notifications });
   return { calls, favorites, subscriptions, actions };
 }
+
+/**
+ * A fake work item server: work items with their links and revision, patched the way Azure DevOps applies a JSON
+ * patch (a failed "test" rejects the whole patch). It reads PR links back with "%2f", as Azure DevOps does.
+ */
+function workItemServer() {
+  type Relation = { rel: string; url: string; attributes?: Record<string, string> };
+  const items = new Map<number, { rev: number; fields: Record<string, string>; relations: Relation[] }>([
+    [
+      42,
+      {
+        rev: 3,
+        fields: { "System.Title": "Bob's bug", "System.WorkItemType": "Bug", "System.State": "Active", "System.TeamProject": "My Project" },
+        relations: [
+          { rel: "ArtifactLink", url: "vstfs:///Git/Commit/PROJECT-GUID%2fREPO-GUID%2fabc", attributes: { name: "Fixed in Commit" } },
+          { rel: "ArtifactLink", url: "vstfs:///Git/PullRequestId/PROJECT-GUID%2fREPO-GUID%2f8", attributes: { name: "Pull Request" } },
+        ],
+      },
+    ],
+  ]);
+  const calls: { method: string; args: unknown[] }[] = [];
+  /** Runs on the stored work item right after a read, as a change someone else makes before the write. */
+  const afterRead: { current?: (item: { rev: number; relations: Relation[] }) => void } = {};
+  const find = (id: number) => {
+    const item = items.get(id);
+    if (!item) throw new Error(`Work item ${id} does not exist.`);
+    return item;
+  };
+  const client = {
+    getWorkItems: async (...args: unknown[]) => {
+      calls.push({ method: "getWorkItems", args });
+      // WorkItemErrorPolicy.Omit: an id you can't read comes back null.
+      return (args[0] as number[]).map((id) => (items.has(id) ? { id, rev: find(id).rev, fields: { ...find(id).fields } } : null));
+    },
+    getWorkItem: async (id: number) => {
+      const read = { id, ...structuredClone(find(id)) };
+      afterRead.current?.(find(id));
+      return read;
+    },
+    updateWorkItem: async (patch: { op: string; path: string; value?: unknown }[], id: number) => {
+      calls.push({ method: "updateWorkItem", args: [patch, id] });
+      const item = find(id);
+      const relations = [...item.relations];
+      for (const { op, path, value } of patch) {
+        if (op === "test" && path === "/rev" && value !== item.rev) throw new Error("The work item changed since it was read.");
+        else if (op === "add" && path === "/relations/-") {
+          const relation = value as Relation;
+          relations.push({ ...relation, url: relation.url.replace(/%2F/g, "%2f") });
+        } else if (op === "remove") relations.splice(Number(path.split("/")[2]), 1);
+      }
+      item.relations = relations;
+      item.rev++;
+      return {};
+    },
+    queryByWiql: async (...args: unknown[]) => {
+      calls.push({ method: "queryByWiql", args });
+      return { workItems: [{ id: 42 }, { id: 404 }] };
+    },
+  } as unknown as WorkItemClient;
+  const git = { getRepository: async () => ({ id: "REPO-GUID", project: { id: "PROJECT-GUID" } }) } as unknown as WriteClient;
+  const actions = createAdoActions(git, { project: "project", repo: "repo-name", pr: 7 }, MOCK_USER, {
+    searchReviewers: async () => [],
+    mergePolicies: async () => [],
+    workItems: { client, hostUrl: "https://dev.azure.com/org/" },
+  });
+  return { items, calls, actions, afterRead };
+}
+
+test("Given a work item, when linking and unlinking it, then its Pull Request link names the PR by GUIDs and no other link moves", async () => {
+  const { items, calls, actions } = workItemServer();
+  const links = () => items.get(42)!.relations.map((r) => r.url);
+  await actions.linkWorkItem("42");
+  assert.deepEqual(calls.at(-1)?.args, [
+    [{ op: "add", path: "/relations/-", value: { rel: "ArtifactLink", url: "vstfs:///Git/PullRequestId/PROJECT-GUID%2FREPO-GUID%2F7", attributes: { name: "Pull Request" } } }],
+    42,
+  ]);
+  await actions.unlinkWorkItem("42");
+  assert.deepEqual(links(), ["vstfs:///Git/Commit/PROJECT-GUID%2fREPO-GUID%2fabc", "vstfs:///Git/PullRequestId/PROJECT-GUID%2fREPO-GUID%2f8"]);
+  await assert.rejects(actions.unlinkWorkItem("42"), /no longer links to this pull request/);
+});
+
+test("Given a work item changed between the read and the unlink, then Azure DevOps refuses the removal instead of removing another link", async () => {
+  const { items, actions, afterRead } = workItemServer();
+  await actions.linkWorkItem("42");
+  // Someone else removes the commit link, so this PR's link moves up one place.
+  afterRead.current = (item) => {
+    item.relations.shift();
+    item.rev++;
+  };
+  await assert.rejects(actions.unlinkWorkItem("42"), /changed since it was read/);
+  assert.deepEqual(
+    items.get(42)!.relations.map((r) => r.url),
+    ["vstfs:///Git/PullRequestId/PROJECT-GUID%2fREPO-GUID%2f8", "vstfs:///Git/PullRequestId/PROJECT-GUID%2fREPO-GUID%2f7"],
+  );
+});
+
+test("Given a search by id, pasted link or title, then an id is read directly and a title runs a quoted query in the project", async () => {
+  const { calls, actions } = workItemServer();
+  const bug = { id: "42", url: "https://dev.azure.com/org/My%20Project/_workitems/edit/42", title: "Bob's bug", type: "Bug", state: "Active" };
+  assert.deepEqual(await actions.searchWorkItems("#42"), [bug]);
+  assert.deepEqual(await actions.searchWorkItems("https://dev.azure.com/org/My%20Project/_workitems/edit/42"), [bug]);
+  assert.deepEqual(calls.map((c) => (c.args[0] as number[])[0]), [42, 42]);
+  calls.length = 0;
+  assert.deepEqual(await actions.searchWorkItems("a"), []);
+  assert.equal(calls.length, 0);
+  // 404 is a work item you can't read: it's left out.
+  assert.deepEqual(await actions.searchWorkItems("Bob's"), [bug]);
+  const [query, read] = calls;
+  const [wiql, project, , , top] = query.args as [{ query: string }, string, unknown, unknown, number];
+  assert.match(wiql.query, /\[System\.TeamProject\] = @project AND \[System\.Title\] CONTAINS 'Bob''s'/);
+  assert.deepEqual([project, top], ["project", 10]);
+  assert.deepEqual(read.args[0], [42, 404]);
+});
+
+test("Given a local PR, when linking and unlinking a work item, then the next load lists it and refuses linking it twice", async () => {
+  const source = new MockPrSource(snapshot());
+  const [found] = await source.actions.searchWorkItems("build status");
+  assert.equal(found?.id, "1201");
+  await source.actions.linkWorkItem(found.id);
+  await assert.rejects(source.actions.linkWorkItem(found.id), /already linked/);
+  assert.deepEqual((await source.load()).workItems.map((w) => w.id), ["1201"]);
+  assert.equal((await source.actions.describeWorkItems(["1201"]))[0]?.title, "Show the build status on the PR page");
+  await source.actions.unlinkWorkItem(found.id);
+  assert.deepEqual((await source.load()).workItems, []);
+});
 
 test("Given the menu's share, then only identity ids and the message are sent", async () => {
   const { calls, actions } = menuServer();

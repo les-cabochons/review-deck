@@ -70,7 +70,7 @@ function stub() {
       pending.threads.resolve(THREADS);
       pending.commits.resolve(COMMITS);
       pending.labels.resolve([{ name: "perf", active: true }, { name: "old", active: false }]);
-      pending.workItems.resolve([{ id: "12", url: "https://x/12" }]);
+      pending.workItems.resolve([{ id: "12", url: "https://x/_apis/wit/workItems/12" }]);
       pending.policies.resolve(POLICIES);
     },
   };
@@ -101,7 +101,8 @@ test("Given the PR and its updates answer before the rest, then the page gets th
   assert.equal(full.threads[0].comments[0].content, "Add a test");
   assert.equal(full.commits[0].message, "Retry on 5xx");
   assert.deepEqual(full.pr.labels, ["perf"]);
-  assert.deepEqual(full.workItems, [{ id: "12", url: "https://x/12" }]);
+  // The read's url is the REST address, which the card must not link to: it reads the page with the title.
+  assert.deepEqual(full.workItems, [{ id: "12", url: "" }]);
   assert.deepEqual(full.policies.map((p) => [p.name, p.state, p.blocking]), [["Build", "approved", true]]);
   // The partial came once; the whole didn't pass through the callback.
   assert.equal(seen.length, 1);

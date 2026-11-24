@@ -15,6 +15,7 @@ import {
   type PrSource,
   type Thread,
   threadStatusFromNumber,
+  type WorkItemRef,
 } from "./model";
 import type { CommentJson, IdentityJson, PrSnapshot, ThreadJson } from "./snapshot";
 import { unmetPolicies } from "./completion";
@@ -25,6 +26,7 @@ import {
   STATUS_NUMBER,
   threadPayload,
   toCompletionOptionsJson,
+  workItemIdIn,
 } from "./adoActions";
 
 export const MOCK_USER: Identity = { id: "local-reviewer", displayName: "Local reviewer", uniqueName: "reviewer@example.test" };
@@ -65,6 +67,15 @@ export class MockPrSource implements PrSource {
     };
     let following = false;
     const favorites = new Set<string>();
+    // The work items the mock can link: the PR's own and a few more, as a project's backlog would offer them.
+    const backlog = new Map<string, WorkItemRef>(
+      [
+        ...this.snap.workItems,
+        { id: "1201", url: "", title: "Show the build status on the PR page", type: "User Story", state: "Active" },
+        { id: "1202", url: "", title: "Stack panel loses its place after a restack", type: "Bug", state: "New" },
+        { id: "1203", url: "", title: "Open the PR page in under a second", type: "Task", state: "Active" },
+      ].map((w) => [w.id, w]),
+    );
     const active = (doing: string) => {
       const pr = this.snap.pullRequest;
       if (pr.status !== PR_STATUS_NUMBER.active) throw new Error(`Only an active pull request can be ${doing}.`);
@@ -154,6 +165,22 @@ export class MockPrSource implements PrSource {
       },
       removeTag: async (name) => {
         this.snap.pullRequest.labels = this.snap.pullRequest.labels.filter((l) => l.name !== name);
+      },
+      describeWorkItems: async (ids) => ids.flatMap((id) => backlog.get(id) ?? []),
+      searchWorkItems: async (query) => {
+        const id = workItemIdIn(query);
+        const text = query.trim().toLowerCase();
+        return [...backlog.values()].filter((w) => (id ? w.id === String(id) : text.length >= 2 && !!w.title?.toLowerCase().includes(text)));
+      },
+      linkWorkItem: async (id) => {
+        const item = backlog.get(id);
+        if (!item) throw new Error(`Work item ${id} does not exist, or you can't see it.`);
+        if (this.snap.workItems.some((w) => w.id === id)) throw new Error(`Work item ${id} is already linked.`);
+        this.snap.workItems = [...this.snap.workItems, { id, url: item.url, title: item.title }];
+      },
+      unlinkWorkItem: async (id) => {
+        if (!this.snap.workItems.some((w) => w.id === id)) throw new Error(`Work item ${id} no longer links to this pull request. Refresh to see its links.`);
+        this.snap.workItems = this.snap.workItems.filter((w) => w.id !== id);
       },
       setDescription: async (description) => {
         this.snap.pullRequest.description = description;
@@ -281,7 +308,7 @@ export class MockPrSource implements PrSource {
         date: new Date(c.author.date),
       })),
       policies: this.policies(),
-      workItems: this.snap.workItems,
+      workItems: [...this.snap.workItems],
     };
   }
 

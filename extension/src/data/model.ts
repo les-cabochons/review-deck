@@ -152,10 +152,19 @@ export interface PolicyStatus {
   typeId?: string;
 }
 
+/**
+ * A work item linked to the pull request. The PR's own load knows only the ids; the title, type, state and page come
+ * from PrActions.describeWorkItems, read on the side so the page's load doesn't wait for them.
+ */
 export interface WorkItemRef {
   id: string;
+  /** The work item's page in Azure DevOps; empty when it isn't known. */
   url: string;
   title?: string;
+  /** "Bug", "User Story", … */
+  type?: string;
+  /** "New", "Active", "Closed", … */
+  state?: string;
 }
 
 export interface PrOverview {
@@ -195,6 +204,16 @@ export interface PrActions {
   removeReviewer(id: string): Promise<void>;
   addTag(name: string): Promise<void>;
   removeTag(name: string): Promise<void>;
+  /** These work items with their titles, types, states and pages, in the order asked. Ones you can't see are left out. */
+  describeWorkItems(ids: string[]): Promise<WorkItemRef[]>;
+  /**
+   * Work items to link: the one with this id (`123`, `#123`, or its pasted link), or this project's work items whose
+   * title contains the text, the latest changed first.
+   */
+  searchWorkItems(query: string): Promise<WorkItemRef[]>;
+  /** Links the work item to the pull request, as Azure DevOps' own "Link work items" does. */
+  linkWorkItem(id: string): Promise<void>;
+  unlinkWorkItem(id: string): Promise<void>;
   setDescription(description: string): Promise<void>;
   /** Queues the merge into the target branch, provided the source head is still `headCommit`. */
   complete(options: CompletionOptions, headCommit: string): Promise<void>;
