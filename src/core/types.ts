@@ -60,6 +60,13 @@ export interface HunkInfo {
   defines: Set<string>;
   /** Unchanged declarations in the same file that use something in `defines` (one hop). */
   impacts: Set<string>;
+  /**
+   * Unchanged declarations in the same file that use a declaration this hunk changes, innermost only (a method, not
+   * also its class), by qualified name. What the page lists under the hunk. Stricter than `impacts`: no hunk of the
+   * file touches them, and a changed member only counts for its siblings. Matched by name, so a local variable named
+   * like the changed declaration can add a false entry.
+   */
+  affected: string[];
   /** Identifiers used on changed lines. */
   references: Set<string>;
   /** Normalized tokens for lexical overlap: identifiers + string literals + comment words. */

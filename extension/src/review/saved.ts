@@ -118,8 +118,11 @@ export interface SavedReview {
   groups: Group[];
   merges: ReviewResult["merges"];
   options: ReviewResult["options"];
-  /** The hunk facts the page shows, only for hunks that have any (most have none). */
-  hunks: Record<string, { symbol?: string; isTest?: true; mechanical?: MechanicalInfo }>;
+  /**
+   * The hunk facts the page shows, only for hunks that have any (most have none). `affected` was added without a
+   * new format: a guide saved before it lists no affected code until the PR is grouped again.
+   */
+  hunks: Record<string, { symbol?: string; isTest?: true; mechanical?: MechanicalInfo; affected?: string[] }>;
   /**
    * How the concerns connect (src/relations). Optional, so the format stays 4: guides saved before it, and guides
    * another app published without it, show their concerns without links, and the page says why.
@@ -131,8 +134,13 @@ export interface SavedReview {
 export function packReview(result: ReviewResult, mode: ReviewMode, now = Date.now()): SavedReview {
   const hunks: SavedReview["hunks"] = {};
   for (const [id, h] of result.hunks) {
-    if (!h.symbol && !h.isTest && !h.mechanical) continue;
-    hunks[id] = { ...(h.symbol && { symbol: h.symbol }), ...(h.isTest && { isTest: true }), ...(h.mechanical && { mechanical: h.mechanical }) };
+    if (!h.symbol && !h.isTest && !h.mechanical && h.affected.length === 0) continue;
+    hunks[id] = {
+      ...(h.symbol && { symbol: h.symbol }),
+      ...(h.isTest && { isTest: true }),
+      ...(h.mechanical && { mechanical: h.mechanical }),
+      ...(h.affected.length > 0 && { affected: h.affected }),
+    };
   }
   const madeWith = { title: result.title, description: result.description };
   const fellBack = result.warnings.length > 0 ? { fellBack: true as const } : {};
@@ -198,8 +206,9 @@ function readable(saved: unknown): Group[] | null {
 }
 
 /**
- * A saved hunk's facts, keeping only those that hold what the page renders: a symbol's text, the test tag, and a
- * known mechanical kind with its reason.
+ * A saved hunk's facts, keeping only those that hold what the page renders: a symbol's text, the test tag, a
+ * known mechanical kind with its reason, and the names of the unchanged code it affects. A guide saved before
+ * `affected` existed has none.
  */
 function factsOf(saved: unknown): SavedReview["hunks"][string] {
   if (!isRecord(saved)) return {};
@@ -209,6 +218,7 @@ function factsOf(saved: unknown): SavedReview["hunks"][string] {
     ...(typeof saved.symbol === "string" && saved.symbol.trim() && { symbol: saved.symbol }),
     ...(saved.isTest === true && { isTest: true as const }),
     ...(mechanical && { mechanical }),
+    ...(Array.isArray(saved.affected) && { affected: saved.affected.filter((name): name is string => typeof name === "string") }),
   };
 }
 
@@ -362,6 +372,7 @@ function hunkInfo(file: FileDiff, hunk: HunkInfo["hunk"], saved: SavedReview["hu
     enclosing: [],
     defines: new Set(),
     impacts: new Set(),
+    affected: saved.affected ?? [],
     references: new Set(),
     tokens: new Set(),
     fileImports: new Set(),

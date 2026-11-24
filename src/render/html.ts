@@ -181,6 +181,7 @@ function renderDebug(ctx: Ctx): string {
   <td><code>${esc(h.symbol ?? "")}</code></td>
   <td class="ev">${esc([...h.defines].join(", "))}</td>
   <td class="ev">${esc([...h.impacts].join(", "))}</td>
+  <td class="ev">${esc(h.affected.join(", "))}</td>
   <td class="ev">${esc([...h.references].slice(0, 12).join(", "))}${h.references.size > 12 ? "…" : ""}</td>
   <td class="ev">${esc(h.mechanical?.reason ?? "")}</td>
 </tr>`;
@@ -204,7 +205,7 @@ function renderDebug(ctx: Ctx): string {
   }
   <h2>Hunk facts</h2>
   <table class="facts">
-    <thead><tr><th>hunk</th><th>group</th><th>symbol</th><th>defines</th><th>impacts</th><th>references</th><th>mechanical</th></tr></thead>
+    <thead><tr><th>hunk</th><th>group</th><th>symbol</th><th>defines</th><th>impacts</th><th>affected</th><th>references</th><th>mechanical</th></tr></thead>
     <tbody>${hunkRows}</tbody>
   </table>
   <h2>Timings (ms)</h2>

@@ -51,8 +51,9 @@ export async function analyzeHunks(
     const head = (sides.content.new ?? sides.content.old ?? "").split("\n").slice(0, 5).join("\n");
     const imports = resolveImports(file, sides, resolveModule);
     const language = languageForPath(file.path);
+    const touched = touchedDecls(file, sides);
     for (const hunk of file.hunks) {
-      const info = analyzeHunk(file, hunk, sides, stopFor(language), imports, language);
+      const info = analyzeHunk(file, hunk, sides, stopFor(language), imports, language, touched);
       info.mechanical = detectMechanical(file, hunk, { lockfileChanged, head });
       out.set(hunk.id, info);
     }
@@ -91,6 +92,8 @@ function analyzeHunk(
   stop: (name: string) => boolean,
   fileImports: Set<string>,
   language: string | null,
+  /** Declarations any hunk of the file changes (touchedDecls). */
+  touched: Set<string>,
 ): HunkInfo {
   const defines = new Set<string>();
   const references = new Set<string>();
@@ -184,6 +187,8 @@ function analyzeHunk(
     enclosing: [...enclosing],
     defines,
     impacts,
+    // An added or deleted file has no unchanged code: every declaration in it is part of the change.
+    affected: file.status === "added" || file.status === "deleted" ? [] : affectedDecls(sides, innermostBySide, touched, stop),
     references,
     tokens,
     fileImports,
@@ -193,6 +198,69 @@ function analyzeHunk(
     mechanical: null,
     text: hunkText(file, hunk, symbol),
   };
+}
+
+/**
+ * Qualified names of the declarations that any hunk of the file changes a line of, on either side. Empty for added
+ * and deleted files, which is why their hunks skip affectedDecls: there, empty would read as "all unchanged".
+ */
+function touchedDecls(file: FileDiff, sides: FileSides): Set<string> {
+  const touched = new Set<string>();
+  if (file.status === "added" || file.status === "deleted") return touched;
+  for (const side of ["new", "old"] as const) {
+    const decls = sides.symbols[side]?.decls;
+    if (!decls?.length) continue;
+    const kind = side === "new" ? "add" : "del";
+    // Ascending, as a file's hunks and their lines are.
+    const rows = file.hunks.flatMap((h) => h.lines.filter((l) => l.kind === kind).map((l) => (side === "new" ? l.newLine! : l.oldLine!) - 1));
+    for (const d of decls) if (anyWithin(rows, d.startRow, d.endRow)) touched.add(d.qualified);
+  }
+  return touched;
+}
+
+/** Whether the ascending `rows` hold one in [from, to]. */
+function anyWithin(rows: number[], from: number, to: number): boolean {
+  let lo = 0;
+  let hi = rows.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (rows[mid] < from) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < rows.length && rows[lo] <= to;
+}
+
+/**
+ * HunkInfo.affected: the untouched declarations that use, by name, the innermost declaration around one of the
+ * hunk's changed lines. `impacts` follows every name on a changed line, locals included, which suits scoring but
+ * would list unrelated code here.
+ */
+function affectedDecls(sides: FileSides, innermost: Record<Side, Decl[]>, touched: Set<string>, stop: (name: string) => boolean): string[] {
+  const found = new Set<string>();
+  for (const side of ["new", "old"] as const) {
+    const changed = new Set(innermost[side].filter((d) => d.kind !== "test" && !stop(d.name)));
+    if (changed.size === 0) continue;
+    for (const d of sides.symbols[side]?.decls ?? []) {
+      if (d.kind === "test" || touched.has(d.qualified)) continue;
+      for (const c of changed) {
+        if (d.refs.has(c.name) && canSee(d, c)) {
+          found.add(d.qualified);
+          break;
+        }
+      }
+    }
+  }
+  return [...found].filter((q) => ![...found].some((other) => other.startsWith(`${q}.`)));
+}
+
+/**
+ * Whether a use of `changed`'s name inside `user` can mean `changed`: a top-level declaration is visible to the
+ * whole file, a member (`Order.total`) only to its siblings, since `x.total` elsewhere may be another type's.
+ */
+function canSee(user: Decl, changed: Decl): boolean {
+  if (user.qualified.startsWith(`${changed.qualified}.`)) return false; // declared inside the changed code itself
+  const parent = changed.qualified.slice(0, -changed.name.length);
+  return parent === "" || user.qualified.startsWith(parent);
 }
 
 function hunkText(file: FileDiff, hunk: Hunk, symbol: string | null): string {

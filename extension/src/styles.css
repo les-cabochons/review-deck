@@ -2389,6 +2389,21 @@ kbd {
   color: var(--fg);
   margin-left: 8px;
 }
+/* One line, so the placeholder height (estimateHunkHeight) holds; the tooltip lists every name. */
+.hunk-affected {
+  padding: 2px 12px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--fg2);
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hunk-affected code {
+  font-family: var(--mono);
+  color: var(--fg);
+}
 .pierre-annotation {
   /* Long code blocks in comments must not widen Pierre's wrapped diff grid. */
   contain: inline-size;
