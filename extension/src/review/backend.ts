@@ -85,8 +85,8 @@ export class RemoteTitler implements Titler {
 }
 
 /**
- * Sends load timings to the backend (POST /api/timings), which writes them to Log Analytics. `keepalive`, so an
- * event sent as the page goes away still leaves. Rejects on any failure, and the page keeps them in the console.
+ * Sends load timings to the backend (POST /api/timings), which writes them to Log Analytics. Rejects on any failure,
+ * and the page keeps them in the console.
  */
 export function timingSink(service: BackendService): TimingSink {
   return async (event) => {
@@ -94,7 +94,9 @@ export function timingSink(service: BackendService): TimingSink {
       method: "POST",
       headers: { ...authorization(service), "content-type": "application/json" },
       body: JSON.stringify({ events: [event] }),
-      keepalive: true,
+      // So the event of a page going away (outcome "left") still leaves. Only then: some browsers have refused
+      // keepalive requests that need a CORS preflight, as this one does for its authorization header.
+      keepalive: document.visibilityState === "hidden",
     });
     if (!response.ok) throw new Error(`timings service returned ${response.status}: ${await errorMessage(response)}`);
   };
